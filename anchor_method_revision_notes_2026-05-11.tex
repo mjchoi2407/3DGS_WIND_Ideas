@@ -1,0 +1,922 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\setmainfont{Liberation Serif}
+\setsansfont{Liberation Sans}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Sans CJK KR}
+\setCJKsansfont{Noto Sans CJK KR}
+\setCJKmonofont{Noto Sans Mono CJK KR}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  urlcolor=blue!55!black,
+  citecolor=blue!55!black
+}
+\definecolor{notegray}{RGB}{245,246,248}
+\definecolor{darkblue}{RGB}{30,58,138}
+\definecolor{darkred}{RGB}{153,27,27}
+\definecolor{darkgreen}{RGB}{22,101,52}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  frame=single,
+  backgroundcolor=\color{notegray},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em,
+  framerule=0pt
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Anchor Method Revision Notes}
+\rhead{2026-05-11}
+\cfoot{\thepage}
+
+\titleformat{\section}{\Large\bfseries\color{darkblue}}{\thesection}{0.8em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.8em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection}{0.8em}{}
+
+\newcommand{\Rraw}{\widetilde{R}_G}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\clamp}{\operatorname{clamp}}
+\newcommand{\smoothstep}{\operatorname{smoothstep}}
+\newcommand{\normalize}{\operatorname{normalize}}
+\newcommand{\sat}{\operatorname{sat}}
+\newcommand{\Var}{\operatorname{Var}}
+\newcommand{\GeoMean}{\operatorname{GeoMean}}
+
+\title{\textbf{Anchor Method Revision Notes}\\
+\large Reliability-Weighted Gaussian-Aware Material Anchoring\\
+\normalsize Revision package for \textit{Wind-Driven Deformable 3D Gaussian Splatting: Idea Sketch}}
+\author{Prepared for repo-level idea-sketch revision}
+\date{May 11, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{center}
+\fbox{\parbox{0.92\linewidth}{
+\textbf{Core update.} This revision replaces the unsafe phrase ``Gaussian-dense regions are important'' with a computable \textbf{reliability-weighted Gaussian transport demand}. It also separates \textbf{persistent simulation anchors} from \textbf{fixed material-space load samples}, so frame-wise wind exposure changes do not imply per-frame remeshing or anchor reselection.
+}}
+\end{center}
+
+\section{Purpose and Intended Use}
+
+This document is a repo-ready update note for revising the current idea sketch. It should be placed next to the existing sketch and given to a VSCode coding/writing agent as the technical specification for the anchor-method update.
+
+The original sketch already frames the central loop as
+\[
+\text{3DGS} \rightarrow \text{simulation proxy} \rightarrow \text{wind dynamics} \rightarrow \text{Gaussian attribute transport} \rightarrow \text{3DGS rendering}.
+\]
+The current document keeps that structure, but makes the anchor construction more precise and more defensible.
+
+\subsection{Most important correction}
+
+The previous phrasing can be misread in two problematic ways:
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{Raw Gaussian count problem.} A region with many Gaussians is not necessarily physically important. It may reflect texture complexity, specular artifacts, view coverage imbalance, floaters, or reconstruction noise.
+\item \textbf{Frame-wise wind exposure problem.} Wind exposure can change every frame, especially under wind-field simulation. However, the method should not change anchors or remesh every frame.
+\end{enumerate}
+
+The corrected design is:
+
+\begin{quote}
+\textbf{Anchor placement is computed once in material space. Runtime updates only states and force values.}\newline
+Raw Gaussian density is replaced by reliability-weighted Gaussian transport demand. Frame-wise exposure is evaluated on fixed load samples and projected to persistent simulation anchors.
+\end{quote}
+
+\section{Final Recommended Method Name}
+
+The preferred compact method name is:
+
+\begin{center}
+\Large\textbf{Gaussian-aware material anchoring}
+\end{center}
+
+The preferred full technical name is:
+
+\begin{center}
+\Large\textbf{Reliability-weighted Gaussian-aware fixed-topology material anchor mesh with fixed material-space load sampling}
+\end{center}
+
+Use the compact name in titles and section headings. Use the full name in the method definition or contribution paragraph.
+
+\section{Expression Candidates to Preserve}
+
+The following expression candidates should be preserved in the repo notes. Some are method names, some are terminology variants, and some are safe replacement phrases.
+
+\subsection{Primary method-name candidates}
+
+\begin{itemize}[leftmargin=2em]
+\item Fixed-topology Gaussian-aware material anchor mesh
+\item Gaussian-aware fixed-topology material anchor mesh
+\item Persistent Gaussian-Aware Material Anchors
+\item Gaussian-aware persistent simulation anchors
+\item Wind-aware Gaussian-to-proxy material anchoring
+\item Mesh-derived simulation anchors
+\item Physics anchors / mesh-proxy anchors
+\item Simulation node / physics node
+\item Adaptive Simulation Mesh Anchoring, with explicit note: preprocessing-only
+\item 3DGS-derived adaptive simulation anchor mesh, with explicit note: preprocessing-only
+\item Reliability-weighted Gaussian-aware material anchoring
+\item Reliability-weighted Gaussian transport demand
+\item Fixed material-space load sampling
+\end{itemize}
+
+\subsection{Anchor type terms}
+
+\begin{itemize}[leftmargin=2em]
+\item \textbf{Simulation anchors}: persistent vertices of the simulation proxy, $A_{\mathrm{sim}}=V_{\mathrm{sim}}$.
+\item \textbf{Constraint anchors}: pinned, support, or user-selected subsets of simulation anchors.
+\item \textbf{Load samples / load anchors}: fixed material-space quadrature sites used to sample wind exposure and aerodynamic loads.
+\item \textbf{Binding anchors}: persistent triangle-local references used for Gaussian binding.
+\item Material-space anchors.
+\item Persistent material anchors.
+\item Time-varying anchor states.
+\end{itemize}
+
+\subsection{Pipeline/runtime terms}
+
+\begin{itemize}[leftmargin=2em]
+\item one-time simulation-oriented proxy construction
+\item fixed-topology mesh-proxy simulation
+\item persistent Gaussian-to-mesh binding
+\item triangle-local Gaussian binding
+\item mesh-local frame transport
+\item Gaussian attribute transport
+\item Gaussian-opacity-based wind exposure
+\item canonical exposure-sensitivity prior
+\item fixed material-space load samples
+\item conservation-preserving dense-to-proxy force projection
+\item deformation-aware SH residual correction
+\item optional runtime LOD over fixed anchors
+\item active-anchor LOD
+\item constraint LOD
+\end{itemize}
+
+\subsection{Phrases to avoid and replacements}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.38\linewidth} >{\raggedright\arraybackslash}p{0.52\linewidth}}
+\toprule
+Avoid & Use instead \\
+\midrule
+adaptive remeshing during simulation & one-time simulation-oriented remeshing \\
+dynamic anchor adjustment & time-varying anchor states \\
+per-frame proxy reconstruction & fixed-topology runtime simulation \\
+time-varying Gaussian binding & persistent Gaussian-to-mesh binding \\
+direct Gaussian-patch aerodynamics & mesh-proxy wind load projection \\
+AI SH coefficient prediction & deformation-aware SH residual correction \\
+Gaussian-dense regions are important & reliability-weighted Gaussian transport demand \\
+place anchors where frame-wise exposure changes & fixed canonical exposure prior plus runtime load sampling \\
+\bottomrule
+\end{longtable}
+
+\section{Core Runtime Invariant}
+
+The method must explicitly state that remeshing and Gaussian rebinding are not runtime operations.
+
+\begin{lstlisting}
+Preprocessing / setup:
+  - construct proxy surface or mesh
+  - compute scalar fields for resolution design
+  - remesh once into a fixed-topology simulation proxy
+  - choose persistent simulation anchors
+  - place fixed material-space load samples
+  - bind Gaussians to proxy triangles once
+  - construct constraint graph once
+
+Runtime:
+  - update x_i(t), v_i(t) for simulation anchors
+  - update exposure and force values at fixed load samples
+  - project load-sample forces to simulation anchors
+  - solve XPBD/PBD on fixed topology
+  - update mesh-local frames
+  - transport Gaussian mean, covariance, and appearance residual
+
+Not performed at runtime:
+  - remeshing
+  - Gaussian rebinding
+  - proxy reconstruction
+  - topology change
+\end{lstlisting}
+
+Formally,
+\[
+V_{\mathrm{sim}},E_{\mathrm{sim}},F_{\mathrm{sim}},\mathcal{C},\mathcal{B}_{G\rightarrow M},\mathcal{Q}_{\mathrm{load}}
+\quad\text{are fixed after setup,}
+\]
+while
+\[
+x_i(t),v_i(t),e_l(t),f_l(t),R_T(t),\mu_j(t),\Sigma_j(t),c_j(t)
+\quad\text{are runtime variables.}
+\]
+
+\section{Separate Simulation Anchors from Load Samples}
+
+This is the central structural correction.
+
+\subsection{Simulation anchors}
+
+Simulation anchors are mesh vertices:
+\[
+A_{\mathrm{sim}}=V_{\mathrm{sim}}.
+\]
+Each anchor carries a physical state:
+\[
+a_i(t)=\left(x_i(t),v_i(t),m_i,\theta_i\right),
+\]
+where $x_i(t)$ is position, $v_i(t)$ is velocity, $m_i$ is mass, and $\theta_i$ is a material or scene-calibrated parameter vector.
+
+A typical mass assignment is
+\[
+m_i = \rho A_i,\qquad
+A_i=\sum_{T\ni i}\frac{\operatorname{area}(T)}{3}.
+\]
+
+\subsection{Load samples}
+
+Load samples are fixed material-space quadrature sites on faces. A load sample $l$ is stored as
+\[
+q_l=(T_l,b_l),
+\]
+where $T_l$ is a triangle id and $b_l$ is a barycentric coordinate. Runtime position is
+\[
+x_l(t)=\sum_{i\in T_l} b_{li}x_i(t).
+\]
+
+Exposure is evaluated at load samples, not by reselection of anchors:
+\[
+e_l(t)=\operatorname{sample}\left(S_t,\pi_w(x_l(t))\right).
+\]
+The effective relative wind can be written as
+\[
+u_l^{\mathrm{eff}}(t)=e_l(t)W(x_l(t),t)-v_l(t),
+\]
+where
+\[
+v_l(t)=\sum_{i\in T_l}b_{li}v_i(t).
+\]
+
+The predicted or analytic load at the load sample is
+\[
+f_l(t)=P_\theta\left(z_l(t),u_l^{\mathrm{eff}}(t),e_l(t),\theta_l\right).
+\]
+Finally, the load is projected to simulation anchors by barycentric accumulation:
+\[
+f_i(t) \mathrel{+}= b_{li} f_l(t),\qquad i\in T_l.
+\]
+
+\subsection{Why this resolves the exposure objection}
+
+Wind exposure may change every frame:
+\[
+e_l(t)\neq e_l(t+1).
+\]
+This does not imply anchor changes because the material-space support is fixed:
+\[
+q_l=(T_l,b_l)\quad\text{is fixed.}
+\]
+Thus the method supports frame-wise wind fields while maintaining persistent simulation anchors and persistent Gaussian bindings.
+
+\section{Revised Score Fields}
+
+Use two resolution-design fields: one for simulation anchors and one for load samples.
+
+\subsection{Simulation-anchor score}
+
+\[
+s_{\mathrm{sim}}(p)=
+ w_B B(p)
++w_C C_{\mathrm{constraint}}(p)
++w_K K_{\mathrm{geom}}(p)
++w_P P_{\mathrm{phys}}(p)
++w_R R_G(p).
+\]
+
+This score is used to determine target simulation edge length:
+\[
+h_{\mathrm{sim}}(p)=
+\clamp\left(
+\frac{h_0}{\sqrt{1+s_{\mathrm{sim}}(p)}},
+h_{\min},h_{\max}
+\right).
+\]
+
+\subsection{Load-sample score}
+
+\[
+s_{\mathrm{load}}(p)=
+ w_E E_{\mathrm{prior}}(p)
++w_R^{\mathrm{load}} R_G(p)
++w_K^{\mathrm{load}} K_{\mathrm{geom}}(p).
+\]
+
+This score controls load-sample density, not the solver mesh topology:
+\[
+h_{\mathrm{load}}(p)=
+\clamp\left(
+\frac{h_{0,\mathrm{load}}}{\sqrt{1+s_{\mathrm{load}}(p)}},
+h_{\min,\mathrm{load}},h_{\max,\mathrm{load}}
+\right).
+\]
+
+\subsection{Recommended priority}
+
+\begin{longtable}{>{\centering\arraybackslash}p{0.12\linewidth} >{\raggedright\arraybackslash}p{0.28\linewidth} >{\raggedright\arraybackslash}p{0.50\linewidth}}
+\toprule
+Priority & Term & Reason \\
+\midrule
+1 & $B(p)$, $C_{\mathrm{constraint}}(p)$ & Boundary, pin, support, and user controls must be preserved. \\
+2 & $K_{\mathrm{geom}}(p)$ & Thin structures, curvature, folds, tips, and silhouettes must not collapse. \\
+3 & $P_{\mathrm{phys}}(p)$ & Regions expected to strain or bend strongly need adequate simulation resolution. \\
+4 & $R_G(p)$ & Stable Gaussian-to-mesh binding and attribute transport require enough proxy resolution. \\
+5 & $E_{\mathrm{prior}}(p)$ & Exposure sensitivity is mainly for load-sample density, not simulation-anchor density. \\
+6 & Raw Gaussian density & Do not use directly. \\
+\bottomrule
+\end{longtable}
+
+\section{Term-by-Term Computation}
+
+This section gives concrete formulas for each score term.
+
+\subsection{$R_G(p)$: reliability-weighted Gaussian transport demand}
+
+\subsubsection{Definition and role}
+
+$R_G(p)$ is not physical importance and not raw Gaussian count. It estimates where the proxy needs enough resolution to bind and transport reliable, surface-consistent, rendering-contributing Gaussians.
+
+Let a trained Gaussian be
+\[
+g_j=(\mu_j,R_j,s_j,\alpha_j,c_j),
+\]
+where $\mu_j$ is mean, $R_j$ is local orientation, $s_j$ is scale, $\alpha_j$ is opacity, and $c_j$ is the SH appearance parameter. Because $c_j$ is already used for SH, do not use $c_j$ as a scalar contribution weight in this score. Use $\eta_j$ instead.
+
+Project each Gaussian to the initial proxy surface $M$:
+\[
+p_j=\arg\min_{p\in M}\|\mu_j-p\|,
+\qquad
+ d_j=\|\mu_j-p_j\|.
+\]
+
+Define
+\[
+R_G(p)=1-\exp\left(-\frac{\Rraw(p)}{\tau_R}\right),
+\]
+with
+\[
+\Rraw(p)=\sum_j q_j\eta_j K_j(p).
+\]
+A robust automatic choice is
+\[
+\tau_R=P_{90}(\Rraw),
+\]
+where $P_{90}$ is the 90th percentile over mesh vertices or faces.
+
+\subsubsection{Surface kernel $K_j(p)$}
+
+MVP isotropic kernel:
+\[
+K_j(p)=\exp\left(-\frac{\|p-p_j\|^2}{2r_j^2}\right),
+\]
+with
+\[
+r_j=\clamp\left(2\max_k s_{j,k},r_{\min},r_{\max}\right).
+\]
+
+More accurate tangent-plane version:
+\[
+\Sigma_j=R_j\operatorname{diag}(s_j^2)R_j^\top,
+\]
+\[
+\Sigma_j^{\mathrm{tan}}=T_j^\top \Sigma_j T_j,
+\]
+where $T_j=[t_{j,1},t_{j,2}]$ is a local surface tangent basis at $p_j$. Then
+\[
+K_j(p)=\exp\left(-\frac{1}{2}(u-u_j)^\top(\Sigma_j^{\mathrm{tan}}+\epsilon I)^{-1}(u-u_j)\right).
+\]
+For the first implementation, the isotropic version is sufficient.
+
+\subsubsection{Gaussian reliability $q_j$}
+
+Use a geometric mean of reliability factors:
+\[
+q_j=\exp\left(
+\frac{\sum_m \lambda_m\log(q_j^m+\epsilon)}{\sum_m\lambda_m}
+\right),
+\]
+where each $q_j^m\in[0,1]$.
+
+\paragraph{Opacity reliability.}
+\[
+q_j^{\alpha}=\smoothstep(P_{20}(\alpha),P_{80}(\alpha),\alpha_j).
+\]
+Percentile thresholds are preferred over fixed thresholds because Gaussian opacity scales vary across assets.
+
+\paragraph{Surface consistency.}
+\[
+q_j^{\mathrm{surf}}=\exp\left(-\frac{d_j^2}{2\sigma_d^2}\right).
+\]
+A practical default is
+\[
+\sigma_d=h_0
+\quad\text{or}\quad
+\sigma_d=2\operatorname{median}_j(\max_k s_{j,k}).
+\]
+
+\paragraph{Normal consistency.}
+Let $n_j^G$ be the Gaussian normal candidate, e.g., the eigenvector of the smallest Gaussian scale, and let $n_j^M=n_M(p_j)$ be the mesh normal. Then
+\[
+q_j^{\mathrm{normal}}=|\langle n_j^G,n_j^M\rangle|^\gamma,
+\qquad \gamma\approx 2.
+\]
+If the Gaussian normal estimate is unstable, set $q_j^{\mathrm{normal}}=1$ for the MVP.
+
+\paragraph{View contribution reliability.}
+If renderer instrumentation is available, accumulate alpha-compositing contribution over training views:
+\[
+A_{j,v}(u)=T_{j,v}(u)\alpha_jK_{j,v}(u),
+\]
+\[
+C_j=\sum_v\sum_u A_{j,v}(u),
+\]
+\[
+q_j^{\mathrm{view}}=\normalize\left(\log(1+C_j)\right).
+\]
+If renderer instrumentation is not available, approximate by visible camera count:
+\[
+q_j^{\mathrm{view}}=\min\left(1,\frac{N_j^{\mathrm{visible}}}{N_0}\right),
+\qquad N_0\in[3,5].
+\]
+For the MVP, this term can be omitted by setting $q_j^{\mathrm{view}}=1$.
+
+\paragraph{Isolation / floater penalty.}
+Let
+\[
+N_j^{\mathrm{nbr}}=\#\{k\mid \|\mu_k-\mu_j\|<r_{\mathrm{nbr}}\}.
+\]
+Then
+\[
+q_j^{\mathrm{iso}}=1-\exp\left(-\frac{N_j^{\mathrm{nbr}}}{N_{\mathrm{ref}}}\right),
+\qquad N_{\mathrm{ref}}\approx 6.
+\]
+This suppresses isolated floaters.
+
+\subsubsection{Rendering contribution $\eta_j$}
+
+If $C_j$ is available,
+\[
+\eta_j=\normalize(\log(1+C_j)).
+\]
+If not, use the simplest defensible prototype setting:
+\[
+\eta_j=1,
+\]
+and put all reliability filtering into $q_j$.
+
+\subsubsection{MVP version of $R_G$}
+
+For initial development:
+\[
+q_j=\left(q_j^\alpha q_j^{\mathrm{surf}}q_j^{\mathrm{iso}}\right)^{1/3},
+\]
+\[
+R_G(p)=1-\exp\left(-\frac{\sum_j q_jK_j(p)}{P_{90}(\sum_j q_jK_j(p))}\right).
+\]
+This avoids raw Gaussian count while remaining easy to implement.
+
+\subsection{$B(p)$: boundary / pinned / free edge prior}
+
+$B(p)$ preserves free boundaries, pinned boundaries, and support edges. Detect boundary edges by incident face count:
+\[
+e\in\partial M \quad\Longleftrightarrow\quad |\mathcal{F}(e)|=1.
+\]
+Let $\mathcal{L}_{\mathrm{bdry}}$ be the set of boundary loops. Then
+\[
+B(p)=\max_{\ell\in\mathcal{L}_{\mathrm{bdry}}}
+ w_\ell \exp\left(-\frac{d_{\mathrm{geo}}(p,\ell)^2}{2r_B^2}\right).
+\]
+Recommended default:
+\[
+r_B=2h_0.
+\]
+Example boundary weights:
+\[
+w_{\mathrm{pinned}}=1.0,
+\qquad
+w_{\mathrm{free}}=0.7,
+\qquad
+w_{\mathrm{ordinary}}=0.5.
+\]
+Pinned/support curves should be hard-preserved by the remesher, not merely upweighted:
+\[
+A_{\mathrm{pin}}\subset V_{\mathrm{sim}}.
+\]
+
+\subsection{$K_{\mathrm{geom}}(p)$: curvature / thin-structure prior}
+
+This term preserves folds, leaf tips, thin edges, sharp silhouettes, and narrow strips.
+
+Cotangent mean-curvature version at vertex $i$:
+\[
+H_i n_i=\frac{1}{2A_i}\sum_{j\in\mathcal{N}(i)}
+(\cot\alpha_{ij}+\cot\beta_{ij})(x_i-x_j),
+\]
+\[
+\kappa_i=\|H_i n_i\|.
+\]
+
+Simpler face-normal variation version:
+\[
+K_{\mathrm{geom}}(f)=
+\frac{1}{|\mathcal{N}(f)|}
+\sum_{f'\in\mathcal{N}(f)}
+\frac{1-\langle n_f,n_{f'}\rangle}{\|c_f-c_{f'}\|+\epsilon}.
+\]
+
+Use robust percentile normalization:
+\[
+\widehat{K}_{\mathrm{geom}}(p)=
+\clamp\left(
+\frac{\kappa(p)-P_{50}(\kappa)}{P_{95}(\kappa)-P_{50}(\kappa)+\epsilon},0,1
+\right).
+\]
+For the prototype, the face-normal variation version is recommended because it is easier to implement and less sensitive to mesh operators.
+
+\subsection{$P_{\mathrm{phys}}(p)$: expected physical deformation prior}
+
+This term estimates where strain or bending is expected to be high. It should not be invented as an arbitrary weight. Use either of the following.
+
+\subsubsection{MVP choice}
+
+Set
+\[
+P_{\mathrm{phys}}(p)=0.
+\]
+This is acceptable for a first implementation.
+
+\subsubsection{Full paper choice: one-time pilot simulation}
+
+Run a cheap preprocessing-only pilot simulation over sampled canonical wind directions $\mathcal{W}$. For edge $e=(i,k)$, define stretch response:
+\[
+s_e(t)=\frac{\left|\|x_i(t)-x_k(t)\|-\|x_i^0-x_k^0\|\right|}{\|x_i^0-x_k^0\|+\epsilon}.
+\]
+For a bending edge, define dihedral response:
+\[
+b_e(t)=|\theta_e(t)-\theta_e^0|.
+\]
+Accumulate a surface prior:
+\[
+P_{\mathrm{phys}}(p)=
+\normalize\left(
+\max_{w\in\mathcal{W}}\max_t
+\left[s(p,t,w)+\lambda_b b(p,t,w)\right]
+\right).
+\]
+This is still preprocessing only and does not violate fixed-topology runtime.
+
+\subsection{$E_{\mathrm{prior}}(p)$: canonical wind-exposure sensitivity prior}
+
+$E_{\mathrm{prior}}$ is not a frame-wise anchor update signal. It is a rest-pose prior used mainly to place fixed load samples.
+
+Choose a family of possible wind directions:
+\[
+\mathcal{W}=\{w_1,\dots,w_N\}.
+\]
+For each wind direction, compute rest-pose Gaussian-opacity transmittance:
+\[
+S_w^0(u)\approx\prod_j\left(1-\alpha_jK_j^w(u)\right).
+\]
+Then sample exposure on surface point $p$:
+\[
+e_w^0(p)=\operatorname{sample}(S_w^0,\pi_w(p)).
+\]
+
+Two useful sensitivity measures are exposure variance and exposure gradient:
+\[
+E_{\mathrm{var}}(p)=\Var_{w\in\mathcal{W}}[e_w^0(p)],
+\]
+\[
+E_{\mathrm{grad}}(i)=
+\max_{w\in\mathcal{W}}\max_{k\in\mathcal{N}(i)}
+\frac{|e_w^0(i)-e_w^0(k)|}{\|x_i-x_k\|+\epsilon}.
+\]
+Combine and normalize:
+\[
+E_{\mathrm{prior}}(p)=
+\normalize\left(E_{\mathrm{var}}(p)+\lambda_gE_{\mathrm{grad}}(p)\right),
+\qquad \lambda_g\in[0.5,1.0].
+\]
+
+Recommended use:
+\[
+E_{\mathrm{prior}}(p)\quad\text{strongly affects }s_{\mathrm{load}}(p),\quad\text{weakly or not at all affects }s_{\mathrm{sim}}(p).
+\]
+
+\subsection{$C_{\mathrm{constraint}}(p)$: user / artist controllability prior}
+
+Let $\mathcal{H}=\{h_m\}$ be user handle curves, support regions, pin points, flag-pole edges, curtain rails, leaf stems, or other controllability regions. Then
+\[
+C_{\mathrm{constraint}}(p)=
+\max_m\exp\left(-\frac{d_{\mathrm{geo}}(p,h_m)^2}{2r_m^2}\right).
+\]
+The exact handle or pin positions should be hard-preserved:
+\[
+h_m\subset V_{\mathrm{sim}}\quad\text{or}\quad d(h_m,V_{\mathrm{sim}})<\epsilon_h.
+\]
+
+\section{Practical Weights}
+
+All fields should be normalized to $[0,1]$ before combination:
+\[
+\widehat{F}(p)=
+\clamp\left(\frac{F(p)-P_5(F)}{P_{95}(F)-P_5(F)+\epsilon},0,1\right).
+\]
+
+\subsection{Recommended full score}
+
+\[
+s_{\mathrm{sim}}(p)=
+2.0B(p)+2.0C_{\mathrm{constraint}}(p)+1.5K_{\mathrm{geom}}(p)+1.0P_{\mathrm{phys}}(p)+0.7R_G(p).
+\]
+\[
+s_{\mathrm{load}}(p)=
+1.5E_{\mathrm{prior}}(p)+0.7R_G(p)+0.5K_{\mathrm{geom}}(p).
+\]
+
+\subsection{Recommended MVP score}
+
+For first implementation:
+\[
+s_{\mathrm{sim}}(p)=2.0B(p)+1.5K_{\mathrm{geom}}(p)+0.7R_G(p).
+\]
+\[
+s_{\mathrm{load}}(p)=1.5E_{\mathrm{prior}}(p)+0.5K_{\mathrm{geom}}(p).
+\]
+If $E_{\mathrm{prior}}$ is not yet implemented, use uniform face quadrature for load samples and add exposure-sensitive load sampling later.
+
+\section{Gaussian-to-Mesh Binding and Transport}
+
+For Gaussian $g_j$ bound to triangle $T_j=(a,b,c)$, store
+\[
+\mathcal{B}_j=(T_j,b_j,R_{T_j}^0,\delta_j),
+\]
+where $b_j=(b_{ja},b_{jb},b_{jc})$ is barycentric coordinate, $R_{T_j}^0$ is the rest local frame, and $\delta_j$ is an optional local offset.
+
+Runtime mean transport:
+\[
+\mu_j(t)=b_{ja}x_a(t)+b_{jb}x_b(t)+b_{jc}x_c(t)+R_{T_j}(t)\delta_j.
+\]
+
+Covariance transport:
+\[
+\Sigma_j(t)=R_{T_j}(t)\Sigma_j^0R_{T_j}(t)^\top.
+\]
+
+Appearance correction:
+\[
+c_j(t)=R_{\mathrm{SH}}(\Delta T_j(t))c_j^0+\Delta c_j(t).
+\]
+
+The key requirement is persistence:
+\[
+T_j,b_j,\delta_j\quad\text{are not recomputed every frame.}
+\]
+
+\section{Implementation Pseudo-Pipeline}
+
+\begin{lstlisting}
+Input:
+  trained 3DGS G
+  initial proxy mesh M_raw
+  optional user pin / handle regions
+  expected wind direction set W
+
+Step 1. Gaussian reliability
+  for each Gaussian g_j:
+    p_j = nearest point on M_raw to mu_j
+    d_j = ||mu_j - p_j||
+    q_alpha  = smoothstep(P20(alpha), P80(alpha), alpha_j)
+    q_surf   = exp(-d_j^2 / (2 * sigma_d^2))
+    q_iso    = 1 - exp(-N_nbr_j / 6)
+    q_normal = abs(dot(n_G_j, n_M(p_j)))^gamma  # optional
+    q_view   = visible-view or renderer contribution score # optional
+    q_j = geometric_mean(q_terms)
+
+Step 2. Gaussian transport demand
+  initialize R_raw on mesh vertices or faces
+  for each Gaussian g_j:
+    splat q_j * eta_j to nearby surface points using K_j(p)
+  R_G = 1 - exp(-R_raw / percentile90(R_raw))
+
+Step 3. Geometry and boundary fields
+  K_geom = robust-normalized curvature or face-normal variation
+  B = geodesic distance field to boundary / pinned / free edges
+  C_constraint = distance field to handles and support regions
+
+Step 4. Optional fields
+  P_phys = one-time pilot simulation strain/bending response
+  E_prior = rest-pose exposure variance/gradient over sampled wind directions
+
+Step 5. Resolution fields
+  s_sim  = 2.0B + 2.0C + 1.5K_geom + 1.0P_phys + 0.7R_G
+  s_load = 1.5E_prior + 0.7R_G + 0.5K_geom
+  h_sim(p)  = clamp(h0 / sqrt(1 + s_sim(p)), h_min, h_max)
+  h_load(p) = clamp(h0_load / sqrt(1 + s_load(p)), h_load_min, h_load_max)
+
+Step 6. One-time construction
+  remesh once with h_sim while preserving pins and boundaries
+  set simulation anchors A_sim = V_sim
+  place fixed load samples using h_load
+  bind each Gaussian to a triangle id + barycentric coordinate + local frame
+
+Runtime:
+  no remeshing
+  no Gaussian rebinding
+  evaluate exposure and loads at fixed load samples
+  project load forces to fixed simulation anchors
+  solve XPBD/PBD on fixed topology
+  transport Gaussian mean, covariance, and appearance residual
+\end{lstlisting}
+
+\section{Paste-Ready Paper Text}
+
+\subsection{Contribution statement}
+
+\begin{quote}
+We introduce a reliability-weighted Gaussian-aware fixed-topology material anchor mesh that serves as a persistent simulation scaffold for 3D Gaussian assets. The proxy resolution is not determined by raw Gaussian density. Instead, it is guided by boundary preservation, user constraints, thin-structure geometry, optional pilot-simulation response, and reliability-weighted Gaussian transport demand. Runtime wind exposure is evaluated on fixed material-space load samples and projected to persistent simulation anchors, enabling force-space wind dynamics without frame-wise remeshing or Gaussian rebinding.
+\end{quote}
+
+\subsection{Method paragraph}
+
+\begin{quote}
+Our method constructs the simulation proxy once in the canonical configuration. During runtime, the proxy topology, simulation anchors, constraint graph, load-sample material coordinates, and Gaussian-to-mesh bindings remain fixed. Only anchor states, wind exposure values, external loads, local frames, and Gaussian attributes are updated. This design avoids frame-wise remeshing and rebinding, which are expensive and can introduce temporal popping.
+\end{quote}
+
+\subsection{Clarification paragraph for Gaussian density}
+
+\begin{quote}
+We do not treat raw Gaussian density as physical importance. A dense Gaussian region may result from texture complexity, specular effects, view-coverage bias, or reconstruction noise. Instead, we compute a reliability-weighted Gaussian transport demand by splatting only surface-consistent, non-isolated, and optionally rendering-contributing Gaussians onto the proxy surface. This field indicates where the proxy requires sufficient resolution for stable Gaussian-to-mesh binding and attribute transport.
+\end{quote}
+
+\subsection{Clarification paragraph for wind exposure}
+
+\begin{quote}
+We do not change anchors according to frame-wise exposure. A canonical exposure-sensitivity prior can be precomputed from a sampled family of wind directions and used only for fixed load-sample placement. During runtime, exposure values are evaluated on these fixed material-space load samples and projected as forces to persistent simulation anchors.
+\end{quote}
+
+\subsection{Korean summary paragraph}
+
+\begin{quote}
+본 방법은 raw Gaussian 개수를 물리적 중요도로 보지 않는다. 대신 opacity, surface consistency, isolation penalty, optional normal/view contribution을 반영한 reliability-weighted Gaussian transport demand를 계산하여 Gaussian attribute transport에 필요한 proxy 해상도를 정한다. 또한 wind exposure가 매 프레임 바뀌더라도 anchor를 재배치하지 않는다. Simulation anchor는 fixed-topology mesh vertex로 유지하고, wind exposure와 load는 fixed material-space load sample에서 매 프레임 평가한 뒤 simulation anchor로 projection한다.
+\end{quote}
+
+\section{How to Update the Existing Idea Sketch}
+
+\subsection{Section 5: Method Sketch}
+
+Add after the proxy-remeshing step:
+
+\begin{quote}
+The remeshing is performed only once during preprocessing. The resulting simulation proxy has fixed topology during animation. Its vertices become persistent simulation anchors. We separately place fixed material-space load samples for wind exposure and force evaluation.
+\end{quote}
+
+Replace any statement that says ``Gaussian density'' with:
+
+\begin{quote}
+reliability-weighted Gaussian transport demand.
+\end{quote}
+
+\subsection{Section 8: Adaptation Novelty}
+
+Add a new novelty item:
+
+\begin{quote}
+\textbf{Reliability-weighted Gaussian-aware material anchoring.} The proxy resolution is not based on raw Gaussian count. Instead, the method splats reliability-weighted Gaussian transport demand, boundary and constraint priors, thin-structure geometry, and optional pilot physical response onto the proxy surface. Simulation anchors and load samples are separated: anchors define fixed-topology physical states, while fixed load samples evaluate frame-varying wind exposure.
+\end{quote}
+
+\subsection{Section 9: Mathematical Formulation}
+
+Insert the following formulas:
+
+\[
+s_{\mathrm{sim}}(p)=
+ w_B B(p)+w_C C_{\mathrm{constraint}}(p)+w_K K_{\mathrm{geom}}(p)+w_P P_{\mathrm{phys}}(p)+w_R R_G(p),
+\]
+\[
+s_{\mathrm{load}}(p)=w_E E_{\mathrm{prior}}(p)+w_R^{\mathrm{load}}R_G(p)+w_K^{\mathrm{load}}K_{\mathrm{geom}}(p).
+\]
+
+Then define $R_G$, $B$, $K_{\mathrm{geom}}$, $P_{\mathrm{phys}}$, $E_{\mathrm{prior}}$, and $C_{\mathrm{constraint}}$ using the term-by-term equations in this document.
+
+\subsection{Section 10: Formula Transfer Notes}
+
+Add:
+
+\begin{quote}
+Adapted: raw Gaussian coverage is replaced by reliability-weighted Gaussian transport demand. Runtime wind exposure is not used to remesh or reselect anchors; it is evaluated at fixed material-space load samples and projected to persistent simulation anchors.
+\end{quote}
+
+\subsection{Section 15: Ablation Ideas}
+
+Add the following ablations:
+
+\begin{itemize}[leftmargin=2em]
+\item raw Gaussian density vs. reliability-weighted Gaussian transport demand
+\item uniform simulation anchors vs. Gaussian-aware material anchors
+\item joint anchor/load sampling vs. separated simulation anchors and load samples
+\item fixed load samples vs. per-frame exposure-driven resampling
+\item persistent Gaussian binding vs. per-frame rebinding
+\item no isolation penalty in $q_j$ vs. full reliability score
+\item no canonical exposure-sensitivity prior vs. exposure-aware load sampling
+\item MVP score vs. full score with pilot physical prior
+\end{itemize}
+
+\subsection{Section 16: Risks and Failure Cases}
+
+Add:
+
+\begin{itemize}[leftmargin=2em]
+\item Raw Gaussian density may reflect scanning artifacts, texture, view imbalance, or floaters rather than physical importance. Mitigation: use reliability-weighted transport demand with saturation.
+\item Frame-varying exposure may be misread as requiring frame-varying anchors. Mitigation: keep simulation anchors fixed and evaluate exposure at fixed material-space load samples.
+\item Reliability terms may become over-engineered. Mitigation: provide an MVP version using only opacity, surface distance, and isolation penalty.
+\end{itemize}
+
+\section{Decision Log Entry to Add}
+
+\begin{quote}
+\textbf{2026-05-11 Anchor Construction Update}\newline
+\textbf{Decision.} Replace raw Gaussian-density-based anchor placement with reliability-weighted Gaussian transport demand, and separate persistent simulation anchors from fixed material-space load samples. Simulation anchors remain fixed-topology mesh vertices. Load samples evaluate frame-varying wind exposure and project forces to simulation anchors.\newline
+\textbf{Reason.} Raw Gaussian count can reflect capture artifacts, texture, specular effects, or floaters rather than physical importance. Wind exposure changes over time under wind simulation, but changing anchors or remeshing every frame would be too expensive and would break persistent Gaussian binding.\newline
+\textbf{Next.} Implement the MVP score $s_{\mathrm{sim}}=2.0B+1.5K_{\mathrm{geom}}+0.7R_G$, with $R_G$ computed from opacity, surface-distance, and isolation reliability. Add fixed load samples and later extend them with canonical exposure-sensitivity prior.
+\end{quote}
+
+\section{VSCode / Coding-Agent Prompt}
+
+\begin{lstlisting}
+Read docs/anchor_method_revision_notes_2026-05-11.pdf and update the current Wind-Driven Deformable 3D Gaussian Splatting idea sketch accordingly.
+
+Revision goals:
+1. Keep the original project framing:
+   3DGS input -> simulation proxy -> wind dynamics -> Gaussian attribute transport -> 3DGS rendering.
+2. Use the recommended method name:
+   Reliability-weighted Gaussian-aware fixed-topology material anchor mesh
+   or the shorter term Gaussian-aware material anchoring.
+3. Clarify that the method performs no per-frame remeshing, no per-frame proxy reconstruction, and no per-frame Gaussian rebinding.
+4. Define simulation anchors as persistent mesh vertices: A_sim = V_sim.
+5. Separate simulation anchors from fixed material-space load samples.
+6. Replace raw Gaussian density with reliability-weighted Gaussian transport demand R_G(p).
+7. Define R_G(p) explicitly from Gaussian projection, surface kernel K_j(p), reliability q_j, optional rendering contribution eta_j, and saturation.
+8. Define q_j from opacity reliability, surface consistency, optional normal consistency, optional view contribution, and isolation/floater penalty.
+9. Define two score fields:
+   s_sim(p) for simulation proxy resolution,
+   s_load(p) for fixed load-sample density.
+10. Explain that canonical exposure-sensitivity prior E_prior(p) is preprocessing-only and mainly controls load-sample placement, not runtime anchor changes.
+11. Insert the paste-ready contribution, method, Gaussian-density clarification, and wind-exposure clarification paragraphs.
+12. Add the 2026-05-11 decision log entry.
+13. Add ablations for raw Gaussian density vs. reliability-weighted demand, uniform anchors vs. Gaussian-aware anchors, joint anchor/load sampling vs. separated sampling, and persistent binding vs. per-frame rebinding.
+
+Do not reframe the paper as an AI SH coefficient prediction paper. SH residual correction remains a supporting component.
+\end{lstlisting}
+
+\section{Minimal Development Checklist}
+
+\begin{enumerate}[leftmargin=2em]
+\item Project each Gaussian center to the initial proxy surface.
+\item Compute $q_j^\alpha$, $q_j^{\mathrm{surf}}$, and $q_j^{\mathrm{iso}}$.
+\item Splat $q_jK_j(p)$ to mesh vertices or faces.
+\item Saturate to get $R_G(p)$.
+\item Compute boundary field $B(p)$.
+\item Compute face-normal variation $K_{\mathrm{geom}}(p)$.
+\item Build MVP score $s_{\mathrm{sim}}(p)=2.0B(p)+1.5K_{\mathrm{geom}}(p)+0.7R_G(p)$.
+\item Remesh once using $h_{\mathrm{sim}}(p)$ and preserve pinned/support boundaries.
+\item Place fixed load samples as $(T_l,b_l)$.
+\item Bind Gaussians once as $(T_j,b_j,R_{T_j}^0,\delta_j)$.
+\item Runtime: evaluate exposure and loads at load samples, project to anchors, solve XPBD/PBD, transport Gaussian attributes.
+\end{enumerate}
+
+\section{Final One-Line Summary}
+
+\begin{quote}
+Use a fixed-topology Gaussian-aware material anchor mesh, but do not base it on raw Gaussian density. Compute reliability-weighted Gaussian transport demand for stable attribute transfer, keep simulation anchors fixed, and handle frame-varying wind exposure through fixed material-space load samples whose values change at runtime.
+\end{quote}
+
+\end{document}

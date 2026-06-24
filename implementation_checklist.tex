@@ -1,0 +1,609 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=0.72in]{geometry}
+\usepackage{fontspec}
+\usepackage{kotex}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{amssymb}
+\usepackage{tcolorbox}
+\usepackage{hyperref}
+
+\setmainfont{Noto Serif CJK KR}
+\setsansfont{Noto Sans CJK KR}
+\setmonofont{DejaVu Sans Mono}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\definecolor{TodoGray}{RGB}{105,105,105}
+\definecolor{ProgressBlue}{RGB}{35,90,170}
+\definecolor{DoneGreen}{RGB}{35,130,80}
+\definecolor{BlockRed}{RGB}{170,55,55}
+\definecolor{LightBlue}{RGB}{235,243,255}
+\definecolor{LightGray}{RGB}{248,248,248}
+
+\newcommand{\todo}{\textcolor{TodoGray}{\(\square\)}}
+\newcommand{\progress}{\textcolor{ProgressBlue}{[{\raisebox{0.1ex}{\(\sim\)}}]}}
+\newcommand{\done}{\textcolor{DoneGreen}{\(\boxtimes\)}}
+\newcommand{\blocked}{\textcolor{BlockRed}{[!]}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\setlist[itemize]{leftmargin=1.35em, itemsep=0.16em, topsep=0.25em}
+\setlist[itemize,1]{label=\todo}
+\setlist[itemize,2]{label=--, leftmargin=1.8em}
+
+\title{\vspace{-1.5em}Wind-Deformable 3DGS\\구현 현황 체크리스트}
+\author{Wind3DGS}
+\date{Created: 2026-05-06 \quad Last updated: 2026-05-18}
+
+\begin{document}
+\maketitle
+
+\begin{tcolorbox}[
+  colback=LightBlue,
+  colframe=blue!45!black,
+  title=Development Pipeline,
+  fonttitle=\bfseries
+]
+\begin{center}
+\code{3DGS input}
+\(\rightarrow\)
+\code{fixed-topology proxy}
+\(\rightarrow\)
+\code{Gaussian binding}
+\(\rightarrow\)
+\code{wind deformation}
+\(\rightarrow\)
+\code{Gaussian transport}
+\(\rightarrow\)
+\code{SH residual correction}
+\(\rightarrow\)
+\code{Gaussian rendering}
+\end{center}
+
+이 문서는 구현 진행 상황을 관리하기 위한 status board다. 연구 방향 자체가 바뀌는 결정은 기존 규칙대로 \code{ideas/idea\_sketch.tex}와 \code{ideas/changelog.md}에 기록한다.
+\end{tcolorbox}
+
+\section*{상태 표기}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+상태 & 의미 \\
+\midrule
+\todo & 아직 시작하지 않음 \\
+\progress & 진행 중 \\
+\done & 완료 \\
+\blocked & 막힘 또는 결정 필요 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{실험 폴더 naming convention}
+
+앞으로 새 구현 실험은 시간순 \code{expNNN} prefix보다 development milestone tag를 우선 사용한다.
+
+\begin{tcolorbox}[colback=LightGray, colframe=black!20, title=권장 형식, fonttitle=\bfseries]
+\begin{center}
+\code{experiments/M\#\#\_short\_name/}
+\end{center}
+
+\begin{itemize}
+  \item \path{experiments/M01_static_3dgs_io/}
+  \item \path{experiments/M02_mesh_proxy_binding/}
+  \item \path{experiments/M03_procedural_wind/}
+\end{itemize}
+\end{tcolorbox}
+
+여기서 \code{M\#\#}는 이 체크리스트의 milestone 번호와 대응된다. 파일 정렬이 편하도록 folder name에는 \code{M1} 대신 \code{M01}, \code{M2} 대신 \code{M02}처럼 두 자리 숫자를 쓴다.
+
+기존 \path{experiments/exp001_*}, \path{exp002_*}, \path{exp003_*} 폴더는 초기 planned experiment slots로 보고, 명시적으로 정리하기 전까지는 유지한다.
+
+\section*{코드와 실험 산출물 분리 원칙}
+
+\begin{itemize}
+  \item reusable implementation은 \path{code/wind3dgs/} 아래 module로 관리한다.
+  \item \path{experiments/}는 experiment README, generated assets, outputs, reports, 그리고 backward-compatible wrapper만 둔다.
+  \item 기존 experiment-local 실행 명령은 wrapper로 유지한다.
+  \item 새 개발은 \path{code/wind3dgs/} module 경로를 기준으로 한다.
+\end{itemize}
+
+\section*{2026-05-18 Scope Control Update}
+
+전체 시스템은 너무 많은 구성 요소를 한 번에 핵심 기여처럼 보이지 않게 관리한다.
+
+\begin{tcolorbox}[colback=LightBlue, colframe=blue!45!black, title=Core runtime stack, fonttitle=\bfseries]
+\begin{center}
+\code{proxy deformation}
+\(\rightarrow\)
+\code{Gaussian mean/covariance/frame transport}
+\(\rightarrow\)
+\code{lightweight SH residual appearance correction}
+\(\rightarrow\)
+\code{3DGS rendering}
+\end{center}
+\end{tcolorbox}
+
+\begin{itemize}
+  \item \code{SH residual}은 제거하지 않는다. 이것은 per-frame SH optimization 없이 runtime rendering을 가능하게 하는 필수 appearance correction module이다.
+  \item 다만 논문 headline은 \code{AI SH prediction}이 아니라 \code{runtime wind-deformable 3DGS representation}으로 유지한다.
+  \item controllable material fields, simulation anchors vs. load samples, gated floater likelihood, projection-risk-aware load sampling은 core를 보조하는 설계 장치다.
+  \item MVP critical path에서는 simple fixed simulation anchors와 simple fixed material-space load samples부터 구현한다.
+  \item \code{view-masked gated floater}와 \code{projection-risk-aware load sampling}은 robustness/refinement 단계로 두며, M4/M7/M8의 첫 성공 조건을 막지 않는다.
+  \item advanced anchor/load scoring의 상세 기준은 \path{ideas/anchor_method_revision_notes_2026-05-11_v3.tex}를 reference로 유지한다.
+\end{itemize}
+
+\section*{현재 최우선 확인 질문}
+
+가장 먼저 확인해야 할 기술 질문은 다음이다.
+
+\begin{quote}
+\textbf{proxy mesh가 변형될 때, 그 위에 bound된 Gaussian Splats가 position, orientation, covariance, rendering까지 자연스럽게 따라오는가?}
+\end{quote}
+
+여기에 runtime 질문을 하나 더 붙인다.
+
+\begin{quote}
+\textbf{per-frame SH optimization 없이, transported Gaussian에 lightweight SH residual correction을 붙였을 때 rendering quality와 temporal stability가 유지되는가?}
+\end{quote}
+
+첫 질문을 먼저 검증한 뒤 \code{3DGS-to-mesh extraction}으로 넘어간다. 처음부터 mesh extraction을 붙이면, 결과가 깨졌을 때 원인이 extraction noise인지, Gaussian binding 문제인지, covariance transform 문제인지 구분하기 어렵다. 두 번째 질문은 geometry transport가 안정화된 뒤 반드시 M9에서 검증한다.
+
+\section*{Milestone Overview}
+
+\small
+\renewcommand{\arraystretch}{1.22}
+\begin{longtable}{@{}L{0.065\linewidth}L{0.255\linewidth}L{0.505\linewidth}L{0.055\linewidth}@{}}
+\toprule
+ID & Milestone & 완료 기준 & 상태 \\
+\midrule
+M0 & Project and Experiment Hygiene & 첫 구현 실험 README에 goal, input, command, output, metrics, notes가 정리되어 있다. & \done \\
+M1 & Static 3DGS I/O Baseline & static rendering이 안정적으로 동작하고, 이후 deformed rendering의 reference로 사용할 수 있다. & \progress \\
+M2 & Synthetic Mesh-Proxy Binding MVP & mesh deformation에 따라 Gaussian motion이 안정적이며 popping, drift, covariance artifact가 없다. & \progress \\
+M3 & Procedural Wind Deformation & mesh-bound Gaussian asset을 wind parameters로 scriptable하게 animation할 수 있다. & \done \\
+M4 & Lightweight Mesh Simulator & proxy mesh가 단순 position warping이 아니라 connected topology와 constraints를 통해 wind에 반응한다. & \todo \\
+M5 & Real 3DGS Asset to Proxy Binding & automatic mesh extraction 없이도 real 3DGS asset을 proxy mesh를 통해 animation할 수 있다. & \todo \\
+M6 & 3DGS-to-Mesh Proxy Extraction & 적어도 하나의 extraction path가 stable binding과 wind simulation에 사용할 수 있는 proxy mesh를 만든다. & \todo \\
+M7 & Wind Exposure From Gaussian Opacity & occluded 또는 shielded regions가 wind에 덜 반응하는 모습을 controllable하고 visually plausible하게 보여준다. & \todo \\
+M8 & Force-Space Load Model & model이 stable simulation behavior를 유지하면서 wind response를 개선한다. & \todo \\
+M9 & Runtime SH Residual Appearance Correction & learned residual correction이 canonical 또는 analytic-only appearance보다 quality gap을 줄이고, per-frame SH optimization 없이 runtime rendering path가 동작한다. & \todo \\
+M10 & Evaluation and Paper Evidence & main paper claim을 지지할 수 있고 key ablations가 reproducible한 실험 결과가 있다. & \todo \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\newpage
+
+\section{M0. Project and Experiment Hygiene}
+
+\textbf{목표.} 첫 구현 실험을 재현 가능하고 추적 가능한 형태로 시작한다.
+
+\begin{itemize}
+  \item[\done] 첫 active implementation experiment 이름을 정한다.
+    \begin{itemize}
+      \item 추천: \path{experiments/M02_mesh_proxy_binding/}
+    \end{itemize}
+  \item[\done] 코딩 전에 experiment README를 만든다.
+  \item[\done] 실행 명령어, 입력, 출력, 관찰 내용을 experiment README에 기록한다.
+  \item[\done] 큰 generated outputs는 \path{code/outputs/}, \path{assets/}, 또는 experiment folder 아래에 둔다.
+  \item[\done] reusable implementation code를 \path{code/wind3dgs/} package로 분리한다.
+    \begin{itemize}
+      \item 현재 상태: M01/M02 Python 구현은 \path{code/wind3dgs/}로 이동했고, \path{experiments/}에는 wrapper와 산출물이 남아 있다.
+    \end{itemize}
+\end{itemize}
+
+\textbf{완료 기준.} 첫 구현 실험 README에 goal, input, command, output, metrics, notes가 정리되어 있다.
+
+\section{M1. Static 3DGS I/O Baseline}
+
+\textbf{목표.} deformation을 넣기 전에 static 3DGS asset을 정상적으로 load하고 render할 수 있는지 확인한다.
+
+\begin{itemize}
+  \item[\done] 작은 static 3DGS asset 하나를 선택하거나 준비한다.
+    \begin{itemize}
+      \item 현재 상태: \path{experiments/M01_static_3dgs_io/assets/synthetic_leaf_3dgs.ply}를 생성했다.
+      \item asset은 leaf-like thin sheet 형태의 synthetic Inria-style 3DGS \path{.ply}다.
+    \end{itemize}
+  \item[\done] Gaussian attributes loader를 구현하거나 기존 코드를 연결한다.
+    \begin{itemize}
+      \item mean / position
+      \item scale
+      \item rotation
+      \item opacity
+      \item SH coefficients
+      \item 현재 상태: ASCII / \code{binary\_little\_endian} vertex-only \path{.ply} loader를 구현했다.
+      \item \code{scale\_i}는 \code{exp}, \code{opacity}는 \code{sigmoid}, \code{rot\_i}는 normalized quaternion으로 변환한다.
+      \item \code{f\_dc}와 \code{f\_rest}를 SH tensor로 구성하며 기본 render는 \code{sh\_degree=0}을 사용한다.
+    \end{itemize}
+  \item[\done] camera intrinsics와 extrinsics를 load한다.
+    \begin{itemize}
+      \item 현재 상태: \path{cameras/synthetic_leaf_3dgs_cameras.json}에 \code{K}, \code{camera\_to\_world}, \code{view\_matrix}를 저장하고 load한다.
+      \item convention은 \code{world-to-camera, +z forward}로 고정했다.
+    \end{itemize}
+  \item[\done] canonical static views를 render한다.
+    \begin{itemize}
+      \item 현재 상태: \code{canonical\_front}, \code{canonical\_oblique}, \code{canonical\_side} PNG를 저장했다.
+    \end{itemize}
+  \item[\done] 짧은 turntable 또는 fixed camera path 영상을 render한다.
+    \begin{itemize}
+      \item 현재 상태: 48-frame turntable PNG와 \path{outputs/turntable.gif}를 저장했다.
+    \end{itemize}
+  \item[\done] sanity statistics를 출력한다.
+    \begin{itemize}
+      \item Gaussian count
+      \item bounding box
+      \item opacity range
+      \item scale range
+      \item SH coefficient shape
+      \item 현재 상태: \path{outputs/stats.json}와 \path{outputs/render_report.md}에 기록한다.
+    \end{itemize}
+  \item[\done] baseline images 또는 video를 experiment/output folder에 저장한다.
+    \begin{itemize}
+      \item 현재 상태: \path{outputs/} 아래에 canonical renders와 turntable preview를 저장했다.
+      \item 사용자 local shell에서 \code{--backend cpu\_debug} 기준 canonical renders 3장과 turntable frames 48장 생성이 확인되었다.
+    \end{itemize}
+  \item[\blocked] \code{gsplat} CUDA Gaussian rasterizer로 static rendering을 검증한다.
+    \begin{itemize}
+      \item 현재 상태: \path{render_static_baseline.py}에 \code{auto}, \code{gsplat}, \code{cpu\_debug} backend를 구현했다.
+      \item 1차 blocker였던 CUDA Toolkit / \code{nvcc} 누락은 사용자 local shell에서 해결했다.
+      \item 확인 결과: local GPU는 \code{NVIDIA GeForce GTX 1080 Ti}, Compute Capability \code{6.1}이다.
+      \item 현재 blocker: \code{gsplat 1.5.3} JIT build가 \code{compute\_61} target에서 CUDA cooperative groups compile error로 실패한다.
+      \item 원인: NVIDIA CUDA docs 기준 \code{labeled\_partition}은 Compute Capability 7.0 이상이 필요하다. GTX 1080 Ti는 CC 6.1이라 현재 \code{gsplat 1.5.3} CUDA backend와 맞지 않는다.
+      \item 다음 액션: 이 machine에서는 M1을 \code{cpu\_debug} fallback으로 유지하고, 논문용 \code{gsplat} render 검증은 CC >= 7.0 GPU에서 진행한다.
+    \end{itemize}
+  \item ground-truth views가 있으면 PSNR, SSIM, LPIPS를 계산한다.
+    \begin{itemize}
+      \item 현재 상태: synthetic/minimal asset에는 ground-truth image가 없어 보류한다.
+    \end{itemize}
+\end{itemize}
+
+\textbf{완료 기준.} synthetic/minimal static pipeline은 현재 machine에서 \code{cpu\_debug} 기준으로 재현 가능하다. 다만 GTX 1080 Ti에서는 \code{gsplat 1.5.3} CUDA backend가 hardware capability 때문에 막혀 있으므로, 논문 품질의 static rendering reference는 CC >= 7.0 GPU에서 추가 확인해야 한다.
+
+\section{M2. Synthetic Mesh-Proxy Binding MVP}
+
+\textbf{목표.} 깨끗한 synthetic mesh deformation을 기준으로 Gaussian Splats가 제대로 따라 움직이는지 검증한다.
+
+\begin{tcolorbox}[colback=LightGray, colframe=black!20, title=mesh extraction을 뒤로 미루는 이유, fonttitle=\bfseries]
+이 단계에서는 일부러 \code{3DGS-to-mesh extraction}을 하지 않는다. 먼저 깨끗한 synthetic mesh를 사용해서 Gaussian binding과 transform bug를 분리해서 본다.
+\end{tcolorbox}
+
+\begin{itemize}
+  \item[\done] 간단한 proxy mesh를 생성하거나 load한다.
+    \begin{itemize}
+      \item flag plane
+      \item cloth strip
+      \item leaf-like thin sheet
+    \end{itemize}
+  \item[\done] mesh surface 위 또는 근처에 synthetic Gaussians를 sample한다.
+  \item[\done] M1 synthetic Inria-style PLY를 M2 viewer에서 load하고 generated proxy mesh에 bind한다.
+    \begin{itemize}
+      \item 현재 상태: \path{viewer_gpu.py}에 \code{--ply} 로드 경로를 추가했다.
+      \item 예시 asset: \path{experiments/M01_static_3dgs_io/assets/synthetic_leaf_3dgs.ply}
+      \item 현재 기본 방식: PLY Gaussian mean을 proxy grid에 rasterize하고, Gaussian이 존재하는 cell만 남기는 occupancy-extracted proxy mesh를 생성한다.
+      \item \code{--ply-proxy-mode bbox}를 사용하면 이전 rectangular bounding-box proxy로 비교할 수 있다.
+      \item 각 Gaussian은 proxy triangle의 \code{triangle\_id}, \code{barycentric coordinates}, \code{local offset}으로 bind된다.
+      \item PLY의 \code{rot\_0..3} quaternion은 anisotropic frame으로 변환한 뒤 triangle-local basis를 통해 transport한다.
+    \end{itemize}
+  \item[\done] 각 Gaussian을 mesh triangle에 bind한다.
+    \begin{itemize}
+      \item triangle id
+      \item barycentric coordinates
+      \item triangle local frame
+      \item local offset
+    \end{itemize}
+  \item[\done] 단순하고 원인을 알 수 있는 mesh deformations를 적용한다.
+    \begin{itemize}
+      \item bending
+      \item sine-wave flutter
+      \item twist
+      \item edge flap
+      \item compound
+      \item 현재 상태: \path{viewer_gpu.py}와 \path{viewer.html} 모두 UI에서 \code{sine}, \code{bend}, \code{twist}, \code{edge\_flap}, \code{compound}를 선택할 수 있다.
+    \end{itemize}
+  \item[\done] deformed triangle의 barycentric position으로 Gaussian centers를 update한다.
+  \item[\done] triangle-local rotation으로 Gaussian covariance 또는 anisotropic frame을 transport한다.
+    \begin{itemize}
+      \item 현재 상태: canonical anisotropic frame coefficients를 triangle-local coordinates로 보존하고, deformed triangle basis에서 frame과 covariance를 재구성한다.
+      \item \path{viewer_gpu.py}: sampled transported GS ellipsoid surface를 기본으로 표시하고, 필요하면 frame axes도 표시한다.
+      \item \path{viewer.html}: anisotropic ellipse와 frame axes를 표시한다.
+    \end{itemize}
+  \item[\progress] frame flip, seam popping, exploding covariance, surface sliding이 생기는지 확인한다.
+    \begin{itemize}
+      \item 현재 상태: visual inspection과 numeric binding/covariance verification은 통과. \code{10x10}, \code{30x30}, \code{50x50} asset에 대해 \code{sine}, \code{bend}, \code{twist}, \code{edge\_flap}, \code{compound} deformation을 모두 검증했다.
+      \item 실제 3DGS rasterization과 SH appearance artifact 검증은 아직 전이다.
+    \end{itemize}
+  \item[\done] dense visual inspection을 위한 GPU-backed debug viewer를 추가한다.
+    \begin{itemize}
+      \item 현재 상태: \path{viewer_gpu.py}는 \code{ModernGL + GLFW} 기반이며, \code{10x10}, \code{30x30}, \code{50x50} smoke test를 통과했다.
+      \item \code{tkinter} control panel로 web viewer의 asset selector, mesh statistics, display toggles, deformation sliders, reset view, loaded file path UI를 제공한다.
+      \item per-frame vertex normal shading과 distance-based depth cueing을 추가해 cloth 굴곡과 앞뒤 depth 구분을 개선했다.
+      \item face surface는 opaque로 표시한다.
+      \item back face culling은 기본 on이며, camera side에 따라 front-face winding을 \code{ccw}/\code{cw}로 보정한다. UI toggle / \code{C} key / \code{--no-backface-culling}으로 끌 수 있다.
+      \item camera rotation은 yaw/pitch/roll 3축을 지원한다. left drag는 yaw/pitch, right drag 또는 \code{Shift}+left drag는 roll, UI slider와 arrow/\code{Z}/\code{X} key도 지원한다.
+      \item transported GS ellipsoid surface는 UI toggle / \code{E} key / \code{--no-gaussian-ellipsoids}로 켜고 끌 수 있다.
+      \item transported GS anisotropic frame axes는 UI toggle / \code{O} key / \code{--show-gaussian-frames}로 켜고 끌 수 있다.
+      \item \code{--ply} CLI와 Tk control panel의 \code{load PLY...} / \code{use sample GS} 버튼으로 M1 synthetic PLY와 built-in sample GS를 전환할 수 있다.
+      \item PLY mode는 \code{--ply-proxy-mode occupancy}를 기본으로 사용해 leaf 영역 밖 rectangular mesh를 줄인다.
+    \end{itemize}
+  \item[\progress] before/after frames 또는 짧은 animation을 render한다.
+    \begin{itemize}
+      \item 현재 상태: \path{viewer.html}은 zero-setup fallback이고, \path{viewer_gpu.py}는 dense sample Gaussian inspection 용도다. 실제 3DGS rendering은 아직 전이다.
+    \end{itemize}
+\end{itemize}
+
+\textbf{완료 기준.} mesh deformation에 따라 Gaussian motion이 안정적이며, 눈에 띄는 popping, drift, covariance artifact가 없다.
+
+\section{M3. Procedural Wind Deformation}
+
+\textbf{목표.} manual deformation을 단순한 wind-driven procedural deformation으로 바꾼다.
+
+\begin{itemize}
+  \item[\done] lightweight wind field를 정의한다.
+    \begin{itemize}
+      \item global direction
+      \item strength
+      \item gust frequency
+      \item spatial phase
+      \item 현재 상태: \path{code/wind3dgs/m03_procedural_wind/wind_field.py}에 one-way \code{WindParameters}와 procedural gust deformation을 추가했다.
+      \item M3 wind는 global wind direction + procedural spatial gust 방식이며, voxel wind grid나 two-way coupling은 아직 사용하지 않는다.
+    \end{itemize}
+  \item[\done] synthetic mesh에 wind-like deformation을 적용한다.
+    \begin{itemize}
+      \item 현재 상태: \path{viewer_gpu.py}의 \code{--deformation wind}로 M02 cloth proxy와 M1 synthetic leaf PLY occupancy proxy에 같은 wind deformation path를 적용할 수 있다.
+      \item anchored boundary는 고정되고, free vertices만 wind strength, gust frequency, spatial scale, turbulence에 반응한다.
+    \end{itemize}
+  \item[\done] artist-style controls를 지원한다.
+    \begin{itemize}
+      \item wind direction
+      \item amplitude
+      \item frequency
+      \item anchored boundary
+      \item 현재 상태: Tk control panel과 CLI에 \code{wind direction}, \code{wind spatial scale}, \code{turbulence}를 추가했다.
+      \item 기존 \code{amplitude}는 wind strength, \code{frequency}는 gust frequency로 사용한다.
+    \end{itemize}
+  \item[\done] 다음 조건을 비교한다.
+    \begin{itemize}
+      \item position-only Gaussian transport
+      \item position plus covariance transport
+      \item optional local-frame appearance correction
+      \item 현재 상태: \code{--transport-mode full}은 Gaussian center와 anisotropic frame/covariance를 함께 transport한다.
+      \item 현재 상태: \code{--transport-mode position\_only}는 center만 mesh에 bind하고 anisotropic frame은 canonical frame으로 유지해 비교 baseline으로 쓴다.
+      \item local-frame / SH residual appearance correction은 M9의 core runtime module로 남긴다. M3에서는 geometry transport path만 검증한다.
+    \end{itemize}
+  \item[\done] 여러 wind settings에 대한 qualitative videos를 저장한다.
+    \begin{itemize}
+      \item 현재 상태: \path{code/wind3dgs/m03_procedural_wind/render_wind_preview.py}를 추가했다.
+      \item OpenGL viewer 없이 proxy mesh와 bound Gaussian centers를 orthographic CPU preview로 렌더링해 GIF, poster PNG, JSON report를 저장한다.
+      \item \code{calm}, \code{crosswind}, \code{gusty} preset을 \code{50x50} cloth sample GS와 M1 synthetic leaf PLY occupancy proxy에 대해 생성했다.
+    \end{itemize}
+\end{itemize}
+
+\textbf{완료 기준.} mesh-bound Gaussian asset을 wind parameters로 scriptable하게 animation할 수 있다. 현재 module command와 experiment wrapper smoke test 기준으로 scriptable wind animation path가 동작하고, headless qualitative GIF도 생성된다.
+
+\section{M4. Lightweight Mesh Simulator}
+
+\textbf{목표.} procedural deformation에서 topology-aware simulator로 넘어간다.
+
+\begin{itemize}
+  \item 작은 mass-spring, cloth, 또는 XPBD-style solver를 구현하거나 연결한다.
+  \item persistent simulation anchors를 정의한다.
+    \begin{itemize}
+      \item 기본 MVP: fixed proxy mesh vertices를 simulation anchors로 사용한다.
+      \item optional: 나중에 reduced simulation control nodes를 별도로 sample한다.
+    \end{itemize}
+  \item anchored vertices 또는 boundary constraints를 추가한다.
+  \item stiffness, damping, mass parameters를 추가한다.
+  \item relative velocity와 surface normal을 사용한 wind force를 추가한다.
+  \item simple fixed material-space load samples를 정의한다.
+    \begin{itemize}
+      \item MVP에서는 uniform face samples 또는 face centers부터 시작한다.
+      \item \code{projection-risk-aware} refinement는 M8 이후 optional로 둔다.
+    \end{itemize}
+  \item flag/cloth-strip test cases에서 안정적으로 simulation을 돌린다.
+  \item Gaussian transport를 위해 mesh states over time을 export한다.
+\end{itemize}
+
+\textbf{완료 기준.} proxy mesh가 단순 position warping이 아니라 connected topology와 constraints를 통해 wind에 반응한다.
+
+\section{M5. Real 3DGS Asset to Proxy Binding}
+
+\textbf{목표.} binding pipeline을 real 또는 pretrained 3DGS assets에 연결한다.
+
+\begin{itemize}
+  \item M1 loader를 통해 real/pretrained 3DGS asset을 load한다.
+  \item low-opacity floaters를 제거하거나 mask한다.
+  \item 필요하면 surface-oriented Gaussian attributes를 추정한다.
+  \item 처음에는 manually provided proxy mesh 또는 simple proxy mesh로 시작한다.
+  \item real Gaussians를 proxy mesh에 bind한다.
+  \item real asset에 대해 M2/M3 deformation path를 실행한다.
+  \item static result와 animated result를 render한다.
+\end{itemize}
+
+\textbf{완료 기준.} automatic mesh extraction 없이도 real 3DGS asset을 proxy mesh를 통해 animation할 수 있다.
+
+\section{M6. 3DGS-to-Mesh Proxy Extraction}
+
+\textbf{목표.} manually provided proxy mesh를 extracted simulation proxy로 대체한다.
+
+\begin{itemize}
+  \item candidate extraction paths를 테스트한다.
+    \begin{itemize}
+      \item SuGaR-style mesh extraction
+      \item Gaussian Opacity Fields-style extraction
+      \item TSDF fusion from rendered depths
+      \item point-cloud Poisson reconstruction
+    \end{itemize}
+  \item extracted geometry를 simulation용으로 simplify 또는 remesh한다.
+  \item proxy quality를 평가한다.
+    \begin{itemize}
+      \item topology stability
+      \item triangle quality
+      \item thin-structure preservation
+      \item reliability-weighted Gaussian transport demand
+      \item fixed-topology simulation anchorability
+    \end{itemize}
+  \item optional robustness score를 추가한다.
+    \begin{itemize}
+      \item raw Gaussian count만 proxy 중요도로 쓰지 않는다.
+      \item opacity, surface distance, optional view evidence를 사용해 \code{R\_G}를 계산한다.
+      \item direct isolation reliability 대신 \code{view-masked gated floater likelihood}를 사용한다.
+      \item 이 항목은 M6 첫 extraction success의 blocker가 아니라 v3-based refinement다.
+    \end{itemize}
+  \item render-quality mesh extraction과 simulation-oriented proxy extraction을 비교한다.
+\end{itemize}
+
+\textbf{완료 기준.} 적어도 하나의 extraction path가 stable binding과 wind simulation에 사용할 수 있는 proxy mesh를 만든다.
+
+\section{M7. Wind Exposure From Gaussian Opacity}
+
+\textbf{목표.} object의 어느 부분이 wind에 노출되거나 가려지는지 추정한다.
+
+\begin{itemize}
+  \item 현재 Gaussian state를 wind axis 방향으로 rasterize한다.
+  \item approximate transmittance 또는 exposure map을 계산한다.
+  \item fixed material-space load sample에서 exposure를 sample한다.
+    \begin{itemize}
+      \item 논문 notation: \(q_\ell := (\tau_\ell,\mathbf{b}_\ell)\)
+      \item \(\tau_\ell\): proxy face/triangle index
+      \item \(\mathbf{b}_\ell\): 해당 face 위 barycentric weights
+      \item frame마다 anchor를 다시 고르지 않는다.
+      \item load sample identity는 preprocessing 이후 고정한다.
+    \end{itemize}
+  \item load-sample force를 barycentric accumulation으로 persistent simulation anchors에 project한다.
+  \item exposure를 사용해 wind force를 modulate한다.
+  \item with exposure와 without exposure animation을 비교한다.
+\end{itemize}
+
+\textbf{완료 기준.} occluded 또는 shielded regions가 wind에 덜 반응하는 모습을 controllable하고 visually plausible하게 보여준다.
+
+\section{M8. Force-Space Load Model}
+
+\textbf{목표.} physical integration을 명시적으로 유지하면서 aerodynamic loads를 learn 또는 calibrate한다.
+
+\begin{itemize}
+  \item 각 load sample과 simulation anchor의 local state features를 정의한다.
+  \item direct deformation이 아니라 forces 또는 torques를 predict한다.
+  \item analytic 또는 parameterized load model을 먼저 구현한다.
+  \item dense simulation labels가 있으면 dense forces를 sparse proxy anchors로 project한다.
+    \begin{itemize}
+      \item 이 항목은 core MVP blocker가 아니라 supervised refinement다.
+    \end{itemize}
+  \item net force와 wrench에 대한 conservation checks를 추가한다.
+  \item optional: dense-force correction ratio로 \code{projection-risk-aware} load-sample refinement를 계산한다.
+  \item minimal MLP 또는 learned residual load model을 train한다.
+  \item analytic-only loads와 learned residual loads를 비교한다.
+\end{itemize}
+
+\textbf{완료 기준.} model이 stable simulation behavior를 유지하면서 wind response를 개선한다.
+
+\section{M9. Runtime SH Residual Appearance Correction}
+
+\textbf{목표.} expensive per-frame SH optimization 없이 deformation 이후 view-dependent appearance를 보존한다.
+
+이 milestone은 optional polish가 아니라 runtime system의 필수 appearance stage다. 단, 논문 headline은 \code{AI SH prediction}이 아니라 proxy deformation, Gaussian transport, SH residual runtime correction의 결합으로 유지한다.
+
+\begin{itemize}
+  \item appearance baselines를 세운다.
+    \begin{itemize}
+      \item canonical SH only
+      \item analytic local-frame correction
+      \item per-frame SH optimization upper bound
+      \item learned SH residual
+    \end{itemize}
+  \item residual labels 또는 pseudo-labels를 정의한다.
+  \item local deformation과 wind features를 사용해 lightweight residual predictor를 train한다.
+    \begin{itemize}
+      \item 입력 후보: local frame rotation, normal change, stretch, curvature change, wind direction/strength, material latent, canonical SH, binding features
+    \end{itemize}
+  \item runtime inference path에 residual predictor를 연결한다.
+  \item per-frame SH optimization 없이 animation sequence를 render한다.
+  \item rendering quality와 temporal flicker를 평가한다.
+\end{itemize}
+
+\textbf{완료 기준.} learned residual correction이 canonical 또는 analytic-only appearance보다 의미 있는 quality gap을 줄이고, per-frame SH optimization 없이 runtime rendering path가 동작한다.
+
+\section{M10. Evaluation and Paper Evidence}
+
+\textbf{목표.} 구현 결과를 paper claim을 뒷받침하는 evidence로 만든다.
+
+\begin{itemize}
+  \item synthetic scenes를 준비한다.
+    \begin{itemize}
+      \item flag
+      \item cloth strip
+      \item curtain
+      \item leaf or plant-like sheet
+    \end{itemize}
+  \item 가능하면 real 3DGS scenes를 준비한다.
+  \item main baselines를 실행한다.
+    \begin{itemize}
+      \item static 3DGS
+      \item direct Gaussian deformation
+      \item mesh-proxy deformation
+      \item with and without exposure
+      \item with and without SH residual
+      \item canonical SH vs analytic SH correction vs learned SH residual
+    \end{itemize}
+  \item metrics를 측정한다.
+    \begin{itemize}
+      \item PSNR / SSIM / LPIPS
+      \item temporal consistency
+      \item trajectory or surface displacement error
+      \item runtime / FPS
+      \item memory
+    \end{itemize}
+  \item qualitative videos와 failure cases를 저장한다.
+  \item 연구 방향이 바뀌면 \code{ideas/idea\_sketch.tex}와 \code{ideas/changelog.md}를 업데이트한다.
+\end{itemize}
+
+\textbf{완료 기준.} main paper claim을 지지할 수 있고 key ablations가 reproducible한 실험 결과가 있다.
+
+\section*{Open Decisions}
+
+\begin{itemize}
+  \item[\done] base로 사용할 3DGS implementation 또는 renderer는 무엇인가?
+    \begin{itemize}
+      \item 결정: M1/M5의 우선 renderer는 \code{gsplat} CUDA Gaussian rasterizer로 두고, 개발 중에는 \code{cpu\_debug} fallback을 유지한다.
+    \end{itemize}
+  \item[\done] M1의 첫 static asset은 무엇으로 할 것인가?
+    \begin{itemize}
+      \item 결정: real/pretrained asset 확보 전까지 \path{M01_static_3dgs_io}의 synthetic leaf-like Inria-style 3DGS asset을 사용한다.
+    \end{itemize}
+  \item[\done] M2는 custom minimal renderer, existing 3DGS renderer, 또는 둘 다 사용할 것인가?
+    \begin{itemize}
+      \item 결정: M02는 custom minimal GPU debug renderer를 사용하고, \path{viewer.html}은 fallback으로 유지한다. existing 3DGS renderer 연결은 M1/M5 이후로 미룬다.
+    \end{itemize}
+  \item[\done] SH residual을 scope에서 뺄 것인가?
+    \begin{itemize}
+      \item 결정: 빼지 않는다. SH residual은 runtime에서 per-frame SH optimization을 피하기 위한 필수 appearance correction module이다.
+      \item 단, headline contribution은 \code{AI SH prediction}이 아니라 runtime wind-deformable 3DGS representation으로 유지한다.
+    \end{itemize}
+  \item[\done] advanced anchor/load scoring을 MVP critical path에 넣을 것인가?
+    \begin{itemize}
+      \item 결정: 넣지 않는다. MVP는 fixed simulation anchors와 simple fixed material-space load samples부터 시작한다.
+      \item \code{view-masked gated floater}와 \code{projection-risk-aware load sampling}은 robustness/refinement 단계로 둔다.
+    \end{itemize}
+  \item M4에서 사용할 mesh simulation library는 무엇인가?
+  \item M6에서 가장 먼저 시도할 mesh extraction baseline은 무엇인가?
+  \item 기존 \path{experiments/exp001_*}--\path{exp003_*} planned folders를 그대로 둘지, 나중에 milestone tag 기반으로 정리할지 결정한다.
+\end{itemize}
+
+\section*{Notes}
+
+\begin{itemize}
+  \item SH residual prediction은 M2/M3의 첫 geometry 목표는 아니지만, 최종 runtime system에서는 필수 module이다. M9에서 반드시 구현하고 M10 evidence에 포함한다.
+  \item automatic mesh extraction부터 시작하지 않는다. 먼저 Gaussian-to-mesh binding과 deformation transport가 sound한지 증명한다.
+  \item advanced anchor/load scoring부터 시작하지 않는다. fixed simulation anchors와 simple fixed load samples로 먼저 solver와 rendering loop를 닫는다.
+  \item 각 milestone은 다음 layer를 붙이기 전에 runnable하고 visually inspectable해야 한다.
+  \item M02의 GPU viewer는 구현 편의상 \code{ModernGL + GLFW}를 사용하지만, 연구 기여가 OpenGL 자체에 의존한다는 뜻은 아니다.
+\end{itemize}
+
+\end{document}

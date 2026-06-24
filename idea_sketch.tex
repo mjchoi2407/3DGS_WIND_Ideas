@@ -1,0 +1,616 @@
+% template: idea_sketch.template.tex
+% template-version: 2026-04-30 19:29:34 KST
+% localized-for: Wind_Deformable_3DGS
+
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Wind-Driven Deformable 3D Gaussian Splatting: Idea Sketch}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{One-Line Claim}
+
+We aim to make an input 3D Gaussian Splatting asset physically editable under wind by converting it into a topology-aware simulation representation, evolving that representation under wind, and transferring the result back to high-quality Gaussian rendering.
+
+\section{Problem Definition}
+
+Given a reconstructed 3D Gaussian Splatting asset and a user- or data-conditioned wind signal, synthesize temporally coherent non-rigid deformation while preserving high-quality novel-view rendering. The final user-facing input should remain a trained 3DGS asset, but the method may internally construct a mesh or surface scaffold for topology-aware simulation.
+
+The key technical challenge is that vanilla 3DGS is an unordered set of Gaussian primitives with no explicit topology, boundary constraints, or stable surface correspondence. This is inconvenient for wind-driven deformable bodies such as flags, cloth strips, leaves, curtains, and paper, where physical forces propagate through connected surfaces and where anchors or artist constraints are naturally specified on a mesh.
+
+\section{Why Existing Work Is Not Enough}
+
+Recent dynamic 3DGS methods focus on reconstructing time-varying scenes or learning general deformation fields. Physics-integrated approaches such as PhysGaussian and DiffWind couple Gaussians or 3DGS-derived particles with physical simulation, but they primarily operate on particle-style representations rather than an explicit topology scaffold \cite{xie2024physgaussian,lei2026diffwind}.
+
+For aerodynamics, Gaussian Swaying directly formulates Gaussians as surface patches with normals and effective areas, then computes drag, friction, and lift per Gaussian patch without meshing \cite{yan2025gaussianswaying}. This is an important novelty boundary: a direct Gaussian-patch aerodynamic force formulation would overlap strongly with that line of work.
+
+Mesh extraction methods such as SuGaR and Gaussian Opacity Fields show that surface or mesh proxies can be recovered from 3DGS-like representations \cite{guedon2024sugar,yu2024gof}. However, these works mainly target surface reconstruction, editing, or rendering, not topology-aware wind deformation with Gaussian binding and fast time-varying appearance correction.
+
+The opportunity is therefore not to claim ``mesh extraction from 3DGS'' alone, nor ``aerodynamic force directly on Gaussians'' alone. The target contribution is a hybrid pipeline where 3DGS remains the input and rendering representation, while a lightweight mesh proxy provides stable topology, anchors, force propagation, and local frames for deformable-body wind simulation.
+
+\section{Core Hypothesis}
+
+A lightweight simulation mesh proxy extracted from an input 3DGS can make wind-driven deformation more stable and controllable than direct Gaussian particle or patch updates, while preserving the rendering quality of 3DGS through Gaussian-to-mesh binding.
+
+For deformable bodies, frame-wise SH re-optimization is too slow and impractical for interactive wind editing. A better strategy is to keep canonical SH coefficients, apply analytic local-frame correction when possible, and predict only a deformation-aware SH residual from mesh-local deformation state.
+
+\section{Method Sketch}
+
+The current preferred pipeline is:
+
+\begin{enumerate}
+  \item Start from a trained 3DGS asset.
+  \item Filter low-opacity floaters and estimate surface-oriented Gaussian attributes.
+  \item Extract a lightweight proxy mesh or surface scaffold using a SuGaR-, GOF-, or TSDF-style baseline.
+  \item Simplify or remesh the proxy for simulation, targeting a compact fixed-topology physics mesh rather than a render-quality mesh.
+  \item Bind each Gaussian to the proxy mesh using triangle id, barycentric coordinates, local surface frame, and optional local offset.
+  \item Initialize controllable physical and material fields on the proxy mesh using object profiles, geometry priors, and Gaussian support cues.
+  \item Place persistent simulation anchors on the proxy mesh and separate them from fixed material-space load samples used for wind exposure and force evaluation.
+  \item Run wind-driven deformation on the mesh proxy using aerodynamic forces, editable attachment constraints, structure features, and material parameters.
+  \item Update Gaussian position and covariance through the deformed local mesh frame.
+  \item Correct appearance using canonical SH coefficients plus a learned residual:
+  \[
+    \mathbf{c}_j(t) = R_{\mathrm{SH}}(\Delta R_j(t)) \mathbf{c}_j^0 + \Delta \mathbf{c}_j(t),
+  \]
+  where \(\mathbf{c}_j^0\) is the canonical SH coefficient, \(\Delta R_j(t)\) is the Gaussian's mesh-induced local-frame rotation, \(R_{\mathrm{SH}}\) is an analytic SH rotation operator when applicable, and \(\Delta \mathbf{c}_j(t)\) is predicted from local deformation and wind state.
+\end{enumerate}
+
+The SH residual network should not be framed as a generic ``AI SH calculator.'' Instead, it is an amortized appearance correction module that avoids expensive per-frame SH optimization for deformable-body animation.
+
+Candidate residual inputs include local normal change, tangent-frame rotation, area stretch, curvature change, deformation gradient, wind direction and magnitude, material latent code, canonical SH, and Gaussian-to-mesh binding features.
+
+\subsection*{Controllable Physical and Material Field Initialization}
+
+The method should not assume that every 3DGS asset has an objectively detectable ``anchor.'' For a leaf or flag, an attachment region may correspond to a stem or clamp; for a Stanford Bunny converted into a rubber-like object, there may be no physical attachment at all; for a paper airplane or kite, the important editable structures are creases, ribs, frames, string points, or material anisotropy rather than fixed vertices. We therefore frame constraint setup as a semi-automatic, controllable field initialization problem:
+\[
+  \mathrm{profile}
+  +
+  \mathrm{geometry/Gaussian\ priors}
+  +
+  \mathrm{user\ edits}
+  \rightarrow
+  \mathrm{simulation\ fields}.
+\]
+
+The initial field stack should include:
+\begin{itemize}
+  \item \textbf{Attachment/support field:} per-vertex attachment strength, inverse mass, optional attachment target, and attachment compliance. This captures clamps, stems, grips, string endpoints, supports, and user handles.
+  \item \textbf{Material compliance field:} stretch, shear, bending, mass, and damping parameters on vertices, edges, or hinges. This captures rubber-like, cloth-like, paper-like, foam-like, and shell-like behavior.
+  \item \textbf{Feature/structure field:} crease strength, rib or frame stiffness, spine or vein direction, anisotropic stiffness, and feature masks. This captures folded paper, kites, leaf veins, and rigid frame elements.
+  \item \textbf{Wind response/exposure field:} per-face or per-vertex drag gain, lift gain, exposure, and normal response, initialized from surface orientation, reliability-weighted Gaussian support, opacity, and optional wind-axis transmittance.
+  \item \textbf{External force/handle field:} editable force or target-position handles such as kite string tension, user drag handles, gravity, or initial velocity.
+\end{itemize}
+
+Automation should be profile-based rather than fully automatic. A \emph{cloth} profile can initialize one-side attachment and soft bending; a \emph{leaf} profile can initialize a root or vein prior; a \emph{free-shell} or \emph{soft-body} profile can initialize no attachment and nearly uniform elastic response; a \emph{folded-paper} profile can initialize high crease stiffness; a \emph{kite} profile can initialize soft membrane regions, stiff ribs, and string/bridle handles. Geometry cues such as boundary loops, geodesic distance, curvature ridges, principal axes, narrow regions, and Gaussian support confidence provide initial values, while the user remains able to paint or edit the resulting fields.
+
+Terminology should be precise: \emph{attachment anchors} are physical boundary or handle constraints, \emph{simulation anchors} are persistent degrees of freedom on the fixed-topology proxy, and \emph{load samples} are material-space quadrature sites where wind exposure and loads are evaluated. These are separate problems and should not be conflated.
+
+\subsection*{Gaussian-Aware Simulation Anchors and Load Samples}
+
+The anchor design should not use raw Gaussian count as physical importance. Dense Gaussian regions may reflect texture, specular effects, view-coverage imbalance, reconstruction noise, or floaters. Instead, proxy resolution should be guided by a reliability-weighted Gaussian transport demand together with boundary, constraint, geometry, and physical priors.
+
+The current compact design is:
+\[
+  s_{\mathrm{sim}}(p)
+  =
+  w_B B(p)
+  +
+  w_C C_{\mathrm{constraint}}(p)
+  +
+  w_K K_{\mathrm{geom}}(p)
+  +
+  w_P P_{\mathrm{phys}}(p)
+  +
+  w_R R_G(p),
+\]
+where \(R_G\) is a saturated, reliability-weighted Gaussian support field. The Gaussian reliability should use opacity and surface consistency, while treating isolation only as a \emph{view-masked gated floater likelihood}. A Gaussian is penalized strongly only when it is simultaneously isolated, low-opacity, far from the proxy surface, and not protected by available boundary, curvature, thin-structure, constraint, or measured view-contribution evidence. If view evidence is unavailable, it is neutral inside base reliability but excluded from the floater-protection score.
+
+Simulation anchors and wind load samples are deliberately separated. Simulation anchors remain fixed-topology proxy vertices or reduced control nodes. Each load sample is a fixed material-space quadrature site \(q_\ell := (\tau_\ell,\mathbf{b}_\ell)\), where \(\tau_\ell\in F\) is a proxy face and \(\mathbf{b}_\ell\) is its barycentric coordinate on that face. Runtime wind exposure may change every frame, but it is evaluated at these persistent load samples and then projected to simulation anchors by barycentric accumulation. Thus the method supports time-varying wind without frame-wise remeshing, anchor reselection, or Gaussian rebinding.
+
+When Blender or another simulator provides dense force supervision, fixed load-sample placement can additionally use a projection-risk score:
+\[
+  s_{\mathrm{load}}(p)
+  =
+  w_E E_{\mathrm{prior}}(p)
+  +
+  w_F F_{\mathrm{projection\_risk}}(p)
+  +
+  w_R^{\mathrm{load}}R_G(p)
+  +
+  w_K^{\mathrm{load}}K_{\mathrm{geom}}(p).
+\]
+The projection-risk field is computed on an initial coarse layout or patch partition by measuring how much raw dense-to-proxy force projection must be corrected to preserve net force and wrench. High-risk regions receive denser fixed load samples during one preprocessing refinement step; runtime sampling remains fixed.
+
+Detailed equations and implementation notes are intentionally kept in the reference design document \path{ideas/anchor_method_revision_notes_2026-05-11_v3.tex}. The idea sketch should preserve the final paper-level framing, while that reference document stores the longer derivation and edge-case discussion.
+
+\section{Contribution Hierarchy and Framing}
+
+The project structure does not need to change, but the paper framing should avoid presenting the work as an ``AI SH prediction'' paper. The primary contribution should be a wind-deformable 3DGS representation and simulation formulation:
+
+\begin{enumerate}
+  \item \textbf{Main contribution: topology-aware wind simulation representation for 3DGS.}
+  The paper should emphasize the full bridge from input 3DGS to a lightweight simulation mesh proxy, Gaussian-to-mesh binding, mesh-proxy wind dynamics, and transfer back to Gaussian rendering.
+  \item \textbf{Second contribution: force-space load-to-state wind deformation.}
+  The wind dynamics should be framed as local-wind and exposure-aware load prediction followed by differentiable physical integration, rather than direct deformation regression.
+  \item \textbf{Required runtime stage, supporting contribution: deformation-aware SH residual correction.}
+  SH residual prediction is required for runtime-quality appearance correction without per-frame SH optimization, but it should support the representation and simulation pipeline rather than become the headline claim.
+\end{enumerate}
+
+A safe title or abstract should therefore sound like ``topology-aware wind-deformable 3DGS'' or ``mesh-proxy wind simulation for 3D Gaussian assets,'' not ``AI-based SH coefficient prediction.'' The SH module completes the practical system by avoiding per-frame SH re-optimization:
+\[
+  \mathbf{c}_j(t)
+  =
+  R_{\mathrm{SH}}(\Delta R_j(t))\mathbf{c}_j^0
+  +
+  \Delta\mathbf{c}_j(t),
+\]
+but the central technical story is the conversion between 3DGS, simulation proxy, and Gaussian rendering.
+
+\section{Why This Is Not Just a Component Combination}
+
+Many modules in the pipeline have precedents: 3DGS rendering, mesh extraction, XPBD-style simulation, wind loads, Gaussian binding, and neural residual correction. The paper must therefore argue necessity rather than novelty-by-assembly. The key claim is that wind-deformable 3DGS requires a representation bridge whose parts are coupled by the problem structure:
+
+\begin{itemize}
+  \item 3DGS assets render well, but lack topology, stable force propagation, and natural anchor constraints.
+  \item Wind-deformable bodies require connected structures, boundary conditions, and material response over a surface.
+  \item Mesh simulation alone loses the high-quality view-dependent rendering properties of 3DGS.
+  \item Deformation changes Gaussian local frames, visibility, and view-dependent appearance, so geometry transfer alone is insufficient.
+  \item Spatial wind response depends on exposure and self-shadowing, which should be estimated from the current 3DGS or proxy state.
+\end{itemize}
+
+Thus the contribution is not merely to combine known modules, but to formulate and validate the loop
+\[
+  \mathrm{3DGS}
+  \rightarrow
+  \mathrm{simulation\ proxy}
+  \rightarrow
+  \mathrm{wind\ dynamics}
+  \rightarrow
+  \mathrm{Gaussian\ attribute\ transport}
+  \rightarrow
+  \mathrm{3DGS\ rendering}.
+\]
+The experimental burden is to show that removing any major bridge component breaks stability, controllability, or rendering fidelity.
+
+\section{Adaptation Novelty}
+
+The strongest novelty should come from places where existing formulas cannot be used directly and must be adapted to the 3DGS wind-deformation setting.
+
+\begin{enumerate}
+  \item \textbf{Gaussian attribute transport through mesh-local binding.}
+  Standard mesh skinning or barycentric interpolation transports positions, but 3DGS requires transporting mean, anisotropic covariance, opacity or footprint, and SH appearance parameters. This turns mesh binding into a Gaussian attribute transport problem.
+  \item \textbf{Simulation-oriented proxy extraction.}
+  SuGaR- or GOF-style geometry extraction targets surface reconstruction or editing. Here the proxy should be optimized for wind simulation: stable topology, triangle quality, anchorability, thin-structure preservation, reliability-weighted Gaussian transport demand, and material-parameter assignment.
+  \item \textbf{Profile-conditioned editable simulation fields.}
+  Rather than treating boundary conditions and material parameters as hidden constants, the method initializes editable attachment, material, feature, wind-response, and handle fields from object profiles, geometry cues, and Gaussian support. This turns arbitrary 3DGS assets into controllable deformable simulation proxies.
+  \item \textbf{Separated simulation anchors and fixed load samples.}
+  Runtime wind exposure is frame-varying, but the simulation scaffold should not be. The method keeps persistent simulation anchors for physical state and uses fixed material-space load samples for wind exposure and force evaluation.
+  \item \textbf{View-masked gated floater reliability.}
+  Isolation is not treated as an independent Gaussian reliability term, because valid thin structures may be sparse. It only contributes to a floater likelihood when combined with low opacity, large surface distance, and no available boundary, curvature, thin-structure, constraint, or measured view-contribution protection.
+  \item \textbf{Wind exposure from Gaussian opacity.}
+  Instead of relying on CFD visibility or mesh-only occlusion, the current Gaussian opacity field can define wind-axis transmittance and load-sample exposure. This reuses the rendering representation as a wind-load visibility estimator.
+  \item \textbf{Conservation-preserving dense-to-proxy force projection.}
+  Dense Blender or simulator forces must be compressed to proxy anchors without destroying net force and wrench. The required correction can also define a projection-risk field for one-time fixed load-sample refinement.
+  \item \textbf{Deformation-aware SH residual appearance transport.}
+  Analytic SH rotation alone is insufficient because 3DGS SH coefficients are optimized appearance parameters, not pure physical lighting coefficients. The residual predicts only the missing deformation-aware correction.
+\end{enumerate}
+
+Among these, the most important paper-level novelty candidates are Gaussian attribute transport and Gaussian-opacity-based wind exposure. The SH residual should remain a runtime-required but supporting novelty: it completes the dynamic rendering pipeline without turning the paper into an ``AI SH prediction'' paper.
+
+\section{Mathematical Formulation}
+
+The previous v8 sketch contains several equations that remain useful after the mesh-proxy pivot. The main adaptation is to replace generic sparse ED-Graph anchors with simulation mesh vertices, editable attachment constraints, and later optional reduced simulation control nodes.
+
+\subsection{State and Local Wind}
+
+Let the trained Gaussian asset be \(G=\{g_j\}\), where
+\[
+  g_j = (\boldsymbol{\mu}_j, R_j, \mathbf{s}_j, \alpha_j, \mathbf{c}_j).
+\]
+Let the extracted simulation proxy be a lightweight fixed-topology mesh \(M=(V,E,F)\). Each mesh vertex or reduced simulation control node has state
+\[
+  a_i(t) = (\mathbf{x}_i(t), \mathbf{q}_i(t), \mathbf{v}_i(t), \boldsymbol{\omega}_i(t), m_i).
+\]
+The wind field is represented as a lightweight analytic field rather than full CFD:
+\[
+  W(\mathbf{x},t)
+  =
+  W_{\mathrm{global}}(t)
+  + \sum_k W_{\mathrm{source},k}(\mathbf{x},t)
+  + W_{\mathrm{gust}}(\mathbf{x},t).
+\]
+
+\subsection{Simulation Anchors and Fixed Load Samples}
+
+Let the persistent simulation anchors be
+\[
+  \mathcal{A}_{\mathrm{sim}} = V_{\mathrm{sim}},
+\]
+or a reduced subset of proxy degrees of freedom. Separately, define fixed material-space load samples
+\[
+  q_\ell := (\tau_\ell,\mathbf{b}_\ell),
+  \qquad
+  \tau_\ell\in F,
+  \qquad
+  \mathbf{b}_\ell=(b_{\ell 1},b_{\ell 2},b_{\ell 3}),
+\]
+where \(\tau_\ell\) is a proxy triangle index and \(\mathbf{b}_\ell\) is a barycentric coordinate on that triangle. Their world positions are
+\[
+  \mathbf{x}_\ell(t)
+  =
+  \sum_{i\in \tau_\ell} b_{\ell i}\mathbf{x}_i(t).
+\]
+Their velocities are interpolated in the same material coordinates.
+The topology, Gaussian binding, simulation anchors, and load-sample identities are fixed after preprocessing. Only their world-space positions, velocities, exposure values, loads, and Gaussian attributes evolve during animation.
+
+\subsection{Wind Exposure}
+
+To account for self-shadowing or object-level wind blocking, the current Gaussian state can be rasterized in a wind-axis coordinate system. A continuous transmittance view is
+\[
+  S_t(\mathbf{u})
+  =
+  \exp\left(-\int \alpha_t(s)\,ds\right),
+\]
+and a Gaussian splatting approximation is
+\[
+  S_t(\mathbf{u})
+  \approx
+  \prod_j \left(1-\alpha_j K_j(\mathbf{u})\right),
+\]
+where \(K_j\) is the projected Gaussian kernel in wind-axis space. Each fixed load sample, not each newly selected anchor, samples exposure from this map:
+\[
+  e_\ell(t)=\operatorname{sample}\left(S_t,\pi_w(\mathbf{x}_\ell(t))\right).
+\]
+The effective relative wind used for load prediction is
+\[
+  W_\ell(t)=W(\mathbf{x}_\ell(t),t),
+  \qquad
+  \mathbf{u}^{\mathrm{eff}}_\ell(t)=e_\ell(t)W_\ell(t)-\mathbf{v}_\ell(t).
+\]
+Load-sample forces are then accumulated to persistent simulation anchors:
+\[
+  \mathbf{F}_i(t)
+  =
+  \sum_{\ell:i\in \tau_\ell}
+  b_{\ell i}\mathbf{f}_\ell(t).
+\]
+
+\subsection{Force-Space Load-to-State Integration}
+
+The network should predict aerodynamic load, not deformation state:
+\[
+  (\mathbf{f}_{\ell,t},\boldsymbol{\tau}_{\ell,t})
+  =
+  P_\theta\left(\mathbf{z}_\ell(t),
+  \mathbf{u}^{\mathrm{eff}}_\ell(t),
+  e_\ell(t),
+  \theta_{\mathrm{field},\ell}\right).
+\]
+The structural state is then generated by a differentiable solver such as XPBD:
+\[
+  \mathbf{x}_{t+1}
+  =
+  \Phi_{\mathrm{XPBD}}
+  \left(
+    \mathbf{x}_t,
+    \mathbf{v}_t,
+    \mathbf{f}_{\mathrm{ext},t},
+    \alpha_{\mathrm{scene}},
+    C_{\mathrm{scene}}
+  \right).
+\]
+In the current project direction, this equation is applied to mesh-proxy vertices or reduced simulation control nodes, not directly to unordered Gaussians.
+
+\subsection{Scene-Calibrated Physical Parameters}
+
+The scene-calibrated parameter field can be retained, but it should live on the simulation mesh proxy as an editable field stack:
+\[
+  \theta_{\mathrm{field},i}
+  =
+  \{\alpha_i,d_i,m_i,\beta_i,\rho_i,\eta_i,\kappa_i,h_i\},
+\]
+where \(\alpha_i\) is compliance or stiffness, \(d_i\) damping, \(m_i\) mass scale, \(\beta_i\) wind response gain, \(\rho_i\) binding rigidity, \(\eta_i\) attachment strength, \(\kappa_i\) feature or crease strength, and \(h_i\) handle or external-force influence. The field is initialized from a profile prior \(p\), geometry descriptors \(\phi_i(M)\), Gaussian support descriptors \(\psi_i(G)\), and optional user edits \(u_i\):
+\[
+  \theta_{\mathrm{field},i}^{0}
+  =
+  I_{\mathrm{field}}\left(p,\phi_i(M),\psi_i(G),u_i\right).
+\]
+A regularizer prevents this field from becoming arbitrary per-scene tuning:
+\[
+  \mathcal{L}_{\mathrm{param}}
+  =
+  \lambda_{\mathrm{smooth}}
+  \sum_{(i,j)\in E}
+  \|\theta_{\mathrm{field},i}-\theta_{\mathrm{field},j}\|^2
+  +
+  \lambda_{\mathrm{bound}}
+  \sum_i \operatorname{penalty}(\theta_{\mathrm{field},i})
+  +
+  \lambda_{\mathrm{sparse}}
+  \|\Delta\theta\|_1.
+\]
+
+\subsection{Conservation-Preserving Sparse Force Projection}
+
+If Blender or a dense simulator provides high-resolution force supervision, dense forces should be projected to proxy mesh vertices or reduced simulation control nodes while preserving net force and wrench:
+\[
+  \sum_i \mathbf{F}_i^\ast = \mathbf{F}_{\mathrm{dense}},
+\]
+\[
+  \sum_i
+  (\mathbf{x}_i-\mathbf{c})\times \mathbf{F}_i^\ast
+  +
+  \boldsymbol{\tau}_i^\ast
+  =
+  \boldsymbol{\mathcal{T}}_{\mathrm{dense}}.
+\]
+A practical projection objective is
+\[
+  \min_{\mathbf{F}_i^\ast,\boldsymbol{\tau}_i^\ast}
+  \sum_i
+  \|\mathbf{F}_i^\ast-\mathbf{F}_i^{\mathrm{raw}}\|^2
+  +
+  \gamma
+  \|\boldsymbol{\tau}_i^\ast-\boldsymbol{\tau}_i^{\mathrm{raw}}\|^2,
+\]
+subject to the two conservation constraints above. This is directly compatible with the mesh-proxy formulation and helps justify sparse simulation as more than a computational shortcut.
+
+\subsection{Gaussian-to-Mesh Binding}
+
+For a Gaussian \(g_j\) bound to proxy triangle \(\tau_j=(a,b,c)\), store barycentric coordinates \(\mathbf{b}_j=(b_{ja},b_{jb},b_{jc})\), a rest local frame \(\mathcal{F}_j^0\), and an optional local offset \(\boldsymbol{\delta}_j\). Let \(\mathcal{F}_j(t)\) be the deformed triangle-local frame and
+\[
+  \Delta R_j(t)=\mathcal{F}_j(t)(\mathcal{F}_j^0)^\top .
+\]
+The deformed Gaussian center can be updated as
+\[
+  \boldsymbol{\mu}_j(t)
+  =
+  b_{ja}\mathbf{x}_a(t)
+  +
+  b_{jb}\mathbf{x}_b(t)
+  +
+  b_{jc}\mathbf{x}_c(t)
+  +
+  \mathcal{F}_j(t)\boldsymbol{\delta}_j.
+\]
+The covariance or anisotropic frame can be transported by the triangle-local rotation:
+\[
+  \Sigma_j(t)
+  =
+  \Delta R_j(t)\Sigma_j^0 \Delta R_j(t)^\top.
+\]
+
+\subsection{SH Residual Correction}
+
+The v8 idea of analytic prior plus residual is most useful here as appearance correction:
+\[
+  \mathbf{c}_j(t)
+  =
+  R_{\mathrm{SH}}\left(\Delta R_j(t)\right)\mathbf{c}_j^0
+  +
+  \Delta\mathbf{c}_j(t).
+\]
+The residual predictor should use mesh-local deformation and wind features:
+\[
+  \Delta\mathbf{c}_j(t)
+  =
+  Q_\psi
+  \left(
+    \mathbf{c}_j^0,
+    \Delta R_j(t),
+    \nabla\mathbf{x}_{\tau_j}(t),
+    e_{\tau_j}(t),
+    W_{\tau_j}(t),
+    \theta_{\mathrm{field},\tau_j}
+  \right).
+\]
+This keeps SH prediction amortized and residual-only, avoiding full per-frame SH optimization.
+
+\subsection{Training Objectives}
+
+Useful losses from the v8 sketch can be adapted as:
+\[
+  \mathcal{L}_{\mathrm{force}}
+  =
+  \|\mathbf{F}_{\mathrm{pred}}-\mathbf{F}_{\mathrm{target}}^\ast\|^2
+  +
+  \lambda_\tau
+  \|\boldsymbol{\tau}_{\mathrm{pred}}-\boldsymbol{\tau}_{\mathrm{target}}^\ast\|^2,
+\]
+\[
+  \mathcal{L}_{\mathrm{residual}}
+  =
+  \|\operatorname{Proj}_{\parallel}(\mathrm{residual},\mathrm{base})\|^2,
+\]
+where the residual regularizer discourages learned corrections from simply overwriting the analytic prior. The final objective can combine rendering, force, dynamics, and appearance terms:
+\[
+  \mathcal{L}_{\mathrm{total}}
+  =
+  \mathcal{L}_{\mathrm{render}}
+  +
+  \lambda_{\mathrm{force}}\mathcal{L}_{\mathrm{force}}
+  +
+  \lambda_{\mathrm{dyn}}\mathcal{L}_{\mathrm{dyn}}
+  +
+  \lambda_{\mathrm{SH}}\mathcal{L}_{\Delta \mathrm{SH}}.
+\]
+
+\section{Formula Transfer Notes}
+
+\begin{itemize}
+  \item Directly applicable: local wind field \(W(\mathbf{x},t)\), wind-axis transmittance \(S_t\), fixed load-sample exposure \(e_\ell(t)\), effective wind \(\mathbf{u}^{\mathrm{eff}}_\ell(t)\), force-space load prediction, editable physical/material fields, and conservation-preserving sparse force projection.
+  \item Adapted: ED-Graph anchors and DQS binding are replaced by persistent simulation mesh vertices, optional reduced simulation control nodes, fixed material-space load samples, triangle barycentric binding, and mesh-local frame transport.
+  \item Adapted: raw Gaussian density is replaced by reliability-weighted Gaussian transport demand with view-masked gated floater likelihood and projection-risk-aware load-sample placement.
+  \item Adapted: analytic prior plus residual is kept, but used for both aerodynamic load correction and deformation-aware SH residual correction.
+  \item Not adopted as a primary claim: direct deformation regression, pure Gaussian-patch aerodynamic force computation, arbitrary unseen-asset generalization, and full CFD-quality wind simulation.
+\end{itemize}
+
+\section{Possible Contributions}
+
+\begin{itemize}
+  \item \textbf{Primary:} A 3DGS-in, mesh-proxy-internal representation for topology-aware wind deformation of deformable bodies.
+  \item \textbf{Primary:} A lightweight simulation mesh extraction and Gaussian-to-mesh binding strategy for stable wind force propagation, anchor constraints, and transfer back to Gaussian rendering.
+  \item \textbf{Primary or secondary:} A reliability-weighted Gaussian-aware material anchor mesh that avoids raw Gaussian-density heuristics and separates persistent simulation anchors from fixed material-space load samples.
+  \item \textbf{Primary or secondary:} A profile-conditioned, user-editable physical/material field initialization layer that converts arbitrary 3DGS assets into controllable deformable simulation proxies.
+  \item \textbf{Secondary:} A local-wind and exposure-aware force-space load-to-state formulation for controllable wind response.
+  \item \textbf{Secondary:} A dense-force-supervised projection-risk field for one-time fixed load-sample refinement and conservation-aware force projection.
+  \item \textbf{Supporting:} A deformation-aware SH residual prediction module that avoids per-frame SH re-optimization while preserving view-dependent appearance.
+  \item A synthetic Blender-based supervision pipeline that provides mesh deformation, wind state, rendered views, and pseudo-labels for SH residual learning.
+  \item Real-time or near-real-time editing and retargeting of wind animation across 3DGS assets.
+\end{itemize}
+
+\section{Baselines}
+
+\begin{itemize}
+  \item Static 3D Gaussian Splatting.
+  \item Deformable 3D Gaussians.
+  \item 4D Gaussian Splatting variants.
+  \item PhysGaussian-style physics-integrated Gaussian dynamics.
+  \item DiffWind-style wind-object reconstruction, if code and data are usable.
+  \item Gaussian Swaying-style direct Gaussian surface-patch aerodynamics.
+  \item Mesh extraction baselines: SuGaR, Gaussian Opacity Fields, and TSDF fusion from rendered depths.
+  \item Appearance baselines: canonical SH only, analytic SH/frame correction only, full per-frame SH optimization, and direct full-SH prediction.
+\end{itemize}
+
+\section{Datasets and Capture Plan}
+
+Candidate scenes include flags, cloth strips, plants, curtains, paper, and lightweight deformable objects under controllable fan settings.
+
+Synthetic data should be generated in Blender or a physics engine from known meshes. For each asset, simulate multiple wind conditions, render multi-view sequences, train or fit corresponding 3DGS assets, and keep ground-truth mesh deformation and wind parameters. This gives supervision for mesh proxy extraction, Gaussian binding, deformation transfer, and SH residual prediction.
+
+Initial target scale:
+
+\begin{itemize}
+  \item Sanity check: 5--10 synthetic assets.
+  \item Prototype: 30--50 synthetic deformable assets, each with several wind conditions and 80--150 rendered views.
+  \item Paper target: 100--300 synthetic assets with material and wind variation, plus 5--10 real 3DGS scenes for evaluation.
+\end{itemize}
+
+The SH residual labels can be obtained by comparing canonical appearance against per-frame optimized or rendered-reference appearance, but the final model should predict only residual coefficients rather than full SH from scratch.
+
+\section{Evaluation Metrics}
+
+\begin{itemize}
+  \item Novel-view rendering quality: PSNR, SSIM, LPIPS.
+  \item Temporal consistency: optical-flow or feature consistency across frames.
+  \item Control accuracy: response to wind direction, amplitude, and frequency.
+  \item Geometry and proxy quality: Chamfer distance, normal consistency, simulation-anchor stability, load-sample coverage, and mesh extraction failure rate.
+  \item Dynamics quality: trajectory error, surface displacement error, FVD for rendered videos, and qualitative flutter/ripple behavior.
+  \item Appearance correction: quality gap between canonical SH, analytic SH correction, residual SH prediction, and per-frame SH optimization.
+  \item Runtime: training time, rendering FPS, memory footprint.
+  \item User-facing controllability: qualitative editing and retargeting examples.
+\end{itemize}
+
+\section{Ablation Ideas}
+
+\begin{itemize}
+  \item Direct Gaussian particle or patch simulation vs. mesh-proxy simulation.
+  \item Different proxy extraction methods: SuGaR-style, GOF-style, TSDF fusion, and simple point-cloud Poisson reconstruction.
+  \item Generic render-quality mesh extraction vs. simulation-oriented proxy extraction.
+  \item Raw Gaussian density vs. reliability-weighted Gaussian transport demand for proxy refinement.
+  \item Direct isolation reliability vs. view-masked gated floater likelihood.
+  \item Joint or frame-varying anchor/load selection vs. separated persistent simulation anchors and fixed material-space load samples.
+  \item Without Gaussian-to-mesh local-frame binding.
+  \item Position-only binding vs. full Gaussian attribute transport: position, covariance, local frame, and SH residual.
+  \item Position-only update vs. position and covariance update.
+  \item Without wind-axis Gaussian opacity exposure.
+  \item Without projection-risk-aware load-sample refinement.
+  \item Canonical SH only vs. analytic SH rotation vs. learned SH residual vs. full per-frame SH optimization.
+  \item Predicting full SH coefficients vs. predicting residual SH coefficients.
+  \item Without conservation-preserving dense-to-proxy force projection.
+  \item Without profile-conditioned field initialization.
+  \item Without material response parameters.
+  \item Coarse vs. dense physics mesh resolution.
+  \item Procedural wind input vs. learned wind latent.
+  \item Single-scene training vs. cross-asset retargeting.
+\end{itemize}
+
+\section{Risks and Failure Cases}
+
+\begin{itemize}
+  \item Novelty overlap with DiffWind, PhysGaussian, Gaussian Swaying, SuGaR, or GOF.
+  \item Mesh extraction from vanilla 3DGS may be unstable due to floaters, holes, thin structures, or noisy opacity.
+  \item Raw Gaussian density may be mistaken for physical importance, even though it can reflect capture artifacts, texture, view imbalance, or reconstruction noise.
+  \item Direct isolation penalties may remove valid sparse thin structures unless floater suppression is gated by opacity, surface distance, and available protection evidence.
+  \item Frame-varying wind exposure may be misread as requiring frame-varying anchors; the implementation must keep simulation anchors and load-sample identities fixed after preprocessing.
+  \item Dense-force-supervised projection risk depends on Blender or simulator force labels, so a fallback load-sample strategy is needed when dense supervision is unavailable.
+  \item A mesh-proxy method may be criticized as no longer being a pure 3DGS simulation method; the paper must emphasize that 3DGS remains the input and rendering representation.
+  \item Direct Gaussian-patch aerodynamics is already explored by Gaussian Swaying, so this work should focus on topology-aware proxy simulation, binding, constraints, and appearance residuals.
+  \item Blender-trained SH residuals may not transfer cleanly to real captures because 3DGS SH coefficients are optimized appearance parameters, not physically pure lighting coefficients.
+  \item Learned residuals may overfit to synthetic materials or fail under strong self-occlusion and specular effects.
+  \item Hard-to-evaluate ``plausibility'' without ground truth wind.
+  \item Over-smoothing of high-frequency flutter.
+  \item Instability when covariance deformation or mesh binding changes visibility too aggressively.
+\end{itemize}
+
+\section{Decision Log}
+
+\subsection*{2026-04-30}
+
+\textbf{Decision.} Position the project around controllable, lightweight, real-time wind deformation for 3DGS assets.
+
+\textbf{Reason.} Full physics-informed wind-object reconstruction overlaps strongly with DiffWind.
+
+\textbf{Next.} Build a minimal prototype that applies procedural wind deformation to a static 3DGS asset and renders a temporally coherent animation.
+
+\subsection*{2026-05-03}
+
+\textbf{Decision.} Refine the project direction toward a hybrid representation: the final input remains a trained 3DGS asset, but the method internally extracts a lightweight simulation mesh proxy, binds Gaussians to this proxy, runs topology-aware wind deformation, and predicts deformation-aware SH residuals.
+
+\textbf{Reason.} Vanilla 3DGS lacks topology, stable surface correspondence, and natural anchor constraints, which are important for deformable-body wind simulation. Existing aerodynamics work such as Gaussian Swaying avoids mesh by treating Gaussians as surface patches, while DiffWind uses 3DGS-derived particles and MPM. To avoid direct overlap, this project should emphasize topology-aware mesh proxy simulation, Gaussian binding, artist control, and fast appearance correction rather than direct Gaussian-patch force computation.
+
+\textbf{Next.} Prototype the representation bridge: extract or import a simple mesh proxy, bind synthetic Gaussians to mesh triangles, deform the mesh under procedural wind, update Gaussian positions/covariances, and compare canonical SH, analytic frame correction, and learned SH residual correction.
+
+\subsection*{2026-05-03 Framing Update}
+
+\textbf{Decision.} Keep the current pipeline structure, but frame the paper around topology-aware wind-deformable 3DGS representation rather than AI-based SH prediction.
+
+\textbf{Reason.} SH residual prediction is useful, but as a headline contribution it may look too narrow or like an implementation convenience. The stronger TVCG-facing story is the full conversion loop: 3DGS input, simulation mesh proxy, Gaussian binding, force-space wind dynamics, and return to high-quality Gaussian rendering.
+
+\textbf{Next.} When drafting the abstract and contributions, list mesh-proxy representation and force-space wind deformation before the SH residual module.
+
+\subsection*{2026-05-03 Necessity and Adaptation Update}
+
+\textbf{Decision.} Explicitly frame the method as a necessary representation bridge rather than a loose assembly of known components, and identify the adaptation novelty points where existing formulas must be modified for 3DGS wind deformation.
+
+\textbf{Reason.} The pipeline uses known building blocks, so the paper must show that topology-aware simulation, Gaussian rendering, wind exposure, and appearance transport cannot be handled by any single existing component alone.
+
+\textbf{Next.} Design ablations that remove each bridge component: no mesh proxy, generic proxy, position-only binding, no wind exposure, no conservation projection, and no SH residual.
+
+\subsection*{2026-05-11 Controllable Field Layer Update}
+
+\textbf{Decision.} Reframe constraint and material setup as a profile-conditioned, semi-automatic, user-editable physical/material field initialization layer.
+
+\textbf{Reason.} A universal automatic anchor detector is ill-posed for arbitrary 3DGS assets. A Stanford Bunny converted to a rubber-like object may have no attachment anchor, while a paper airplane needs crease and anisotropic stiffness fields, and a kite needs soft membrane regions, stiff ribs, and string/bridle handles. The stronger formulation is to initialize editable fields from object profiles, geometry cues, Gaussian support, and user edits.
+
+\textbf{Next.} Separate this field-authoring layer from the next M4 problem: sampling reduced simulation control nodes for real-time simulation.
+
+\subsection*{2026-05-11 Simulation Anchor and Load Sample Update}
+
+\textbf{Decision.} Replace raw Gaussian-density-based anchor placement with reliability-weighted Gaussian transport demand, and explicitly separate persistent simulation anchors from fixed material-space load samples.
+
+\textbf{Reason.} Raw Gaussian count can reflect capture artifacts, texture, specular effects, view imbalance, or floaters rather than physical importance. Wind exposure changes over time, but changing anchors or remeshing every frame would be too expensive and would break persistent Gaussian binding.
+
+\textbf{Next.} Implement the MVP score using boundary, geometry, constraint, and \(R_G\) terms; compute \(R_G\) from opacity, surface distance, optional normal/view evidence, and view-masked gated floater likelihood. Use Blender dense-force supervision to estimate \(F_{\mathrm{projection\_risk}}\) for one-time fixed load-sample refinement when such supervision is available. Detailed design reference: \path{ideas/anchor_method_revision_notes_2026-05-11_v3.tex}.
+
+\subsection*{2026-05-18 Scope Control Update}
+
+\textbf{Decision.} Keep SH residual correction as a required runtime appearance stage, while treating advanced anchor/load scoring as a robustness and refinement path rather than the MVP critical path.
+
+\textbf{Reason.} The system becomes too broad if every component is presented as a primary contribution. However, removing SH residual correction would make runtime rendering depend on expensive per-frame SH optimization, which is not compatible with the intended interactive wind-deformable 3DGS system.
+
+\textbf{Next.} Implement the first solver loop with fixed simulation anchors and simple fixed material-space load samples. Preserve view-masked gated floater scoring and projection-risk-aware load-sample refinement as later robustness/refinement milestones, and keep M9 focused on lightweight SH residual runtime correction.
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}

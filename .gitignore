@@ -1,0 +1,23 @@
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+
+# Python/cache artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local editor and OS noise
+.DS_Store
+Thumbs.db
