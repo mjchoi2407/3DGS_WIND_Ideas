@@ -747,10 +747,10 @@ Teacher future state, teacher residual, teacher force를 gate input으로 넣지
 4 & Global force 축약 & \constrained & Sample force, cubature, \(\Phi\) & Generalized load \(Q_g\) \\
 5 & Global predictor & \physics & \(Q_g,M_g,C_g,K_g\) & \(\tilde q,\dot{\tilde q}\) \\
 6 & Local 필요성 판단 & \learned & Global predictor, patch features/history & Benefit, uncertainty, active set \\
-7 & Missing force 예측 & \learned & Active patch state, wind, material & Patch missing force proposal \\
+7 & Local force proposal & \physics+\learned & Active patch state, wind, material & Analytic base aero + two missing-force channels \\
 8 & Local physical update & \physics & Assembled local force, \(M_\ell,C_\ell,K_\ell\) & \(z,\dot z\) \\
 9 & Global 중복 제거 & \deterministic & Patch basis/force, \(\Phi,M\) & Complement-only local field \\
-10 & Overlap 보존 조립 & \constrained & Patch proposals, overlap graph & Conservative local force/state \\
+10 & Overlap 보존 조립 & \constrained & Three-channel patch proposals, overlap graph & Channel-preserving conservative force \\
 11 & Global feedback/corrector & \physics & Cross reaction, corrected aero delta & Corrected \(q,\dot q\) \\
 12 & 최종 anchor state & \deterministic & Corrected \(q,z\), bases & Anchor state/deformation gradient \\
 13 & Gaussian transport/render & \deterministic & Anchor state, GS binding & \(G^t\), rendered image \\
