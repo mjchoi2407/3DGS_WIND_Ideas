@@ -21,3 +21,5 @@ __pycache__/
 # Local editor and OS noise
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
+*:mshield
