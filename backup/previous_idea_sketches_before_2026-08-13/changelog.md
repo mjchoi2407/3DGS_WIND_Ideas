@@ -1,5 +1,12 @@
 # Research Changelog
 
+## 2026-07-07
+
+- Decision: Added a boundary-continuous wind response map layer to the idea sketch.
+- Reason: ROI crop and part-level controls such as rigid trunks, semi-flexible branches, and soft leaves should not be applied as hard binary masks or hard semantic labels. The runtime field should be a smoothed 0--1 response map with crop feathering, graph/Laplacian regularization, and barycentric transfer to Gaussians.
+- Gaussian Swaying check: The paper formulates Gaussians as aerodynamic surface patches and uses patch-level drag/friction/lift coefficients with manually specified simulation regions, materials, and parameters. I did not find a dedicated user-painted part response map with boundary smoothing as a central control layer.
+- Next: In the ROI crop/control prototype, preserve hard labels for editing but store and use smoothed response values for simulation.
+
 ## 2026-05-18
 
 - Decision: Updated the idea sketch and implementation checklist to keep SH residual correction as a required runtime module while reducing advanced anchor/load scoring to a refinement path.

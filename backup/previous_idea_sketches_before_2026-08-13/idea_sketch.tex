@@ -9,6 +9,7 @@
 \usepackage{amssymb}
 \usepackage{booktabs}
 \usepackage{hyperref}
+\usepackage{kotex}
 
 \title{Wind-Driven Deformable 3D Gaussian Splatting: Idea Sketch}
 \author{}
@@ -32,6 +33,8 @@ The key technical challenge is that vanilla 3DGS is an unordered set of Gaussian
 Recent dynamic 3DGS methods focus on reconstructing time-varying scenes or learning general deformation fields. Physics-integrated approaches such as PhysGaussian and DiffWind couple Gaussians or 3DGS-derived particles with physical simulation, but they primarily operate on particle-style representations rather than an explicit topology scaffold \cite{xie2024physgaussian,lei2026diffwind}.
 
 For aerodynamics, Gaussian Swaying directly formulates Gaussians as surface patches with normals and effective areas, then computes drag, friction, and lift per Gaussian patch without meshing \cite{yan2025gaussianswaying}. This is an important novelty boundary: a direct Gaussian-patch aerodynamic force formulation would overlap strongly with that line of work.
+
+2026-07-07 기준 Gaussian Swaying 본문을 확인한 결과, 해당 방법은 Gaussian을 surface patch로 해석하고 patch별 면적, normal, drag/friction/lift 계수 및 MPM material parameter를 수동 지정하는 방향에 가깝다. 논문은 simulation region, object material, parameters를 수동 지정한다고 설명하며, 보충 표에서는 scene 단위의 Young's modulus, density, \(C_D,C_F,C_L\), flow intensity 등을 제시한다. 반면 줄기/잎/가지처럼 사용자가 부위별 response strength를 칠하고, 경계에서 연속 field로 보정하는 authoring layer는 핵심 기여로 드러나지 않는다. 따라서 본 프로젝트의 controllable response map은 Gaussian Swaying의 직접 Gaussian-patch aerodynamics와 구분되는 사용자 제어 및 topology-aware proxy layer로 위치시킨다.
 
 Mesh extraction methods such as SuGaR and Gaussian Opacity Fields show that surface or mesh proxies can be recovered from 3DGS-like representations \cite{guedon2024sugar,yu2024gof}. However, these works mainly target surface reconstruction, editing, or rendering, not topology-aware wind deformation with Gaussian binding and fast time-varying appearance correction.
 
@@ -93,6 +96,49 @@ The initial field stack should include:
 Automation should be profile-based rather than fully automatic. A \emph{cloth} profile can initialize one-side attachment and soft bending; a \emph{leaf} profile can initialize a root or vein prior; a \emph{free-shell} or \emph{soft-body} profile can initialize no attachment and nearly uniform elastic response; a \emph{folded-paper} profile can initialize high crease stiffness; a \emph{kite} profile can initialize soft membrane regions, stiff ribs, and string/bridle handles. Geometry cues such as boundary loops, geodesic distance, curvature ridges, principal axes, narrow regions, and Gaussian support confidence provide initial values, while the user remains able to paint or edit the resulting fields.
 
 Terminology should be precise: \emph{attachment anchors} are physical boundary or handle constraints, \emph{simulation anchors} are persistent degrees of freedom on the fixed-topology proxy, and \emph{load samples} are material-space quadrature sites where wind exposure and loads are evaluated. These are separate problems and should not be conflated.
+
+\subsection*{부위별 Wind Response Map과 경계 연속화}
+
+ROI crop 이후 바람을 적용할 영역은 hard mask가 아니라 \(0\)--\(1\) 연속 response map으로 저장한다. 사용자는 줄기, 굵은 가지, 잔가지, 잎처럼 의미 부위를 칠할 수 있지만, semantic label은 초기 seed 값일 뿐이고 실제 simulation에는 smooth response field가 들어간다. 예를 들어 나무형 asset의 초기값은 다음처럼 둔다:
+\[
+  r_{\mathrm{trunk}}\approx 0.02,\quad
+  r_{\mathrm{thick\ branch}}\approx 0.15,\quad
+  r_{\mathrm{thin\ branch}}\approx 0.35,\quad
+  r_{\mathrm{leaf}}\approx 0.8.
+\]
+최종 vertex response \(r_i\)는 label seed \(r_i^0\), crop feather \(c_i\), attachment/anchor falloff \(a_i\), height or geodesic falloff \(h_i\)를 결합한 editable field로 둔다:
+\[
+  \beta_i
+  =
+  c_i\,a_i\,h_i\,r_i.
+\]
+여기서 \(c_i\)는 crop 경계에서 \(1\rightarrow0\)으로 부드럽게 내려가는 smoothstep band이다. crop 내부와 외부가 바로 끊기면 경계가 찢기거나 고정된 테두리가 보이므로, ROI boundary에는 반드시 feather zone을 둔다.
+
+부위 label 경계의 불연속은 mesh graph 위의 constrained Laplacian smoothing으로 완화한다:
+\[
+  \min_{\{r_i\}}
+  \sum_i \lambda_i\|r_i-r_i^0\|^2
+  +
+  \lambda_E
+  \sum_{(i,j)\in E}
+  w_{ij}\|r_i-r_j\|^2.
+\]
+\(\lambda_i\)는 내부가 확실한 trunk/leaf seed에서는 크게 두고, 부위 경계나 segmentation confidence가 낮은 vertex에서는 작게 둔다. 이렇게 하면 내부의 의미 값은 유지하면서 경계 근처만 \(0.02\rightarrow0.15\rightarrow0.35\rightarrow0.8\)처럼 연속적으로 이어진다. 동일한 response field는 Gaussian-to-mesh binding 후 Gaussian 단위로 barycentric interpolation하여 전달한다:
+\[
+  \beta_j^G
+  =
+  \sum_{i\in\tau_j} b_{ji}\beta_i.
+\]
+
+움직임도 단순히 부위별 독립 displacement를 섞지 않고 계층적으로 합성한다. 잎은 가지의 큰 sway를 공유하고, 그 위에 leaf flutter를 추가한다:
+\[
+  \Delta \mathbf{x}_{\mathrm{leaf}}
+  =
+  \Delta \mathbf{x}_{\mathrm{branch}}
+  +
+  \beta_{\mathrm{leaf}}\Delta \mathbf{x}_{\mathrm{flutter}}.
+\]
+이 구조는 줄기와 잎 경계에서 motion discontinuity가 생기는 것을 줄이고, 줄기는 거의 고정되지만 잎은 부드럽게 흔들리는 제어를 가능하게 한다.
 
 \subsection*{Gaussian-Aware Simulation Anchors and Load Samples}
 
@@ -192,6 +238,8 @@ The strongest novelty should come from places where existing formulas cannot be 
   SuGaR- or GOF-style geometry extraction targets surface reconstruction or editing. Here the proxy should be optimized for wind simulation: stable topology, triangle quality, anchorability, thin-structure preservation, reliability-weighted Gaussian transport demand, and material-parameter assignment.
   \item \textbf{Profile-conditioned editable simulation fields.}
   Rather than treating boundary conditions and material parameters as hidden constants, the method initializes editable attachment, material, feature, wind-response, and handle fields from object profiles, geometry cues, and Gaussian support. This turns arbitrary 3DGS assets into controllable deformable simulation proxies.
+  \item \textbf{Boundary-continuous wind response maps.}
+  Region labels or ROI masks are treated only as authoring seeds. Runtime wind response is a continuous proxy field obtained by confidence-weighted graph smoothing, crop feathering, and barycentric transfer to Gaussians, preventing discontinuities at part boundaries such as trunk-leaf or crop-in/out interfaces.
   \item \textbf{Separated simulation anchors and fixed load samples.}
   Runtime wind exposure is frame-varying, but the simulation scaffold should not be. The method keeps persistent simulation anchors for physical state and uses fixed material-space load samples for wind exposure and force evaluation.
   \item \textbf{View-masked gated floater reliability.}
@@ -338,6 +386,7 @@ A regularizer prevents this field from becoming arbitrary per-scene tuning:
   \lambda_{\mathrm{sparse}}
   \|\Delta\theta\|_1.
 \]
+For user-painted part response, \(\beta_i\) should be interpreted as the smoothed response map value rather than a hard semantic label. Crop boundaries, semantic boundaries, and attachment falloffs are all stored as continuous fields so that force and displacement vary smoothly over the proxy.
 
 \subsection{Conservation-Preserving Sparse Force Projection}
 
@@ -461,6 +510,7 @@ where the residual regularizer discourages learned corrections from simply overw
   \item \textbf{Primary:} A lightweight simulation mesh extraction and Gaussian-to-mesh binding strategy for stable wind force propagation, anchor constraints, and transfer back to Gaussian rendering.
   \item \textbf{Primary or secondary:} A reliability-weighted Gaussian-aware material anchor mesh that avoids raw Gaussian-density heuristics and separates persistent simulation anchors from fixed material-space load samples.
   \item \textbf{Primary or secondary:} A profile-conditioned, user-editable physical/material field initialization layer that converts arbitrary 3DGS assets into controllable deformable simulation proxies.
+  \item \textbf{Primary or secondary:} A boundary-continuous wind response map that supports part-level controls such as rigid trunks and flexible leaves without hard discontinuities at semantic or crop boundaries.
   \item \textbf{Secondary:} A local-wind and exposure-aware force-space load-to-state formulation for controllable wind response.
   \item \textbf{Secondary:} A dense-force-supervised projection-risk field for one-time fixed load-sample refinement and conservation-aware force projection.
   \item \textbf{Supporting:} A deformation-aware SH residual prediction module that avoids per-frame SH re-optimization while preserving view-dependent appearance.
@@ -528,6 +578,7 @@ The SH residual labels can be obtained by comparing canonical appearance against
   \item Predicting full SH coefficients vs. predicting residual SH coefficients.
   \item Without conservation-preserving dense-to-proxy force projection.
   \item Without profile-conditioned field initialization.
+  \item Hard part labels or binary ROI masks vs. continuous response maps with boundary smoothing and crop feathering.
   \item Without material response parameters.
   \item Coarse vs. dense physics mesh resolution.
   \item Procedural wind input vs. learned wind latent.
@@ -545,6 +596,8 @@ The SH residual labels can be obtained by comparing canonical appearance against
   \item Dense-force-supervised projection risk depends on Blender or simulator force labels, so a fallback load-sample strategy is needed when dense supervision is unavailable.
   \item A mesh-proxy method may be criticized as no longer being a pure 3DGS simulation method; the paper must emphasize that 3DGS remains the input and rendering representation.
   \item Direct Gaussian-patch aerodynamics is already explored by Gaussian Swaying, so this work should focus on topology-aware proxy simulation, binding, constraints, and appearance residuals.
+  \item Hard response labels can create visible discontinuities at trunk-leaf, branch-leaf, or crop boundaries. The implementation must turn labels into smooth response fields and preserve only high-confidence interior seeds.
+  \item Excessive response smoothing may erase intentional sharp structural differences such as a rigid rib next to a soft membrane. Feature-aware confidence weights and user-pinned seeds are needed.
   \item Blender-trained SH residuals may not transfer cleanly to real captures because 3DGS SH coefficients are optimized appearance parameters, not physically pure lighting coefficients.
   \item Learned residuals may overfit to synthetic materials or fail under strong self-occlusion and specular effects.
   \item Hard-to-evaluate ``plausibility'' without ground truth wind.
@@ -609,6 +662,16 @@ The SH residual labels can be obtained by comparing canonical appearance against
 \textbf{Reason.} The system becomes too broad if every component is presented as a primary contribution. However, removing SH residual correction would make runtime rendering depend on expensive per-frame SH optimization, which is not compatible with the intended interactive wind-deformable 3DGS system.
 
 \textbf{Next.} Implement the first solver loop with fixed simulation anchors and simple fixed material-space load samples. Preserve view-masked gated floater scoring and projection-risk-aware load-sample refinement as later robustness/refinement milestones, and keep M9 focused on lightweight SH residual runtime correction.
+
+\subsection*{2026-07-07 Response Map Boundary Update}
+
+\textbf{Decision.} Add a boundary-continuous wind response map layer for ROI crop and part-level material control.
+
+\textbf{Reason.} For assets such as trees, the user needs controls such as rigid trunks, semi-flexible branches, and soft leaves. Hard semantic labels or binary crop masks would create motion discontinuities at part boundaries. Therefore labels should initialize seed values only, while simulation uses a smoothed \(0\)--\(1\) response field with crop feathering, graph regularization, and barycentric transfer to Gaussians.
+
+\textbf{Gaussian Swaying boundary.} Gaussian Swaying formulates each Gaussian as a surface patch and uses aerodynamic coefficients plus manually specified simulation regions, object materials, and parameters. It does not appear to provide a dedicated user-painted part response map with boundary smoothing as a central control layer. The Wind3DGS framing should therefore emphasize topology-aware editable response maps rather than direct Gaussian-patch aerodynamic force computation.
+
+\textbf{Next.} In the ROI crop tool, store both hard labels and smoothed response values. In the first prototype, expose a simple brush for \(r_i^0\), a feather width for crop boundaries, and a smoothing strength \(\lambda_E\), then transfer the final \(\beta_i\) to bound Gaussians.
 
 \bibliographystyle{plain}
 \bibliography{refs}
