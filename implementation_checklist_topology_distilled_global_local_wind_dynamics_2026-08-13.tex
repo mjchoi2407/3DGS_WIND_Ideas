@@ -96,7 +96,7 @@
 \(\rightarrow\)
 \code{benefit gate}
 \(\rightarrow\)
-\code{active missing-force proposals}
+\code{active Local base + missing-force channels}
 \\[0.25em]
 \(\rightarrow\)
 \code{overlap assembly}
@@ -122,8 +122,9 @@
 \code{1 $\rightarrow$ 2 $\rightarrow$ 3 $\rightarrow$ 4 $\rightarrow$ 5 $\rightarrow$ 6 $\rightarrow$ 7
 $\rightarrow$ 10 $\rightarrow$ 9 $\rightarrow$ 8 $\rightarrow$ 11 $\rightarrow$ 12 $\rightarrow$ 13 $\rightarrow$ 14}
 \end{center}
-Module 7의 patch force proposal을 Module 10에서 먼저 보존적으로 조립하고,
-Module 9에서 Global force span을 제거한 뒤, Module 8의 단일 Local system을 한 번 적분한다.
+Module 7의 analytic Local base aero, missing aero, missing structural을 channel별로 유지한다.
+세 channel을 Module 10에서 먼저 보존적으로 조립하고,
+Module 9에서 각각의 Global force span을 제거한 뒤, Module 8에서만 합쳐 단일 Local system을 한 번 적분한다.
 Patch별로 적분한 뒤 위치를 평균하는 구현은 금지한다.
 \end{tcolorbox}
 
@@ -416,7 +417,7 @@ M & 기능 & 주 milestone & 다음 typed 출력 \\
 4 & Conservative aero 축약 & TD06 & \code{ReducedAeroLoad} \\
 5 & Always-on Global predictor & TD05 & \code{GlobalPrediction} \\
 6 & Future-benefit gate & TD10 & \code{GateDecision} \\
-7 & Active missing-force proposal & TD09 & \code{PatchForceBatch} \\
+7 & Active Local base+missing-force proposal & TD04, TD09 & \code{PatchForceBatch} \\
 10 & Overlap-aware assembly & TD11 & \code{AssemblyResult} \\
 9 & Global force span 제거 & TD07, TD11 & \code{ComplementForce} \\
 8 & Single Local physical solve & TD07, TD11 & \code{LocalPrediction} \\
@@ -1144,6 +1145,8 @@ Gate를 붙이기 전에 모든 oracle-relevant patch에서 missing-force expert
 \subsection*{출력 계약}
 
 \begin{itemize}
+  \item[\todo] Stage 7 orchestration은 Module 3 analytic law로 active/halo Local base aero를 평가한다.
+  \item[\todo] \code{PatchForceBatch}에서 analytic base aero, missing aero, missing structural을 별도 channel/owner/record ID로 유지한다.
   \item[\todo] Position, displacement 또는 next state가 아니라 missing force proposal을 출력한다.
   \item[\todo] Structural internal, aerodynamic external, attachment/reaction channel을 분리한다.
   \item[\todo] External resultant와 internal action--reaction semantics를 metadata에 둔다.
@@ -1282,17 +1285,18 @@ Global double counting을 제거한 Local update가 corrected geometry를 통해
 \subsection*{실제 frame 내부 순서}
 
 \begin{enumerate}
-  \item Module 7이 active patch별 missing-force proposal을 출력한다.
-  \item Module 10이 모든 proposal을 anchor force space에 scatter하고 overlap을 constrained assemble한다.
-  \item Module 9가 assembled force에서 Global span을 제거하거나 joint KKT에서 동시에 제한한다.
-  \item Module 8이 resulting force로 하나의 Local state \(z,\dot z\)를 한 번 적분한다.
-  \item Module 11이 corrected geometry/cross coupling의 delta로 Global corrector를 한 번 푼다.
+  \item Module 7이 active patch별 analytic Local base aero, missing aero, missing structural proposal을 별도 channel로 출력한다.
+  \item Module 10이 각 channel을 anchor force space에 scatter하고 channel별 constraint로 overlap을 조립한다.
+  \item Module 9가 각 assembled channel에서 Global span을 제거하거나 joint KKT에서 동시에 제한한다.
+  \item Module 8이 channel별 Local generalized force를 처음 합쳐 하나의 Local state \(z,\dot z\)를 한 번 적분한다.
+  \item Module 11이 corrected aerodynamic delta와 updated-minus-consumed structural cross delta로 Global corrector를 한 번 푼다.
 \end{enumerate}
 
 \subsection*{Module 10: overlap-aware force assembly}
 
 \begin{itemize}
   \item[\todo] Patch-to-global scatter와 core--halo partition weight를 구현한다.
+  \item[\todo] Analytic base aero, missing aero, missing structural을 assembly 이후까지 서로 다른 owner/lineage로 유지한다.
   \item[\todo] Structural internal channel의 net force/torque가 0이 되도록 constraint를 둔다.
   \item[\todo] External aerodynamic residual은 unique physical resultant를 보존한다.
   \item[\todo] Attachment reaction은 internal/external residual과 별도 channel로 조립한다.
@@ -1316,9 +1320,9 @@ Global double counting을 제거한 Local update가 corrected geometry를 통해
 \subsection*{Module 8: single Local update}
 
 \begin{itemize}
-  \item[\todo] Assembly/complement 결과를 \(\Delta Q_\ell\)로 변환한다.
+  \item[\todo] Assembly/complement 결과를 channel별 \(Q_{\ell,c}^{\perp}\)로 변환한다.
   \item[\todo] Active와 Decay coordinate를 하나의 reduced system에서 적분한다.
-  \item[\todo] Base analytic Local aero/external/cross load와 learned defect를 force ledger로 합친다.
+  \item[\todo] Base analytic Local aero와 두 learned defect는 여기서 처음 합치고, cross load는 별도 structural coupling 항으로 소비한다.
   \item[\todo] Patch별 solver/integrator 호출 후 결과를 average하는 code path가 없음을 trace test로 보장한다.
   \item[\todo] Local energy, work, residual과 state transition diagnostics를 저장한다.
 \end{itemize}
@@ -1337,13 +1341,11 @@ Global double counting을 제거한 Local update가 corrected geometry를 통해
 \end{itemize}
 
 \begin{tcolorbox}[colback=LightRed,colframe=BlockRed,title=Structural feedback 소비 계약,fonttitle=\bfseries]
-Module 5가 이전 Local cross term을 이미 사용하고 Module 11이 updated reaction 전체를 더하면 structural force가 중복될 수 있다.
-구현 전에 다음 중 하나를 고정한다.
-\begin{enumerate}
-  \item Predictor는 cross coupling을 소비하지 않고 corrector가 전체 updated coupling을 담당한다.
-  \item Predictor가 consumed coupling을 기록하고, corrector는
-  \code{coupling(updated local state) - coupling(consumed local state)} delta만 더한다.
-\end{enumerate}
+Module 5는 이전 Local state의 cross coupling을 소비하고 그 값을 \code{predictor\_cross\_load}로 기록한다.
+Module 11은 updated reaction 전체가 아니라
+\code{coupling(updated local state) - predictor\_cross\_load}인
+\code{structural\_cross\_delta}만 더한다.
+Local state가 predictor에서 변하지 않았다면 delta가 0이어야 한다.
 Force ledger와 negative double-count test 없이 TD11을 완료 처리하지 않는다.
 \end{tcolorbox}
 

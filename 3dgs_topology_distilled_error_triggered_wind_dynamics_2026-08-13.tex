@@ -1084,7 +1084,7 @@ estimated cubature error와 sample confidence는 Module 6 gate feature로 넘어
 한 frame에 현재 wind query 하나만 필요하므로
 모든 방향 coefficient를 생성하는 state-conditioned RSH보다
 현재 sample force를 직접 평가하고 합산하는 편이 자연스럽다.
-RSH, directional MLP, LUT는 Module 29의 공력 표현 비교에만 남긴다.
+RSH, directional MLP, LUT는 E2 공력 표현 비교에만 남긴다.
 
 \subsection*{필수 검증}
 
@@ -1289,7 +1289,7 @@ Inactive patch의 missing-force kernel은 실제로 launch하지 않는다.
   \item Always-on Local과의 quality--latency Pareto.
 \end{itemize}
 
-\section{Module 7: Active-patch missing-force network}
+\section{Module 7: Active-patch Local force proposal}
 
 \subsection*{푸는 질문}
 
@@ -1298,7 +1298,8 @@ Inactive patch의 missing-force kernel은 실제로 launch하지 않는다.
 
 \subsection*{Solver 분류}
 
-\learned Shared patch-local equivariant GNN/MLP와 optional recurrent memory다.
+\physics Active region의 current analytic Local aero 평가와
+\learned Shared patch-local equivariant GNN/MLP, optional recurrent memory를 묶는 orchestration이다.
 최종 displacement나 next position을 직접 출력하지 않는다.
 
 \subsection*{입력}
@@ -1321,6 +1322,10 @@ Active patch \(r\)마다 다음을 canonical/co-rotated local frame에 넣는다
 
 \subsection*{출력}
 
+먼저 Module 3과 같은 analytic law를 active/halo sample에 적용하여
+Local base aerodynamic force proposal \(f_{r,\mathrm{base}}^t\)를 계산한다.
+이는 network output이 아니며 \texttt{analytic aero}가 physical owner다.
+
 \begin{equation}
   (\widehat{\Delta f}_{r,\mathrm{aero}}^t,
    \widehat{\Delta f}_{r,\mathrm{struct}}^t,
@@ -1332,6 +1337,18 @@ Active patch \(r\)마다 다음을 canonical/co-rotated local frame에 넣는다
 
 Teacher force breakdown이 신뢰 가능하면 aerodynamic residual과 structural/model residual을 분리한다.
 그렇지 않으면 single total defect head를 사용하되 주장 범위를 축소한다.
+
+Stage 7 orchestration의 최종 \texttt{PatchForceBatch}는
+\begin{equation}
+  \left\{
+    f_{r,\mathrm{base}}^t,
+    \widehat{\Delta f}_{r,\mathrm{aero}}^t,
+    \widehat{\Delta f}_{r,\mathrm{struct}}^t
+  \right\}_{r\in\mathcal A_t}
+\end{equation}
+의 세 channel을 분리해 담는다.
+첫 channel은 analytic base aero이고 뒤의 두 channel만 learned missing force다.
+Module 10과 9는 이 channel들을 합쳐 owner를 잃지 않고 각각 조립·투영한다.
 
 \begin{itemize}[leftmargin=1.5em]
   \item Aerodynamic head는 external missing force이며 nonzero net wrench를 가질 수 있다.
@@ -1373,7 +1390,7 @@ Module 8의 단일 Local physical system에 들어간다.
 
 \subsection*{푸는 질문}
 
-\emph{조립된 missing force를 받았을 때 Global이 표현하지 못하는 Local state가
+\emph{조립·투영된 Local force channel을 받았을 때 Global이 표현하지 못하는 Local state가
 관성, 복원, 감쇠를 따라 어떻게 움직이는가?}
 
 \subsection*{Solver 분류}
@@ -1383,11 +1400,13 @@ Module 8의 단일 Local physical system에 들어간다.
 \subsection*{입력}
 
 \begin{itemize}[leftmargin=1.5em]
-  \item Module 10과 9를 거친 \(\Delta Q_\ell^t\),
+  \item Module 10과 9를 channel별로 거친
+  \(Q_{\ell,\mathrm{base}}^{\perp,t}\),
+  \(\Delta Q_{\ell,\mathrm{aero}}^{\perp,t}\),
+  \(\Delta Q_{\ell,\mathrm{struct}}^{\perp,t}\),
   \item active/decay basis \(\Psi_{\mathcal S_t}\),
   \item \(M_{\ell\ell},C_{\ell\ell},K_{\ell\ell}\)와 cross blocks,
   \item predictor Global state \(\widetilde q,\dot{\widetilde q}\),
-  \item active Local analytic load projection,
   \item 이전 \(z,\dot z\).
 \end{itemize}
 
@@ -1399,10 +1418,13 @@ Module 8의 단일 Local physical system에 들어간다.
   +C_{\ell\ell}\dot z
   +K_{\ell\ell}z
   =&\;
-  \Gamma_t Q_{\ell,\mathrm{base}}
+  \Gamma_t\left(
+  Q_{\ell,\mathrm{base}}^{\perp}
+  +\Delta Q_{\ell,\mathrm{aero}}^{\perp}
+  +\Delta Q_{\ell,\mathrm{struct}}^{\perp}
+  \right)
   -C_{\ell g}\dot{\widetilde q}
-  -K_{\ell g}\widetilde q\\
-  &+\Gamma_t\Delta Q_{\ell,\theta}.
+  -K_{\ell g}\widetilde q.
   \label{eq:local-dynamics}
 \end{aligned}
 \end{equation}
@@ -1411,8 +1433,11 @@ Module 8의 단일 Local physical system에 들어간다.
 중요하게도 \(\Gamma_t\)는 \(M_{\ell\ell},C_{\ell\ell},K_{\ell\ell}\)를 곱하지 않는다.
 즉 gate가 off되어도 이미 존재하는 Local state의 inertia, restoring, damping은 계속 작동한다.
 
-\(Q_{\ell,\mathrm{base}}\)는 active Local basis에 투영한 current analytic aero와
-명시적인 local external load다.
+\(Q_{\ell,\mathrm{base}}^{\perp}\)는 current analytic aero를 overlap-aware하게 조립하고
+Global force span을 제거한 Local generalized load다.
+두 \(\Delta Q^\perp\)만 learned missing-force channel이다.
+세 channel은 서로 다른 owner/lineage를 유지한 채 같은 Module 10--9 경로를 거치고,
+Module 8에서만 합산된다.
 Decay patch에서는 새 excitation과 learned defect를 서서히 줄이되,
 기존 \(z,\dot z\)는 물리적으로 감쇠한다.
 
@@ -1449,7 +1474,7 @@ overlap anchor의 실제 mass, energy, reaction이 정의되지 않는다.
 
 \subsection*{푸는 질문}
 
-\emph{Patch network가 제안한 힘 중 Global이 이미 담당하는 성분과
+\emph{Patch별 Local force channel 중 Global이 이미 담당하는 성분과
 진짜 Local complement 성분을 어떻게 구분할 것인가?}
 
 \subsection*{Solver 분류}
@@ -1467,22 +1492,26 @@ Global virtual work가 0인 force를 만들기 위한 projector는
   \label{eq:force-complement}
 \end{equation}
 
-조립된 raw force \(\widetilde f_\ell\)에 대해
+Channel 집합
+\(\mathcal C_\ell=\{\mathrm{base\ aero},\mathrm{missing\ aero},\mathrm{missing\ structural}\}\)의
+조립된 raw force \(\widetilde f_{\ell,c}\)마다
 
 \begin{equation}
-  f_\ell^\perp
+  f_{\ell,c}^\perp
   =
-  \Pi_f^\perp\widetilde f_\ell,
+  \Pi_f^\perp\widetilde f_{\ell,c},
   \qquad
-  \Phi^\top f_\ell^\perp=0.
+  \Phi^\top f_{\ell,c}^\perp=0,
+  \quad c\in\mathcal C_\ell.
 \end{equation}
 
 Local generalized force는
 
 \begin{equation}
-  \Delta Q_{\ell,\theta}
+  Q_{\ell,c}^\perp
   =
-  \Psi_{\mathcal S_t}^\top f_\ell^\perp
+  \Psi_{\mathcal S_t}^\top f_{\ell,c}^\perp,
+  \quad c\in\mathcal C_\ell
 \end{equation}
 
 로 만든다.
@@ -1502,14 +1531,15 @@ Mainline Local head에서는 Global leakage를 loss와 projection으로 억제�
 
 \subsection*{출력과 다음 단계}
 
-\(\Delta Q_{\ell,\theta}\)는 Module 8로,
+세 channel의 \(Q_{\ell,c}^\perp\)는 owner/lineage를 보존한 채 Module 8로,
 Global-span leakage norm
 
 \begin{equation}
   \epsilon_{\mathrm{leak}}
   =
-  \frac{\|\Phi^\top\widetilde f_\ell\|_2}
-  {\|\widetilde f_\ell\|_2+\eps}
+  \max_{c\in\mathcal C_\ell}
+  \frac{\|\Phi^\top\widetilde f_{\ell,c}\|_2}
+  {\|\widetilde f_{\ell,c}\|_2+\eps}
 \end{equation}
 
 은 diagnostics와 training loss로 넘어간다.
@@ -1527,13 +1557,16 @@ seam, double counting, 가짜 translation/rotation 없이 하나의 force를 만
 
 \subsection*{초기 조립}
 
+각 channel \(c\in\mathcal C_\ell\)을 합치기 전에 따로 조립한다.
+
 \begin{equation}
-  \widetilde f^t
+  \widetilde f_c^t
   =
   \sum_{r\in\mathcal A_t}
   R_r^\top W_r
   \gamma_r^t
-  \widehat{\Delta f}_r^t.
+  f_{r,c}^t,
+  \qquad c\in\mathcal C_\ell.
   \label{eq:raw-overlap-assembly}
 \end{equation}
 
@@ -1544,13 +1577,13 @@ Partition weights는 displacement continuity에 유용하지만
 \subsection*{Constrained correction}
 
 \begin{equation}
-  f_{\mathrm{asm}}
+  f_{\mathrm{asm},c}
   =
   \argmin_f
-  \|f-\widetilde f\|_{W_f}^2
+  \|f-\widetilde f_c\|_{W_f}^2
   \quad
   \text{s.t.}\quad
-  A_{\mathrm{cons}}f=b_{\mathrm{cons}}.
+  A_{\mathrm{cons},c}f=b_{\mathrm{cons},c}.
   \label{eq:conservative-assembly}
 \end{equation}
 
@@ -1579,7 +1612,7 @@ Constraint는 channel별로 다르다.
 
 \subsection*{출력과 다음 단계}
 
-Conservative \(f_{\mathrm{asm}}\), reaction wrench,
+Channel별 conservative \(f_{\mathrm{asm},c}\), reaction wrench,
 overlap constraint residual이 Module 9와 Module 11로 넘어간다.
 
 \subsection*{필수 검증}
@@ -1638,7 +1671,7 @@ Module 5에서 이미 사용한 base aerodynamic force 전체를 다시 넣으�
 \subsection*{Structural coupling}
 
 \begin{equation}
-  Q_{g\leftarrow\ell}^{\mathrm{struct},t}
+  Q_{g\leftarrow\ell}^{\mathrm{current},t}
   =
   -C_{g\ell}\dot z^t
   -K_{g\ell}z^t.
@@ -1647,6 +1680,18 @@ Module 5에서 이미 사용한 base aerodynamic force 전체를 다시 넣으�
 
 이 항은 reduced block derivation에서 실제로 nonzero일 때만 사용한다.
 Cross blocks가 0인 basis라면 식~\eqref{eq:structural-feedback}를 억지로 만들어내지 않는다.
+Module 5는 이전 Local state로 만든
+\(Q_{g\leftarrow\ell}^{\mathrm{predictor},t}\)를 이미 소비하므로,
+same-frame corrector는 전체 current cross load가 아니라
+
+\begin{equation}
+  \Delta Q_{g\leftarrow\ell}^{\mathrm{struct},t}
+  =
+  Q_{g\leftarrow\ell}^{\mathrm{current},t}
+  -Q_{g\leftarrow\ell}^{\mathrm{predictor},t}
+\end{equation}
+
+만 소비한다. \(z^t=z^{t-1}\)이고 속도도 같으면 이 delta는 정확히 0이어야 한다.
 
 \subsection*{Corrector solve}
 
@@ -1656,7 +1701,7 @@ Cross blocks가 0인 basis라면 식~\eqref{eq:structural-feedback}를 억지로
   \operatorname{SolveGlobal}
   \left(
   \Delta Q_g^{\mathrm{aero},t}
-  +Q_{g\leftarrow\ell}^{\mathrm{struct},t}
+  +\Delta Q_{g\leftarrow\ell}^{\mathrm{struct},t}
   \right),
 \end{equation}
 
@@ -1882,19 +1927,20 @@ for frame t:
     # Adaptive Local decision and proposal
     evaluate lightweight future-benefit gate on all patches
     select active patches under compute budget and hysteresis
+    evaluate analytic Local base aero on active/halo samples
     evaluate missing-force network only on active patches
 
     # Assemble before integrating
-    scatter active patch force proposals to shared anchors
-    solve overlap conservation constraints
-    remove/route Global-span force components
+    keep base aero, missing aero, missing structural as separate channels
+    scatter each channel to shared anchors and solve its conservation constraints
+    remove/route each channel's Global-span force components
     build one active/decay complementary Local system
     integrate Local mass-stiffness-damping system -> z
 
     # Mechanical feedback
     reconstruct corrected surface in active/halo regions
     recompute only corrected-minus-predictor aerodynamic force
-    add valid structural cross-block reaction
+    add structural_cross_delta = updated coupling - predictor-consumed coupling
     solve one small Global corrector -> q
 
     # Output and state
@@ -1919,13 +1965,13 @@ f_{\mathrm{aero}}^t
 &\rightarrow
 \text{benefit gate}
 \rightarrow
-\text{active patch missing force}\\
+\text{active patch Local base + missing force channels}\\
 &\rightarrow
 \text{conservative complement assembly}
 \rightarrow
 z^t\\
 &\rightarrow
-\Delta Q_g^{\mathrm{aero/struct}}
+\Delta Q_g^{\mathrm{aero}},\Delta Q_g^{\mathrm{structural\ cross}}
 \rightarrow
 q^t
 \rightarrow
@@ -3718,15 +3764,18 @@ quasi-steady aerodynamic sample force를 계산한다.
 
 작은 gate network는 Global-only predictor, local strain/curvature,
 wind, uncertainty, history에서 각 patch의 future correction benefit을 예측한다.
-선택된 patch에서만 missing-force network를 실행한다.
+선택된 patch에서만 missing-force network를 실행하고,
+같은 active/halo 영역의 analytic Local base aero와 함께 세 channel을 만든다.
 Network는 위치가 아니라 base physics가 놓친 local force를 출력한다.
-겹치는 patch force는 먼저 보존적으로 조립되고,
-Global span을 제거한 하나의 Local complement system이
-관성, restoring, damping과 함께 이 force를 적분한다.
+세 channel은 합치기 전에 각각 보존적으로 조립되고 Global span을 제거한다.
+그 뒤 하나의 Local complement system이 관성, restoring, damping과 함께
+channel별 generalized force의 합을 적분한다.
 
 Local correction은 렌더링에만 더해지지 않는다.
 수정된 surface normal, area, velocity에서 aerodynamic force를 다시 계산하고,
-predictor 대비 delta와 유효한 structural cross reaction을 작은 Global corrector에 되돌린다.
+predictor 대비 aerodynamic delta와
+updated coupling에서 predictor-consumed coupling을 뺀 structural cross delta만
+작은 Global corrector에 되돌린다.
 최종 \(q,z\)에서 anchor deformation을 한 번만 복원하고,
 affine MLS로 Gaussian mean과 covariance를 운반하여 standard 3DGS로 렌더링한다.
 Inactive patch의 expensive network는 실제 skip하지만,
