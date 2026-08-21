@@ -1,0 +1,2079 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=22mm,headheight=14pt]{geometry}
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Serif CJK KR}
+\setCJKsansfont{Noto Sans CJK KR}
+\setCJKmonofont{Noto Sans Mono CJK KR}
+
+\usepackage{amsmath,amssymb,bm,mathtools}
+\usepackage{booktabs,longtable,tabularx,array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+
+\definecolor{CoreBlue}{HTML}{1F4E79}
+\definecolor{CoreLight}{HTML}{EAF3F8}
+\definecolor{DeferOrange}{HTML}{B45F06}
+\definecolor{DeferLight}{HTML}{FFF2CC}
+\definecolor{RejectRed}{HTML}{9C0006}
+\definecolor{RejectLight}{HTML}{FCE8E6}
+\definecolor{SafeGreen}{HTML}{38761D}
+\definecolor{SafeLight}{HTML}{EAF4E2}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=CoreBlue,
+  citecolor=CoreBlue,
+  urlcolor=CoreBlue,
+  pdftitle={Topology-Distilled Selective Global-Local Wind Dynamics for Static 3D Gaussian Thin Surfaces},
+  pdfauthor={Wind3DGS Project}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Topology-Distilled Selective Global--Local Wind Dynamics}
+\rhead{\small Minimal V0}
+\cfoot{\thepage}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\setlist[itemize]{leftmargin=1.5em,itemsep=0.15em,topsep=0.25em}
+\setlist[enumerate]{leftmargin=1.8em,itemsep=0.2em,topsep=0.25em}
+\renewcommand{\arraystretch}{1.18}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\core}[1]{\textcolor{CoreBlue}{\textbf{#1}}}
+\newcommand{\defer}[1]{\textcolor{DeferOrange}{\textbf{#1}}}
+\newcommand{\reject}[1]{\textcolor{RejectRed}{\textbf{#1}}}
+\newcommand{\safe}[1]{\textcolor{SafeGreen}{\textbf{#1}}}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{black!2},
+  columns=fullflexible
+}
+
+\title{\textbf{Topology-Distilled Selective Global--Local Wind Dynamics}\\
+for Static 3D Gaussian Thin Surfaces\\[0.35em]
+\large Minimal V0 Canonical Research Sketch}
+\author{Wind3DGS Project}
+\date{2026-08-15}
+
+\begin{document}
+\maketitle
+
+\begin{tcolorbox}[colback=CoreLight,colframe=CoreBlue,title=Canonical method/contract freeze,fonttitle=\bfseries]
+이 문서는 첫 CG 논문의 method equation과 implementation contract를 소유하고 동결하는
+Minimal V0 canonical source다. 논문의 최종 claim과 연구 경로는 이 동결과 구분하며,
+Gate A/B/C evidence가 모이는 V0-05에서만 별도로 동결한다.
+구현 checklist는 이 문서의 stable label을 참조하는 파생 실행 문서이며,
+독립적인 두 번째 수식 source가 아니다.
+목표는 engineering-grade thin-shell simulation이 아니라
+\emph{visually plausible, temporally stable, controllable wind animation}과
+실측 quality--latency 이득이다.
+이전 full design의 objective normal-curvature closure, patch-force KKT/Schur,
+exact reaction ledger, same-frame corrector와 confidence calibration은
+design archive로 동결하며 V0 구현 요구사항이 아니다.
+\end{tcolorbox}
+
+\tableofcontents
+\newpage
+
+\section{연구 질문과 검증 대상 기여 계층}
+
+\subsection{연구 질문}
+
+독립적으로 재구성된 static 3D Gaussian Splatting(3DGS) asset
+\cite{kerbl2023gaussian}에서 explicit target triangle mesh를 복원하지 않고,
+사용자가 지정한 재료와 부착 조건 아래 바람에 반응하는 얇은 물체를
+빠르고 직접 렌더 가능한 형태로 애니메이션할 수 있는가?
+
+핵심 가설은 전체 reduced rank를 무조건 늘리는 대신, Global ROM이 놓치는
+국소 응답의 complementary Local modes만 선택하면 strong Global-rank 및
+same-anchor solver보다 새로운 quality--latency Pareto 영역을 만들 수 있다는 것이다.
+이는 learned gate의 존재가 아니라 선택적 complementary execution 자체의 가설이다.
+
+\subsection{기여 계층}
+
+\begin{enumerate}
+  \item \textbf{MC1 --- topology-distilled sparse physical scaffold.}
+  Independent static GS에서 oriented sparse anchors, local relation, area/mass ownership과
+  Global/patch-Local basis를 만들되 target에서 explicit triangle-mesh reconstruction을 요구하지 않는다.
+  Material과 attachment는 appearance로 추론하지 않고 setup metadata로 받는다.
+  \item \textbf{MC2 --- selective complementary Global--Local dynamics.}
+  Global basis의 rank를 전체적으로 늘리지 않고 현재 load에 필요한 patch complement만 선택하여
+  하나의 coupled reduced system으로 적분한다.
+  \item \textbf{SYS --- directly renderable Gaussian transport and scaling evidence.}
+  Anchor dynamics를 Gaussian mean/covariance로 한 번 transport하고,
+  simulation anchor 수와 rendering Gaussian 수를 분리해 측정한다.
+\end{enumerate}
+
+Structural backend, quasi-steady aero, selector score와 affine transport는 enabling component다.
+각 component 자체를 독립 novelty로 주장하지 않는다.
+기존 Gaussian physics/animation 연구 \cite{xie2024physgaussian,yan2026gaussianswaying,
+lei2026diffwind,ma2026fastphysgs}와의 차이는 위 MC1/MC2 및 실측 Pareto에서 입증한다.
+방어할 교차점은 independent static GS의 versioned sparse scaffold, static-GS-derived Global space에
+\(M\)-orthogonal한 patch complement의 wind-load-conditioned fixed-cardinality execution,
+그리고 anchor-to-Gaussian direct transport를 하나의 measured system으로 닫는 결합이다.
+Mesh-free ROM, local enrichment, Gaussian aerodynamics 또는 bending triplet 각각의 최초성을 주장하지 않는다.
+
+\subsection{명시적 비주장}
+
+\begin{itemize}
+  \item Engineering-grade stress, force, torque, support reaction 또는 material identification
+  \item Full nonlinear shell accuracy, nonzero Poisson ratio, anisotropy와 pre-curved shell coupling
+  \item Wake, vortex shedding, aerodynamic history 또는 two-way FSI
+  \item Self-contact, tearing, plastic crease, detached/free flight
+  \item Exact energy conservation, exact modal recovery 또는 exact error-controlled adaptivity
+  \item Fully mesh-free physics 또는 arbitrary thin-object generalization
+  \item End-to-end p95 측정 전의 real-time/interactive claim
+\end{itemize}
+
+\section{대상 범위와 I/O contract}
+
+\subsection{정량 범위}
+
+첫 구현과 Gate 판정의 정량 core는 flat-rest, single-layer, attached thin surface에 한정한다.
+Core geometry는 cantilever strip과 rectangular flag이며, uniform isotropic material preset
+2--3개와 hard edge attachment 하나를 먼저 사용한다. Flat-rest acceptance는 각 same-layer
+support의 식~\eqref{eq:minimal-flat-rest-planarity} normalized rest-normal residual이 development에서 동결한
+\(\tau_{\mathrm{planar}}\) 이하일 것을 요구한다. Irregular flat sampling에서는 아래
+opposite-triplet descriptor \(d_{ia}^0\)가 정확히 0이 아닐 수 있으므로 이를 0으로 덮어쓰지 않고,
+기존 tangential interpolation residual과 planarity cap을 함께 적용한다.
+Steady, abrupt start/stop, sinusoidal gust와 traveling gust만 core wind program으로 둔다.
+
+Gate A/B/C 통과 후에만 shallow-rest/pre-curved surface, triangular pennant, curtain strip,
+compliant attachment와 real captured flag를 제한적인 qualitative transfer로 추가한다.
+이때도 frozen V0 backend를 그대로 사용하며 새 shell solver를 추가하지 않고 정량 core claim에
+포함하지 않는다. Paper-like sheet와 leaf/petal도 qualitative transfer이며,
+plastic crease, anisotropy와 stem mechanics를 주장하지 않는다.
+
+\subsection{Setup 입력}
+
+\begin{equation}
+  \mathcal I_{\mathrm{setup}}
+  =
+  \left(
+    \mathcal G^0,\;
+    s_{\mathrm{metric}}\ \text{or}\ \vartheta_{\mathrm{nd}},\;
+    \vartheta_{\mathrm{mat}},\;
+    \vartheta_{\mathrm{aero}},\;
+    \mathcal C_{\mathrm{attach}}
+  \right).
+  \label{eq:minimal-setup-input}
+\end{equation}
+
+\(\mathcal G^0\)는 static Gaussian means, covariances와 appearance다.
+Unit branch는 \(\mathsf u\in\{\mathrm{SI},\mathrm{nd}\}\) 중 정확히 하나다.
+SI branch는 \(s_{\mathrm{metric}}>0\)와 직접 지정한 surface mass density
+\(\rho_A\,[\mathrm{kg}/\mathrm{m}^2]\)를 사용한다. Volumetric density와 thickness를 이미 아는 경우에만
+\(\rho_A=\rho_s h\)로 환산하며, \(h\)를 appearance에서 추론하지 않는다.
+Native GS length unit에서 SI package로 들어가는 metric conversion은
+\begin{equation}
+  x^{\mathrm{SI}}=s_{\mathrm{metric}}x^{\mathrm{native}},\qquad
+  \Sigma^{\mathrm{SI}}=s_{\mathrm{metric}}^2\Sigma^{\mathrm{native}},\qquad
+  a^{\mathrm{SI}}=s_{\mathrm{metric}}^2a^{\mathrm{native}}
+  \label{eq:minimal-si-metric-conversion}
+\end{equation}
+으로 고정한다. 즉 Gaussian covariance와 anchor area를 length와 같은 비율로 변환하지 않는다.
+실제 SI scale이 없으면
+\(\vartheta_{\mathrm{nd}}=(L_0,M_0,T_0)\), \(L_0,M_0,T_0>0\)와
+별도의 dimensionless material/aero preset을 사용한다. SI payload를 명시적인
+\((L_0,M_0,T_0)\)로 nondimensional internal representation에 옮길 때와 SI/nd parity fixture에는
+다음 typed map만 사용한다.
+\begin{equation}
+\begin{aligned}
+  \widehat x&=x/L_0,&
+  \widehat t&=t/T_0,&
+  \widehat{\Delta t}&=\Delta t/T_0,\\
+  \widehat m&=m/M_0,&
+  \widehat a&=a/L_0^2,&
+  \widehat\Sigma&=\Sigma/L_0^2,\\
+  \widehat\rho_A&=\rho_A L_0^2/M_0,&
+  \widehat\kappa_{\mathrm{str}}&=\kappa_{\mathrm{str}}T_0^2/M_0,&
+  \widehat\kappa_{\mathrm{bend}}&=\kappa_{\mathrm{bend}}T_0^2/(M_0L_0^2),\\
+  \widehat\rho_{\mathrm{air}}&=\rho_{\mathrm{air}}L_0^3/M_0,&
+  \widehat W&=WT_0/L_0,&
+  \widehat{\partial_tW}&=(\partial_tW)T_0^2/L_0,\\
+  \widehat{\nabla_xW}&=T_0\nabla_xW,&
+  \widehat f&=fT_0^2/(M_0L_0),&
+  \widehat f_{\max}&=f_{\max}T_0^2/(M_0L_0).
+\end{aligned}
+  \label{eq:minimal-si-nd-typed-map}
+\end{equation}
+여기서 \(\rho_A,\kappa_{\mathrm{str}},\kappa_{\mathrm{bend}},\rho_{\mathrm{air}}\)의 SI 차원은 각각
+\(M/L^2,M/T^2,ML^2/T^2,M/L^3\)이고,
+\(W,\partial_tW,\nabla_xW,f\)의 차원은 각각 \(L/T,L/T^2,1/T,ML/T^2\)다.
+Nondimensional material payload는
+\(\widehat\vartheta_{\mathrm{mat}}
+=(\widehat\rho_A,\widehat\kappa_{\mathrm{str}},
+\widehat\kappa_{\mathrm{bend}},\widehat\alpha,\widehat\beta)\)를 직접 저장한다.
+절대 mass가 없으면 \(\widehat M_{\mathrm{asset}}=1\)과
+\(\widehat\rho_A=1/\sum_i\widehat a_i^0\)를 기본 convention으로 사용한다.
+SI와 nondimensional preset에는 서로 다른 type tag와 package hash를 부여하고,
+한 package 또는 run에서 섞이면 fail-fast한다.
+\(\vartheta_{\mathrm{mat}}
+=(\rho_A,\kappa_{\mathrm{str}},\kappa_{\mathrm{bend}},\alpha,\beta)\)는
+unit-typed surface mass density, stretching stiffness, bending rigidity와 Rayleigh damping preset이며,
+SI Rayleigh law \(C=\alpha M+\beta K\)에서
+\([\alpha]=\mathrm{s}^{-1}\), \([\beta]=\mathrm{s}\)다.
+SI preset을 \((L_0,M_0,T_0)\) convention으로 nondimensionalize하면
+\begin{equation}
+  \widehat\alpha=\alpha T_0,\qquad
+  \widehat\beta=\frac{\beta}{T_0}
+  \label{eq:minimal-rayleigh-unit-map}
+\end{equation}
+을 저장한다. 처음부터 nondimensional preset을 지정한 경우에는 이 두 값 자체가 typed input이며,
+SI coefficient와 같은 field에 암묵적으로 섞지 않는다.
+Length, area, covariance, velocity, mass, force와 energy bound/epsilon은 각각
+\(L_0,L_0^2,L_0^2,L_0/T_0,M_0,M_0L_0/T_0^2,M_0L_0^2/T_0^2\)로 나누고,
+dimensionless rank/condition/rate threshold는 변환하지 않는다. 선택한 internal unit mode,
+\((L_0,M_0,T_0)\)의 값과 소유자, 변환된 clamp/eigenvalue/epsilon 전체를 package hash에 넣는다.
+SI internal mode를 선택한 package는 존재하지 않는 scale triple을 암묵적으로 만들어 위 map을 적용하지 않는다.
+\(\vartheta_{\mathrm{aero}}=(\rho_{\mathrm{air}},C_n,C_\tau,\text{clamp})\)는
+run 전 동결하는 quasi-steady aerodynamic preset이다.
+\(\mathcal C_{\mathrm{attach}}\)는 setup에서 고정하는 hard attachment layout이다.
+Runtime 중 material 또는 attachment topology를 바꾸지 않는다.
+두 branch는 package build에서 하나의 선택된 internal unit representation으로 정규화한 뒤
+동일한 operator/solver code path를 사용한다.
+
+\subsection{Frame 입력과 출력}
+
+Frame 입력은 prescribed one-way wind field \(W(x,t)\), timestep \(\Delta t\)와 이전 state다.
+출력은 deformed Gaussian means/covariances, standard 3DGS renderer 입력과
+stage별 synchronized timing trace다.
+
+Canonical run의 operating envelope는
+\begin{equation}
+  \mathcal E_{\mathrm{op}}
+  =
+  \left(
+    \Delta t,\;N_{\mathrm{sub}}=1,\;W_{\max},\;\dot W_{\max},\;G_{W,\max},\;
+    f_{\max},\;\mathcal B_{\mathrm{area/affine/cov}}
+  \right)
+  \label{eq:minimal-operating-envelope}
+\end{equation}
+로 package/run manifest에 저장한다. Core wind는
+\(\|W\|\leq W_{\max}\), \(\|\partial_tW\|\leq\dot W_{\max}\),
+\(\|\nabla_xW\|\leq G_{W,\max}\) 안에서만 정량 주장하며,
+force와 area/affine/covariance clamp bound 및 clamp-rate cap도 함께 동결한다.
+\(f_{\max}>0\)는 선택한 internal unit branch에 맞게 typed된 positive scalar이며,
+anchor별 \(\|f_{\mathrm{aero},i}\|_2\)의 hard bound다.
+Canonical package attempt는 결과를 보기 전에 등록한 independent-GS reconstruction과 setup metadata의
+조합이고, canonical sequence attempt는 그 package에 대해 미리 등록한 material/wind/seed/horizon 조합이다.
+입력 pre-check가 \(\mathcal E_{\mathrm{op}}\)를 벗어나면 해당 조합은 \emph{declared OOD}이며 primary
+denominator에 넣지 않는다. 범위 밖 qualitative run은 non-canonical OOD로만 기록한다.
+관측된 오차나 실패를 본 뒤 in-envelope 조합을 OOD로 소급 분류하는 것은 금지한다.
+
+반대로 pre-check를 통과한 canonical attempt에서 package rejection, current tangent rank collapse,
+solver divergence/non-finite state, unresolved renderer transport 또는 covariance bound/cap 위반이 생기면
+\emph{in-envelope method failure}다. 실패 frame을 valid-frame conditional 평균에 넣지는 않지만,
+그 package/sequence를 canonical denominator에서 제거하지 않는다. 미리 등록한 수를 각각
+\(N_{\mathrm{pkg}}^{\mathrm{attempt}}\), \(N_{\mathrm{seq}}^{\mathrm{attempt}}\)라 하고
+\begin{equation}
+  R_{\mathrm{accept}}
+  =\frac{N_{\mathrm{pkg}}^{\mathrm{accepted}}}
+         {N_{\mathrm{pkg}}^{\mathrm{attempt}}},\qquad
+  R_{\mathrm{success}}
+  =\frac{N_{\mathrm{seq}}^{\mathrm{successful}}}
+         {N_{\mathrm{seq}}^{\mathrm{attempt}}}
+  \label{eq:minimal-attempt-success-contract}
+\end{equation}
+을 conditional quality/timing과 함께 보고한다. Package rejection으로 실행할 수 없어진 사전 등록
+sequence도 end-to-end \(N_{\mathrm{seq}}^{\mathrm{attempt}}\)에는 남고 unsuccessful로 센다.
+Failure reason은 mutually exclusive first-failure code와 time-to-failure로 기록한다.
+Development split에서 동결한 \(\tau_{\mathrm{fail},A}\), \(\tau_{\mathrm{fail},C}\)에 대해
+\(1-R_{\mathrm{accept}}>\tau_{\mathrm{fail},A}\)이면 Gate A,
+\(1-R_{\mathrm{success}}>\tau_{\mathrm{fail},C}\)이면 final deployable Gate C를 실패한다.
+성공 sequence만의 낮은 평균 오차나 latency로 이 failure cap을 상쇄할 수 없다.
+고정 penalty를 실패에 부여한 capped aggregate는 development에서 penalty와 sensitivity를 동결한
+보조 지표로 추가할 수 있으나, 임의의 penalty 선택에 의존하므로 필수 primary가 아니며
+두 rate와 conditional metric을 대체하지 않는다.
+Canonical V0는 실패 시 frame별 substep 수를 바꾸거나 corrector를 자동 추가하지 않는다.
+
+모든 canonical typed package와 run manifest는 다음 method signature를 필수 immutable field로 저장한다.
+\[
+\begin{aligned}
+  \texttt{basis\_type} &= \texttt{generalized\_eigen\_v1},\\
+  \texttt{tangent\_fit\_version} &= \texttt{tangent\_fit\_v1},\\
+  \texttt{tangent\_gauge\_version} &= \texttt{attachment\_line\_v1},\\
+  \texttt{bend\_projection\_version} &= \texttt{corotated\_tangent\_plane\_v2},\\
+  \texttt{core\_scope} &= \texttt{flat\_rest\_v0}.
+\end{aligned}
+\]
+다섯 field와 이들이 생성한 basis, tangent support/weight, fitted-frame projector 및
+core-scope validation report는 package hash에 포함한다. Run manifest가 package의 field와 hash에
+정확히 일치하지 않으면 fail-fast한다. Predicted scaffold package는 추가로
+식~\eqref{eq:minimal-r1-version-contract}의 V0-R1 contract/model/decoder hash를 요구한다.
+정량 core의 별도 immutable renderer protocol field는
+\(\texttt{appearance\_mode=degree0\_v0}\)로 고정하고 run hash에 포함한다.
+이 field가 다르거나 누락된 render는 canonical quantitative result로 사용하지 않는다.
+
+\section{Frozen Minimal V0 architecture}
+
+\subsection{다섯 단계}
+
+\begin{enumerate}
+  \item Static GS에서 sparse oriented anchor scaffold를 만든다.
+  \item User material/attachment로 고정한 PD-style structural package와
+  Global/patch-complement basis를 offline 생성한다.
+  \item 매 frame 모든 anchor에서 current-surface quasi-steady wind force를 한 번 계산한다.
+  \item Deterministic score로 fixed-cardinality Local unit을 선택하고
+  Global+selected Local coupled reduced system을 한 번 적분한다.
+  \item 최종 anchor deformation을 Gaussian mean/covariance에 affine transport하고 렌더한다.
+\end{enumerate}
+
+\begin{tcolorbox}[colback=RejectLight,colframe=RejectRed,title=V0 금지 경로,fonttitle=\bfseries]
+Physics-only V0에는 patch nodal-force proposal, generalized-to-nodal lifting,
+overlap force KKT/Schur, support-restricted reaction routing과 same-frame aerodynamic
+corrector가 없다. Aerodynamic hyper-reduction H, missing-force network F,
+learned gate G, confidence calibration network와 Teacher-FSI도 구현하지 않는다.
+\end{tcolorbox}
+
+\subsection{Causal frame dependency}
+
+\begin{equation}
+\begin{aligned}
+  (q^{t-1},z^{t-1})
+  &\longrightarrow (x^{t-1},v^{t-1},x_{\mathrm{pred}}^t),\\
+  x_{\mathrm{pred}}^t&\longrightarrow (p^t,h^t),\\
+  (x^{t-1},v^{t-1},W^t)&\longrightarrow
+  (n^{t-1},a_{\mathrm{safe}}^{t-1},f_{\mathrm{aero}}^t)
+  \longrightarrow\mathcal S_t^{\mathrm{solve}},\\
+  (p^t,h^t,f_{\mathrm{aero}}^t,\mathcal S_t^{\mathrm{solve}})
+  &\longrightarrow(\widetilde q^t,\widetilde z^t)
+  \longrightarrow(q^t,z^t)
+  \longrightarrow \mathcal G^t.
+\end{aligned}
+  \label{eq:minimal-frame-dependency}
+\end{equation}
+
+Aerodynamic force는 frame 시작 geometry에서 한 번 평가해 step 동안 hold한다.
+새 geometry는 다음 frame의 force에 반영된다. 이는 의도적인 one-frame staggered coupling이며
+same-frame fixed-point convergence를 주장하지 않는다.
+
+\section{Setup: topology-distilled sparse scaffold}
+
+\subsection{Anchor와 oriented relation}
+
+Rendering Gaussian과 simulation anchor resolution을 분리한다.
+Static Gaussian surface evidence에서 \(K\)개의 anchor \(x_i^0\)를 선택한다.
+각 anchor에는 tangent frame \((t_{i1}^0,t_{i2}^0,n_i^0)\),
+sparse oriented relation과 nonnegative area ownership \(a_i^0\)를 둔다.
+
+Training에서는 source mesh topology를 privileged supervision으로 사용할 수 있지만,
+target setup/runtime은 source 또는 reconstructed target triangle mesh를 입력으로 요구하지 않는다.
+Network는 dense \(M,C,K\)를 직접 예측하지 않고 relation/layer score와 area ownership만 출력한다.
+Sparse physical reconstruction과 surface-aligned Gaussian work
+\cite{jing2026bendtwin,guedon2024sugar,yu2024gof}는 representation baseline과 경계를 정하는 데 사용한다.
+
+\subsection{Hard-attachment 기반 in-plane line gauge}
+
+여기서 \(n_i^0\)는 기존 static-GS thin-axis와 versioned same-layer orientation propagation이 만든
+surface normal이며, 이 절은 normal을 새로 학습하지 않고 남아 있는 in-plane gauge만 고정한다.
+Core hard-edge attachment anchor 집합을 \(\mathcal A_{\mathrm{att}}\)라 하고, 고정 positive weight로
+중심 \(\bar x_{\mathrm{att}}\)와 covariance \(C_{\mathrm{att}}\)를 계산한다. 고윳값을
+\(\lambda_1\geq\lambda_2\geq\lambda_3\geq0\)라 할 때
+\begin{equation}
+  C_{\mathrm{att}}g_{\mathrm{att}}=\lambda_1g_{\mathrm{att}},\qquad
+  \|g_{\mathrm{att}}\|_2=1,\qquad
+  L_{\mathrm{att}}=g_{\mathrm{att}}g_{\mathrm{att}}^\top,\qquad
+  \frac{\lambda_1-\lambda_2}{\lambda_1+\varepsilon_{\mathrm{att}}}
+  \geq\tau_{\mathrm{gap}}>0
+  \label{eq:minimal-attachment-line-gauge}
+\end{equation}
+를 요구한다. 물리적 gauge는 vector \(g_{\mathrm{att}}\)가 아니라 sign-invariant unoriented line
+\(L_{\mathrm{att}}\)다. Eigensolver 출력은 \(q_i\)와 \(L_{\mathrm{att}}\)를 계산하기 전에
+unit-normalize한다. 따라서 \(L_{\mathrm{att}}\)는
+\(L_{\mathrm{att}}^2=L_{\mathrm{att}}\), \(\operatorname{tr}(L_{\mathrm{att}})=1\)인
+rank-one orthogonal projector이고, eigenvector의 임의 scale과 sign에 무관하다.
+\(\lambda_1\) floor나 eigengap을 통과하지 못하면 world-axis에 맞춘 임의 sign 또는
+secondary direction으로 우회하지 않고 package를 reject한다.
+
+Anchor \(i\)에서는 \(P_i^0=I-n_i^0(n_i^0)^\top\),
+\(q_i=P_i^0g_{\mathrm{att}}\)에 대해 \(\|q_i\|\geq\tau_{\mathrm{gauge}}\)를 요구하고
+\begin{equation}
+  L_i^0=\frac{q_iq_i^\top}{q_i^\top q_i},\qquad
+  t_{i1}^0\in\operatorname{range}(L_i^0),\quad \|t_{i1}^0\|_2=1,\qquad
+  t_{i2}^0=n_i^0\times t_{i1}^0
+  \label{eq:minimal-local-line-gauge}
+\end{equation}
+로 둔다. \(t_{i1}^0\mapsto-t_{i1}^0\)와 \(t_{i2}^0\mapsto-t_{i2}^0\)는 같은 gauge다.
+Opposite pair, feature, label, loss와 decoder는 이 동시 sign flip에 불변이어야 한다.
+Byte-level serialization에 representative가 필요하면 immutable attachment-ID 순서에서 처음 만나는
+nondegenerate attachment pair에만 sign을 맞추며, world-axis component sign은 사용하지 않는다.
+Minimal V0의 learned in-plane correction은 \(\Delta\theta_i=0\)으로 고정하고 topology model 출력에
+추가하지 않는다. Gauge algorithm, attachment IDs/weights, eigengap/floor, representative rule을
+normalization/projector tolerance와 함께
+\(\texttt{tangent\_gauge\_version=attachment\_line\_v1}\) package hash에 저장한다.
+
+\subsection{고정 V0 relation schema에서 analytic constraint package로}
+
+V0 relation schema는
+\(\sigma_{\mathrm{rel}}=\texttt{edge-opposite-triplet-v1}\) 하나로 고정한다.
+Accepted undirected same-layer edge \(e=(i,k)\)는 stretch relation이며
+\[
+  A_e^{\mathrm{str}}x=x_i-x_k,
+  \qquad
+  \mathcal C_e^{\mathrm{str}}
+  =\{d\in\mathbb R^3:\|d\|_2=\ell_e^0\},
+  \qquad
+  \ell_e^0=\|x_i^0-x_k^0\|_2
+\]
+로 둔다. Bending은 anchor \(i\)의 각 rest tangent axis \(a\in\{1,2\}\)에서 정의한다.
+Accepted neighbor 중 \(-t_{ia}^0,+t_{ia}^0\) 방향의 same-layer pair
+\((k_{ia}^-,k_{ia}^+)\)를 development에서 동결한 각도 및 길이비 규칙으로 결정한다.
+Boundary이거나 valid opposite pair가 없는 axis는 bending center에서 제외한다.
+Retained pair는 angle/length-ratio 조건뿐 아니라 rest tangential interpolation residual cap과
+해당 support의 \(\tau_{\mathrm{planar}}\) cap도 통과해야 하며,
+asset별 retained bending-center coverage를 기록한다.
+\(\ell_-=\|x_i^0-x_{k^-}^0\|_2\),
+\(\ell_+=\|x_{k^+}^0-x_i^0\|_2\)와
+\(\beta_-={\ell_+}/{(\ell_-+\ell_+)}\),
+\(\beta_+={\ell_-}/{(\ell_-+\ell_+)}\)에 대해
+\[
+  A_{ia}^{\mathrm{bend}}x
+  =x_i-\beta_-x_{k^-}-\beta_+x_{k^+},
+  \qquad
+  d_{ia}^0=A_{ia}^{\mathrm{bend}}x^0
+\]
+로 둔다. Exact collinear flat triplet에서는 \(d_{ia}^0=0\)이다.
+Irregular flat sampling에서는 tangential residual cap으로 in-plane pollution을 제한하고,
+flat-rest support이더라도 \(d_{ia}^0\neq0\)일 수 있음을 허용한다.
+이를 임의로 0으로 만드는 flatness shortcut은 사용하지 않는다.
+그 크기는
+\begin{equation}
+  \delta_{ia}^{\mathrm{rest}}
+  =\frac{\|d_{ia}^0\|_2}
+  {(\ell_-+\ell_+)/2+\varepsilon_\ell}
+  \label{eq:minimal-irregular-rest-diagnostic}
+\end{equation}
+로 package/asset별 분포를 저장한다. 이는 irregular sampling이 남긴 rest residual을 해석하기 위한
+파생 diagnostic일 뿐 별도 acceptance gate가 아니다. 이미 동결한 tangential interpolation residual,
+식~\eqref{eq:minimal-flat-rest-planarity}의 planarity cap과 retained coverage가 package validity를 소유한다.
+\(\delta_{ia}^{\mathrm{rest}}\)만으로 relation을 제거하거나 새 curvature/shell backend를 여는 것은
+Gate A/B/C 이전 V0 범위에 포함하지 않는다.
+Opposite pair가 없으면 정해진 halo를 한 번 확대하고, 그래도 실패하면 해당 boundary/axis constraint만
+생성하지 않는다. Retained coverage가 development에서 동결한 minimum 아래이면
+다른 constraint schema로 자동 전환하지 않고 package를 reject/user hint로 보낸다.
+Stretch input은 rest-length sphere의 Euclidean closest point로 project하고, input norm이 numerical
+floor 아래이면 rest edge direction을 사용한다. Bending에는 nonzero-\(d_{ia}^0\) sphere orbit을 사용하지
+않는다. 그 orbit은 \((n_i^0)^\top d_{ia}^0=0\)일 때
+\(d=d_{ia}^0+\epsilon n_i^0\)에 대한 minimized energy가 \(O(\epsilon^4)\)로 시작하여
+normal quadratic stiffness를 소실시키기 때문이다.
+
+Bending의 유일한 projector는 다음처럼 고정한다.
+\[
+\begin{gathered}
+  \texttt{bend\_projection\_version}\\[-0.25em]
+  =\texttt{corotated\_tangent\_plane\_v2}.
+\end{gathered}
+\]
+식~\eqref{eq:minimal-surface-tangent-fit}의 고정 support, weight와 rest coordinate를 재사용해
+\(x^0\)와 \(x_{\mathrm{pred}}^t\)에서 각각 \(J_i^0,J_i^{t,\mathrm{pred}}\)를 계산한다. 두 상태 모두
+동일한 orthonormalization을 적용한다.
+\begin{equation}
+\begin{aligned}
+  \mathcal R_i(J)
+  &=\left[
+    \frac{J(:,1)}{\|J(:,1)\|_2},\;
+    n_i(J)\times\frac{J(:,1)}{\|J(:,1)\|_2},\;
+    n_i(J)
+  \right],\\
+  n_i(J)
+  &=s_i\frac{J(:,1)\times J(:,2)}{\|J(:,1)\times J(:,2)\|_2},\\
+  R_i^0&=\mathcal R_i(J_i^0),\qquad
+  R_i^{t,\mathrm{pred}}=\mathcal R_i(J_i^{t,\mathrm{pred}}),\qquad
+  Q_i^t=R_i^{t,\mathrm{pred}}(R_i^0)^\top .
+\end{aligned}
+  \label{eq:minimal-bending-corotated-frame}
+\end{equation}
+Stored \((t_{i1}^0,t_{i2}^0,n_i^0)\)와 fitted rest frame이 정확히 같다고 가정하지 않는다.
+Rest와 predictor에 같은 construction을 사용하므로 rest에서 \(Q_i^0=I\)이고 proper rigid transform에서
+\(R_i^{t,\mathrm{pred}}=QR_i^0\)다. 기존 tangent-fit rank/condition/normal floor를 그대로 적용하며
+실패를 임의 frame fallback으로 우회하지 않는다.
+
+Fitted normal을
+\(n_{i,\mathrm{fit}}^0=R_i^0(:,3)\),
+\(n_i^{t,\mathrm{pred}}=R_i^{t,\mathrm{pred}}(:,3)\)라 하고
+\begin{equation}
+\begin{aligned}
+  b_{ia}^0
+  &=\bigl((n_{i,\mathrm{fit}}^0)^\top d_{ia}^0\bigr)n_{i,\mathrm{fit}}^0,
+  &b_{ia}^t&=Q_i^t b_{ia}^0,\\
+  \mathcal C_{ia}^{\mathrm{bend},t}
+  &=\{b_{ia}^t+v:(n_i^{t,\mathrm{pred}})^\top v=0\},
+  &\Pi_{ia}^{\mathrm{bend},t}(d)
+  &=d-n_i^{t,\mathrm{pred}}(n_i^{t,\mathrm{pred}})^\top(d-b_{ia}^t).
+\end{aligned}
+  \label{eq:minimal-bending-corotated-projector}
+\end{equation}
+로 target을 한 번 계산해 해당 frame의 global step 동안 freeze한다. Unit fixture는 frame을 \(R_i^0\)로
+고정한 뒤 \(d_{ia}^0\pm\epsilon n_{i,\mathrm{fit}}^0\)의 residual이 \(\pm\epsilon n_{i,\mathrm{fit}}^0\)이고
+central finite-difference stiffness가 \(w_{ia}^{\mathrm{bend}}\)인지 검사한다. Integrated fixture는 frame을
+다시 fit하여 rest exactness와 random proper-rigid reproduction을 검사하고, normal perturbation에는
+positive non-collapsed response를 요구한다. Integrated stiffness를 정확히
+\(w_{ia}^{\mathrm{bend}}\)로 요구하려면 추가로 \(\delta J_i=0\)인 perturbation이어야 한다.
+Relation support, \(A_{ia}^{\mathrm{bend}}\), owner area, \(w_{ia}^{\mathrm{bend}}\)와 Hessian은 고정이며
+새 local/global iteration이나 runtime stage를 만들지 않는다. Projector version, fitted-frame convention,
+threshold, test tolerance와 replay hash를 structural package에 저장한다.
+
+Anchor area는 constraint weight에 중복 없이 들어가도록 nonnegative owner share로 분배한다.
+Accepted stretch degree를 \(d_i^{\mathrm{str}}\), anchor \(i\)의 retained bending-axis 수를
+\(n_i^{\mathrm{bend}}\)라 두고
+\[
+  a_e^{\mathrm{own}}
+  =\frac{a_i^0}{d_i^{\mathrm{str}}}+\frac{a_k^0}{d_k^{\mathrm{str}}},
+  \qquad
+  a_{ia}^{\mathrm{own}}=\frac{a_i^0}{n_i^{\mathrm{bend}}}
+\]
+로 고정한다. Stretch share의 합은 valid anchor area total이며,
+bending share의 합은 retained bending-center area total이다.
+Geometric boundary에서 제외한 bending area를 interior constraint에 재분배하지 않고
+coverage ratio로 별도 보고한다. Required interior anchor에서 어느 분모가 0이면 package를 accept하지 않는다.
+Stretch edge와 bending triplet의 owner area를 각각
+\(a_e^{\mathrm{own}}\), \(a_{ia}^{\mathrm{own}}\),
+\(\bar\ell_{ia}=(\ell_-+\ell_+)/2\)라 하면
+\[
+  w_e^{\mathrm{str}}
+  =\kappa_{\mathrm{str}}^{(\mathsf u)}
+   \frac{a_e^{\mathrm{own}}}{(\ell_e^0)^2+\varepsilon_\ell^2},
+  \qquad
+  w_{ia}^{\mathrm{bend}}
+  =\kappa_{\mathrm{bend}}^{(\mathsf u)}
+   \frac{a_{ia}^{\mathrm{own}}}{\bar\ell_{ia}^{\,4}+\varepsilon_\ell^4}.
+\]
+SI에서 \(\kappa_{\mathrm{str}}\)는 surface stretching stiffness \([\mathrm{N}/\mathrm m]\),
+\(\kappa_{\mathrm{bend}}\)는 bending rigidity \([\mathrm{N}\,\mathrm m]\)이고,
+nondimensional branch는 같은 식의 dimensionless preset을 사용한다.
+따라서 두 channel의 \(w_j\)는 모두 quadratic position residual에 맞는 \([\mathrm N/\mathrm m]\) 또는
+그 nondimensional 대응량이다.
+
+이 고정 변환을 요약하면
+
+\begin{equation}
+\begin{aligned}
+  \mathcal P_{\mathrm{V0}}
+  &=\left(
+    \mathcal R_{\mathrm{str}},\mathcal R_{\mathrm{bend}},
+    \{\operatorname{supp}(A_j),A_j,\Pi_j,w_j\}_{j\in\mathcal R}
+  \right),\\
+  \mathcal P_{\mathrm{V0}}
+  &=
+  \mathcal D_{\texttt{edge-opposite-triplet-v1}}
+  \left(\mathcal R_{\mathrm{acc}},T^0,a^0,
+  \vartheta_{\mathrm{mat}},\mathsf u\right),\\
+  \mathcal R&=\mathcal R_{\mathrm{str}}\cup\mathcal R_{\mathrm{bend}}.
+\end{aligned}
+  \label{eq:minimal-topology-to-constraints}
+\end{equation}
+
+으로 고정한다. Support ordering, neighbor-selection threshold, owner share,
+projection-set version과 stiffness preset을 package에 저장한다.
+Network가 constraint, stiffness 또는 dense operator를 예측하는 것은 아니다.
+Alternative hinge/hyperedge schema는 이 V0의 per-asset 선택지가 아니라 후속 backend version이다.
+
+\subsection{Minimal validity check}
+
+\begin{equation}
+\begin{aligned}
+  &a_i^0>0,\qquad
+  \sum_i a_i^0 \approx A_{\mathrm{asset}},\qquad
+  m_i=\rho_A a_i^0,\qquad
+  \sum_i m_i \approx M_{\mathrm{asset}},\\
+  &M=\operatorname{blkdiag}_{i\in V}(m_i I_3),\qquad
+  \texttt{mass\_matrix\_type}=\texttt{lumped\_anchor\_v1}.
+\end{aligned}
+  \label{eq:minimal-area-mass}
+\end{equation}
+
+Structural package hash는 \texttt{mass\_matrix\_type}, stable anchor ordering에 따른 ordered
+\(m_i\) 또는 동등한 repeated diagonal, hard-attachment free map을 소유한다. 이 정보로 \(M\)과
+\(M_f=N_f^\top MN_f\)를 정확히 재현할 수 있으면 충분하며 dense \(M\) array 저장을 요구하지 않는다.
+
+Canonical Minimal V0의 area total은 별도 calibrated surface-area estimator가 아니라
+\[
+  L_{\mathrm{ref}}=\operatorname{diameter}(x^0)>0,\qquad
+  A_{\mathrm{ref}}=L_{\mathrm{ref}}^2,\qquad
+  A_{\mathrm{asset}}:=A_{\mathrm{ref}},\qquad
+  M_{\mathrm{asset}}:=\rho_AA_{\mathrm{ref}}
+\]
+인 deterministic package convention으로 고정한다. 이는 physical absolute surface-area 또는
+engineering mass 측정값이라는 주장이 아니며, 목적은 Gaussian/anchor density가 달라도 relative
+ownership과 motion scale이 크게 바뀌지 않게 하는 것이다. Object-normalized nondimensional geometry에서
+\(L_{\mathrm{ref}}=1\)이면 \(A_{\mathrm{ref}}=1\)이다. 공통 area scale에 대한 trajectory invariance는
+그 scale을 소유하는 \(M,C,K,\bar h,f_{\mathrm{aero}}\)가 함께 similarity-scale되고
+관련 floor, epsilon과 clamp가 비활성이거나 같은 typed rule로 scale되는 조건에서만 요구한다.
+Nondimensional branch의 \(a_i^0,\rho_A,m_i,A_{\mathrm{asset}},M_{\mathrm{asset}}\)는
+\((L_0,M_0,T_0)\)로 정규화한 dimensionless package 값이다.
+
+V0 validity는 다음 hard check만 사용한다.
+
+\begin{itemize}
+  \item local relation rank/condition과 tangent orientation
+  \item close front/back layer를 잇는 shortcut의 부재
+  \item positive area/mass와 total ownership
+  \item hard attachment가 유효 anchor 집합에 놓였는지
+\end{itemize}
+
+Relation score threshold는 development split에서 한 번 동결한다.
+NLL/Brier/ECE/AUPRC calibration network를 만들지 않으며,
+invalid package는 reject, user hint 또는 explicit scaffold fallback으로 보낸다.
+
+\subsection{단순 structural package}
+
+V0 backend는 \emph{one-local-step fixed-Hessian PD-style stretch+bending graph} 하나로 고정한다
+\cite{bouaziz2014projective}.
+Typed package는 backend/schema version, \(\mathcal R_{\mathrm{str}}\),
+\(\mathcal R_{\mathrm{bend}}\), 각 \(\operatorname{supp}(A_j),A_j,\Pi_j,w_j\),
+free-DOF map, damping preset과 허용 timestep을 저장한다.
+Stretch의 fixed sphere와 bending의 predictor-frozen corotated tangent-plane target에 대한
+versioned projector가 유일한 local step이다. \(A_j,w_j\)와
+\(K=\sum_jw_jA_j^\top A_j\)는 setup 뒤 고정된다.
+별도 corotational graph, nonlinear tangent update 또는 alternative bending projector를
+병렬 mainline으로 두지 않는다.
+별도 thin-shell novelty를 주장하지 않는다.
+
+Frame 시작에
+\[
+  x_{\mathrm{pred}}^t=x^{t-1}+\Delta t\,v^{t-1},\qquad
+  p_j^t=\Pi_j^t(A_jx_{\mathrm{pred}}^t)
+\]
+로 projector target을 한 번 계산하고 hold한다.
+Global step의 quadratic energy는
+
+\begin{equation}
+  E_{\mathrm{str}}^t(x)
+  =
+  \frac12\sum_{j\in\mathcal R}
+  w_j\left\|A_jx-p_j^t\right\|_2^2,
+  \qquad
+  K=\sum_j w_jA_j^\top A_j,\quad
+  h^t=\sum_j w_jA_j^\top p_j^t,\quad
+  \bar h^t=h^t-Kx^0.
+  \label{eq:minimal-structural-backend}
+\end{equation}
+
+Runtime reduced coordinate는 rest anchor에서의 displacement를 나타내므로
+아래 coupled step은 raw target \(h^t\)가 아니라 rest offset을 제거한
+\(\bar h^t\)를 소비한다. 따라서 zero-wind rest state에서 불필요한 constant load가 생기지 않는다.
+
+Hard attachment는 setup에서 free-DOF elimination 또는 attachment를 만족하는 basis로 처리한다.
+Runtime support reaction을 복원하지 않는다.
+Damping은 하나의 고정 Rayleigh/modal preset
+\(C=\alpha M+\beta K\)로 둔다. Material UI는 stiffness scale과 damping preset의
+단조 제어만 보장하면 충분하다.
+
+Structural hard acceptance는 다음 네 가지다.
+
+\begin{itemize}
+  \item rigid transform sanity에서 눈에 띄는 가짜 restoring artifact가 없음
+  \item zero wind에서 rest 쪽으로 안정적으로 감쇠
+  \item target visual band의 dominant sway/flutter가 완전히 소실되지 않음
+  \item 10--30초 rollout에서 NaN, scale explosion 또는 발산이 없음
+\end{itemize}
+
+Exact energy/action tangent, rest-linear equality, exact support wrench와
+8--16 mode 정밀 일치는 diagnostic일 수 있으나 package acceptance의 hard gate가 아니다.
+
+\section{Offline Global/Local basis}
+
+\subsection{Global basis}
+
+V0 canonical Global basis는
+\(\texttt{basis\_type=generalized\_eigen\_v1}\) 하나로 고정한다.
+Free-coordinate fixed-Hessian package operator의 generalized eigenproblem에서 eigenvalue가 낮은
+accepted \(r_g\)개 mode를 순서대로 사용한다 \cite{barbic2005stvk,diener2009windbasis}.
+Hard-attachment free map을 \(N_f\)라 두면
+\(M_f=N_f^\top MN_f\), \(K_f=N_f^\top KN_f\)이고,
+full anchor basis는 \(\Phi=N_f\widetilde\Phi\)로 lift한다.
+
+\begin{equation}
+  K_{\mathrm f}\widetilde\Phi
+  =
+  M_{\mathrm f}\widetilde\Phi\Lambda,\qquad
+  \Phi^\top M\Phi=I.
+  \label{eq:minimal-global-basis}
+\end{equation}
+
+여기서 \(K_f\)는 predictor-frozen one-local-step PD package가 저장한 fixed Hessian이다.
+Minimized nonlinear constraint energy의 exact rest tangent라고 주장하지 않으며, 이 근사를 이유로
+tangent-consistent basis, 새 shell backend 또는 추가 nonlinear iteration을 V0에 넣지 않는다.
+
+Global은 전체 sway, large bending과 low-frequency response를 소유한다.
+Basis ordering, repeated-eigenvalue tie-break와 column sign convention을 development에서 고정하고
+basis array와 함께 package hash에 포함한다. POD는 Gate A/B/C 이후의 optional ablation일 뿐이며,
+canonical V0 result나 matched-backend baseline의 basis를 대체할 수 없다.
+Strong Global rank sweep은 같은 \texttt{generalized\_eigen\_v1} ordering을 prefix로 사용하며
+MC2의 필수 baseline이다.
+
+\subsection{Patch-local complementary basis}
+
+Setup에서 고정한 core--halo patch \(r\)의 free-anchor-DOF injection을
+\(E_r\in\mathbb R^{3K\times n_r}\)라 한다.
+Global complement를 만든 뒤 dense tail을 허용하지 않고,
+patch support 안에서 orthogonality constraint를 만족하는 restricted mode를 푼다.
+\(M_{rr}=E_r^\top ME_r\), \(K_{rr}=E_r^\top KE_r\)와
+\(C_r=\Phi^\top ME_r\)를 만들고, \(Z_r\)를 \(C_rZ_r=0\)의 orthonormal null basis라 하면
+
+\begin{equation}
+\begin{aligned}
+  (Z_r^\top K_{rr}Z_r)V_r
+  &=
+  (Z_r^\top M_{rr}Z_r)V_r\Lambda_r,\\
+  \Psi_r&=E_rZ_rV_r,\qquad
+  V_r^\top Z_r^\top M_{rr}Z_rV_r=I.
+\end{aligned}
+  \label{eq:minimal-local-complement}
+\end{equation}
+
+\(V_r\)는 lowest accepted \(k_r\) columns로 고정하고, \(k_r\), halo와 pruning rule을
+development package에서 동결한다. 따라서 Gate B에서 asset별로 Local candidate를 cherry-pick하지 않는다.
+
+\begin{equation}
+  \Phi^\top M\Psi_r\approx0,\qquad
+  \Psi_r^\top M\Psi_r=I.
+  \label{eq:minimal-complement-check}
+\end{equation}
+
+서로 다른 patch basis를 전역 QR로 섞지 않는다.
+Patch끼리는 강제 직교화하지 않고 \(M_{rs},C_{rs},K_{rs}\) cross block을 저장한다.
+Null dimension이 부족하거나 strong overlap이 rank deficiency를 만들면
+setup에서 halo 확대, patch 병합 또는 column pruning 중 하나를 기록하고 재검증한다.
+이는 adaptive subspace 및 complementary dynamics
+\cite{benchekroun2023complementary,xiang2026freeform}와 비교한다.
+
+\subsection{Persistent state}
+
+모든 \(\Psi_r\)는 fixed coordinate slot을 가진다.
+Runtime은 \(z_{\mathrm{sup}},\dot z_{\mathrm{sup}}\)를 유지하며,
+active/decay subset만 gather--solve--scatter한다.
+Basis를 frame마다 다시 만들거나 state를 remap하지 않는다.
+
+Anchor displacement와 velocity의 유일한 reconstruction은
+
+\begin{equation}
+  u^t=\Phi q^t+\sum_r\Psi_rz_r^t,\qquad
+  x^t=x^0+u^t,\qquad
+  v^t=\Phi\dot q^t+\sum_r\Psi_r\dot z_r^t.
+  \label{eq:minimal-state-reconstruction}
+\end{equation}
+
+Inactive slot은 정확히 zero state다. Decay slot은 아래 release tolerance를 통과할 때까지
+reconstruction과 coupled solve에 남으며, 통과한 뒤에만 \((z_r,\dot z_r)\)를 zero로 만들고 제외한다.
+
+\section{Runtime surface와 full-anchor aerodynamics}
+
+\subsection{Current surface map}
+
+Anchor \(i\)는 setup에서 고정한 ordered same-layer support
+\(\mathcal N_i^{\mathrm{surf}}\)와 positive normalized weight
+\(\omega_{ik}^{\mathrm{surf}}>0\),
+\(\sum_{k\in\mathcal N_i^{\mathrm{surf}}}\omega_{ik}^{\mathrm{surf}}=1\)을 가진다.
+Rest와 current에 서로 다른 centering을 쓰되 rest 2D coordinate는 고정한다.
+
+\begin{equation}
+\begin{aligned}
+  \bar x_i^s
+  &=\sum_{k\in\mathcal N_i^{\mathrm{surf}}}
+    \omega_{ik}^{\mathrm{surf}}x_k^s,
+    \qquad s\in\{0,t\},\\
+  \xi_{ik}^{\mathrm{surf}}
+  &=(T_i^0)^\top(x_k^0-\bar x_i^0),
+  \qquad
+  \sum_k\omega_{ik}^{\mathrm{surf}}\xi_{ik}^{\mathrm{surf}}=0,\\
+  G_{i,\mathrm{surf}}^0
+  &=\sum_k\omega_{ik}^{\mathrm{surf}}
+    \xi_{ik}^{\mathrm{surf}}(\xi_{ik}^{\mathrm{surf}})^\top,\\
+  C_{i,\mathrm{surf}}^s
+  &=\sum_k\omega_{ik}^{\mathrm{surf}}
+    (x_k^s-\bar x_i^s)(\xi_{ik}^{\mathrm{surf}})^\top,\\
+  J_i^s
+  &=C_{i,\mathrm{surf}}^s(G_{i,\mathrm{surf}}^0)^{-1},\\
+  J_i^s
+  &=\arg\min_{J\in\mathbb R^{3\times2}}
+    \sum_k\omega_{ik}^{\mathrm{surf}}
+    \left\|(x_k^s-\bar x_i^s)-J\xi_{ik}^{\mathrm{surf}}\right\|_2^2.
+\end{aligned}
+  \label{eq:minimal-surface-tangent-fit}
+\end{equation}
+
+이 positive-weight, weighted-centering, rest-coordinate least-squares convention을
+\(\texttt{tangent\_fit\_v1}\)로 고정하며, 식~\eqref{eq:minimal-affine-weights}--
+\eqref{eq:minimal-affine-fit}의 Gaussian binding도 같은 convention을 재사용한다.
+\(J\in\mathbb R^{3\times2}\)의 singular value를
+\(\sigma_1(J)\geq\sigma_2(J)\geq0\),
+\(G\in\mathbb R^{2\times2}\)의 eigenvalue를
+\(\lambda_1(G)\geq\lambda_2(G)\geq0\)로 정렬하고, shared numerical-rank contract를
+\begin{equation}
+\begin{aligned}
+  \sigma_2(J)
+  &\geq\max\!\left(\sigma_{J,\mathrm{abs}},\tau_J\sigma_1(J)\right),
+  &\sigma_{J,\mathrm{abs}}&>0,\quad 0<\tau_J<1,\\
+  \lambda_2(G)
+  &\geq\max\!\left(\lambda_{G,\mathrm{abs}}^{(\mathsf u)},
+                    \tau_G\lambda_1(G)\right),
+  &\lambda_{G,\mathrm{abs}}^{(\mathsf u)}&>0,\quad 0<\tau_G<1
+\end{aligned}
+  \label{eq:minimal-tangent-numerical-rank}
+\end{equation}
+로 고정한다. \(\sigma_{J,\mathrm{abs}}\)는 dimensionless이고,
+\(\lambda_{G,\mathrm{abs}}^{(\mathsf u)}\)는 SI에서 \(L^2\), nondimensional branch에서
+dimensionless인 typed floor이며 SI-to-nd 변환은
+\(\widehat\lambda_{G,\mathrm{abs}}=\lambda_{G,\mathrm{abs}}/L_0^2\)다.
+각 consumer의 condition cap과 이 threshold를 함께 동결한다. 모든 \(G^{-1}\)은 \(G\)가 이 식과
+condition cap을 통과한 뒤에만 계산하고, \(((J^0)^\top J^0)^{-1}\), normal과 area consumer는
+해당 \(J\)가 같은 식을 통과한 뒤에만 계산한다. Threshold, unit branch와 CPU/GPU replay 결과를
+\(\texttt{tangent\_fit\_v1}\) package hash에 저장한다.
+Flat-rest core의 planarity statistic은
+\begin{equation}
+  \eta_{i,\mathrm{planar}}^0
+  =
+  \frac{
+    \max_{k\in\mathcal N_i^{\mathrm{surf}}}
+    \left|(x_k^0-\bar x_i^0)^\top n_i^0\right|
+  }{
+    \max_{k\in\mathcal N_i^{\mathrm{surf}}}
+    \|x_k^0-\bar x_i^0\|_2
+  }
+  \leq\tau_{\mathrm{planar}},
+  \label{eq:minimal-flat-rest-planarity}
+\end{equation}
+로 고정한다. Denominator가 0인 support는 아래 rank check보다 먼저 package reject한다.
+Ordered tangent column의 orientation sign \(s_i\in\{-1,+1\}\)는 rest fitted normal이
+stored \(n_i^0\)와 같은 방향이 되도록 setup에서 고정한다. 그러면
+
+\begin{equation}
+\begin{aligned}
+  \widetilde n_i^s
+  &=s_i\bigl(J_i^s(:,1)\times J_i^s(:,2)\bigr),\qquad s\in\{0,t\},\\
+  \rho_{a,i}^{s,\mathrm{raw}}
+  &=\frac{\|\widetilde n_i^s\|}{\|\widetilde n_i^0\|},\qquad
+  \bar\rho_{a,i}^s
+  =\operatorname{clip}\!\left(
+    \rho_{a,i}^{s,\mathrm{raw}};
+    \rho_{a,\min},\rho_{a,\max}\right),\\
+  a_{i,\mathrm{safe}}^s
+  &=a_i^0\bar\rho_{a,i}^s,\qquad
+  n_i^s=\frac{\widetilde n_i^s}{\|\widetilde n_i^s\|},
+  \qquad s\in\{0,t\}.
+\end{aligned}
+  \label{eq:minimal-area-normal}
+\end{equation}
+
+Setup에서는 \(G_{i,\mathrm{surf}}^0\)와 \(J_i^0\)가
+식~\eqref{eq:minimal-tangent-numerical-rank}을 통과하고 다음 조건을 만족해야 한다.
+\[
+\begin{aligned}
+  \kappa(G_{i,\mathrm{surf}}^0)&\leq\kappa_{G,\mathrm{surf}},&
+  \kappa((J_i^0)^\top J_i^0)&\leq\kappa_{J,\mathrm{surf}},\\
+  \|\widetilde n_i^0\|&>\tau_{n,\mathrm{surf}}>0,
+  &\text{orientation agreement}&=\text{pass}.
+\end{aligned}
+\]
+Runtime에는 \(J_i^t\)가 같은 numerical-rank 식을 통과하고
+\[
+  \kappa((J_i^t)^\top J_i^t)\leq\kappa_{J,\mathrm{surf}},\qquad
+  \|\widetilde n_i^t\|>\tau_{n,\mathrm{surf}}
+\]
+를 만족해야 한다.
+Rest check 실패는 package reject, current check 실패는 canonical frame fail-fast다.
+Surface/aero consumer는 arbitrary closest-frame 또는 rigid fallback으로 load geometry를 만들지 않는다.
+그 fallback은 퇴화한 normal/area에서 존재하지 않은 aerodynamic load를 만들어 canonical quality/timing
+sample을 오염시키므로, renderer transport의 visual fallback과 동일하게 취급하지 않는다.
+Surface package에는 ordered \(\mathcal N_i^{\mathrm{surf}}\), \(\omega_{ik}^{\mathrm{surf}}\),
+\(T_i^0\), \(\xi_{ik}^{\mathrm{surf}}\), \(G_{i,\mathrm{surf}}^0\), \(s_i\)와 모든 cap을 저장한다.
+Current failure reason과 rate는 trace에 기록한다. In-envelope invalid frame은 valid-frame conditional
+metric에는 넣지 않지만 해당 sequence는 식~\eqref{eq:minimal-attempt-success-contract}의
+denominator에 method failure로 남긴다.
+Numerical epsilon을 분모에 더해 unit normal이나 rest-area identity를 조용히 깨뜨리지 않는다.
+Operating envelope의 \(\mathcal B_{\mathrm{area/affine/cov}}\) 중 area bound가
+\(0<\rho_{a,\min}\leq1\leq\rho_{a,\max}<\infty\)를 소유한다.
+Valid frame에서 \(\rho_{a,i}^{s,\mathrm{raw}}\)만 이 범위로 clamp하며,
+raw ratio는 diagnostic과 clamp-event 판정에만, \(a_{i,\mathrm{safe}}^s\)는 aerodynamic consumer에만 사용한다.
+Event \(\bar\rho_{a,i}^s\neq\rho_{a,i}^{s,\mathrm{raw}}\)는 run 전에 등록한 required
+surface/aero anchor--frame evaluation 전체를 고정 분모로 하는 기존 generic area clamp-rate trace와 cap에 포함한다.
+Required evaluation의 current-surface check가 실패하면 기존 method failure로 남기며 분모에서 삭제하지 않는다.
+새 threshold, index 체계 또는 gate를 만들지 않는다.
+Rank-2 tangent map에 3D cofactor를 적용하지 않는다.
+식~\eqref{eq:minimal-surface-tangent-fit}의 \(s\)는 generic state index다.
+Aerodynamic step \(t\)에서는 current index에 \(s=t-1\)을 대입해
+\((J_i^{t-1},n_i^{t-1},a_{i,\mathrm{safe}}^{t-1})\)만 사용하며
+predicted/new \(x^t\)로 다시 fit하지 않는다.
+
+\subsection{Quasi-steady wind force}
+
+Relative wind와 tangential component를
+
+\begin{equation}
+  v_{\mathrm{rel},i}^t=W(x_i^{t-1},t)-v_i^{t-1},\qquad
+  v_{n,i}^t=(v_{\mathrm{rel},i}^t)^\top n_i^{t-1},\qquad
+  v_{\tau,i}^t=v_{\mathrm{rel},i}^t-v_{n,i}^tn_i^{t-1}
+\end{equation}
+
+로 둔다. V0 analytic law는
+
+\begin{equation}
+\begin{aligned}
+  f_{\mathrm{raw},i}^t
+  &=
+  \frac12\rho_{\mathrm{air}}a_{i,\mathrm{safe}}^{t-1}
+  \left[
+    C_n|v_{n,i}^t|v_{n,i}^tn_i^{t-1}
+    +C_\tau\|v_{\tau,i}^t\|v_{\tau,i}^t
+  \right],\\
+  f_{\mathrm{aero},i}^t
+  &=
+  \begin{cases}
+    f_{\mathrm{raw},i}^t,
+      & \|f_{\mathrm{raw},i}^t\|_2\leq f_{\max},\\
+    f_{\max}\dfrac{f_{\mathrm{raw},i}^t}{\|f_{\mathrm{raw},i}^t\|_2},
+      & \|f_{\mathrm{raw},i}^t\|_2>f_{\max}.
+  \end{cases}
+\end{aligned}
+  \label{eq:minimal-aero}
+\end{equation}
+
+모든 anchor에서 raw force를 계산하며 hyper-reduction하지 않는다. Clamp 전에
+\(f_{\mathrm{raw},i}^t\)가 finite인지 검사하고, in-envelope non-finite raw force는 대체값이나 clamp로
+숨기지 않는 method failure다. 위 Euclidean radial hard clamp만 force clamp로 사용하며,
+\(\|f_{\mathrm{raw},i}^t\|_2>f_{\max}\)인 각 event를 식~\eqref{eq:minimal-operating-envelope}에서 이미
+동결한 generic force clamp-rate trace와 cap에 포함한다. Run 전에 required raw-force anchor--frame
+evaluation index set \(\mathcal I_f\)를 등록하고
+\[
+  r_{f,\mathrm{clip}}
+  =
+  \frac{1}{|\mathcal I_f|}
+  \sum_{(i,t)\in\mathcal I_f}
+  \mathbf 1\!\left[
+    f_{\mathrm{raw},i}^t\ \text{finite}
+    \ \land\ \|f_{\mathrm{raw},i}^t\|_2>f_{\max}
+  \right]
+\]
+로 기존 force clamp-rate cap을 집계한다. \(\mathcal I_f\)의 어느 required evaluation이라도 non-finite이면
+해당 attempt는 별도 method failure이며, 그 index만 분모에서 삭제해 successful finite-only run으로
+재분류하지 않는다. 별도 threshold나 gate는 만들지 않는다.
+Zero relative wind에서 force가 0이고, normal flip/two-sided convention과
+finite-force clamp가 unit test를 통과해야 한다.
+정확한 lift/wake force를 주장하지 않는다.
+
+\section{Deterministic selection과 최소 state policy}
+
+\subsection{Atomic Local unit}
+
+Patch 하나 또는 strong-overlap patch를 setup에서 병합한 group을 atomic unit
+\(\mathcal G\)로 둔다. Unit grouping은 runtime에 바꾸지 않는다.
+Setup package는 stable unit ID/order, 각 unit의 stable ordered member list,
+versioned merge/pruning rule과 그 결과로 retained된 output column range/order를
+다음 네 metadata field로 저장한다.
+\begin{itemize}
+  \item \texttt{atomic\_group\_map}
+  \item \texttt{stable\_unit\_order}
+  \item \texttt{group\_member\_order}
+  \item \texttt{group\_column\_ranges}
+\end{itemize}
+\(\Psi_{\mathcal G}\)는 이 mapping이 가리키는 serialized retained group-basis array 자체이고,
+그 column order와 persistent coordinate slot은 package build 뒤 바뀌지 않는다.
+Versioned setup rule은 retained member basis의 조합 또는 merged-patch basis 재생성 중 선택한 한 규칙을
+명시할 수 있으나, 모든 member basis를 무조건 concatenate하도록 강제하지 않는다.
+Basis array, column provenance/range와 persistent slot mapping이 다르면 다른 package hash다.
+
+이미 계산한 dynamic anchor load를 사용해
+
+\begin{equation}
+  g_{\mathcal G}^t
+  =
+  \Psi_{\mathcal G}^\top
+  f_{\mathrm{aero}}^t.
+  \label{eq:minimal-local-drive}
+\end{equation}
+
+\(m_{\mathcal G}^{\mathrm{own}}\)은 halo를 제외한 atomic unit core anchor mass의 합으로 고정한다.
+Canonical score는 cached isolated external-load compliance proxy다.
+
+\begin{equation}
+\begin{aligned}
+  A_{\mathcal G}^{\mathrm{score}}
+  &=
+  \frac{4}{\Delta t^2}M_{\mathcal G\mathcal G}
+  +\frac{2}{\Delta t}C_{\mathcal G\mathcal G}
+  +K_{\mathcal G\mathcal G},\\
+  \eta_{\mathcal G}^t
+  &=
+  \left[
+  \frac{(g_{\mathcal G}^t)^\top
+  (A_{\mathcal G}^{\mathrm{score}})^{-1}g_{\mathcal G}^t}
+  {m_{\mathcal G}^{\mathrm{own}}+\varepsilon_m}
+  \right]^{1/2}.
+\end{aligned}
+  \label{eq:minimal-selector}
+\end{equation}
+
+V0는 dwell-reserved capacity-\(K_A\) TopK만 사용한다.
+아직 minimum dwell 안인 unit을 먼저 유지하고 남은 slot만 \(\eta\)로 채운 결과를
+desired set \(\mathcal A_t^{\mathrm{des}}\)라 한다.
+\(K_A\)는 fixed active cardinality이지 fixed compute budget이 아니므로,
+active/solve rank와 p95 latency를 함께 보고한다.
+\(K_A\), stable unit order와 고정 tie-break는 selection-config subhash 및 run hash에 포함하며,
+package의 atomic-group mapping/hash와 일치하지 않으면 fail-fast한다.
+Curvature 또는 random selector는 baseline일 뿐 feature fusion mainline이 아니다.
+이 proxy는 structural target \(\bar h^t\), Global/inter-group coupling과 future error를 보지 않는
+의도적인 근사이며, teacher-ranked gap과 activation delay로만 유효성을 판정한다.
+
+\subsection{Active/Decay 두 상태}
+
+\begin{itemize}
+  \item \textbf{Active}: 아래 admission을 통과한 solve 직전 실제 집합
+  \(\mathcal A_t^{\mathrm{pre}}\)이며
+  direct projected excitation을 받는다.
+  \item \textbf{Decay}: solve 직전 집합을 \(\mathcal D_t^{\mathrm{pre}}\)라 하며,
+  새 Local excitation은 fade-out하지만 coupled physical solve와 damping은 유지한다.
+\end{itemize}
+
+Desired set과 실제 Active set은 다음 순서로 연결한다.
+
+\begin{enumerate}
+  \item \(\mathcal A_t^{\mathrm{des}}\cap\mathcal D_{t-1}^{\mathrm{end}}\)를 score/tie-break 순서로
+  state reset 없이 먼저 재활성화한다. Active가 가득 차 있으면
+  \(\mathcal A_t^{\mathrm{des}}\)에 없는 최저-priority Active unit을 골라,
+  reactivated unit이 비운 Decay slot으로 보내는 atomic swap을 수행한다.
+  \item 비어 있는 Active slot에는 새 desired unit을 바로 admit한다.
+  \item Active replacement가 필요하면 outgoing unit을 Decay로 옮길 빈 slot이 있을 때만
+  새 desired unit을 admit한다.
+  \item Decay capacity가 가득 차면 outgoing Active를 그대로 유지하고 새 candidate의
+  activation delay를 기록한다.
+\end{enumerate}
+
+따라서 충분한 valid candidate가 있을 때 \(|\mathcal A_t^{\mathrm{pre}}|=K_A\)지만,
+capacity pressure에서는 \(\mathcal A_t^{\mathrm{pre}}\neq\mathcal A_t^{\mathrm{des}}\)일 수 있다.
+이는 hidden adaptive budget이 아니라 energetic reset을 막는 deterministic admission policy다.
+
+Deterministic parameter
+\[
+  \vartheta_{\mathrm{state}}
+  =
+  \left(K_A,K_D,N_{\mathrm{dwell}},N_{\mathrm{fade}},N_{\mathrm{hold}},
+  \tau_E,\tau_x,\tau_v,\tau_{\mathrm{pop}}\right)
+\]
+를 development split에서 동결하고 package/run manifest에 저장한다.
+\(K_A,K_D\)와 세 frame-count parameter는 모두 1 이상인 정수이고,
+네 release threshold \(\tau_E,\tau_x,\tau_v,\tau_{\mathrm{pop}}\)는 모두 finite positive다.
+Strict \(<\) release predicate와 0 threshold를 함께 허용하지 않으며 config validation에서 fail-fast한다.
+Reference는
+\[
+\begin{aligned}
+  M_{r,\mathrm{ref}}&=m_r^{\mathrm{own}}>0,&
+  L_{\mathrm{ref}}&=\operatorname{diameter}(x^0)>0,\\
+  V_{\mathrm{ref}}&=\max(W_{\max},V_{\mathrm{floor}})>0,&
+  E_{r,\mathrm{ref}}&=M_{r,\mathrm{ref}}V_{\mathrm{ref}}^2.
+\end{aligned}
+\]
+로 package에서 고정한다.
+아직 \(N_{\mathrm{dwell}}\)을 채우지 않은 Active unit을 먼저 \(K_A\) slot에 유지하고,
+나머지 slot을 score와 고정 tie-break 순서로 채운다.
+Unit \(r\)가 마지막으로 Active였던 frame을 \(t_{r,\mathrm{off}}\)라 한다.
+따라서 첫 Decay frame은 \(t=t_{r,\mathrm{off}}+1\)이고 canonical fade는
+
+\begin{equation}
+  \gamma_r^t
+  =
+  \max\!\left(0,1-\frac{t-t_{r,\mathrm{off}}}{N_{\mathrm{fade}}}\right),
+  \qquad
+  \widehat E_r^t
+  =
+  \frac{
+    \tfrac12(\dot{\widetilde z}_r^{\,t})^\top
+      M_{rr}^{\mathrm{loc}}\dot{\widetilde z}_r^{\,t}
+    +\tfrac12(\widetilde z_r^t)^\top K_{rr}^{\mathrm{loc}}\widetilde z_r^t
+  }{E_{r,\mathrm{ref}}+\varepsilon_E},
+  \quad
+  \begin{aligned}
+  M_{rr}^{\mathrm{loc}}&=\Psi_r^\top M\Psi_r,\\
+  K_{rr}^{\mathrm{loc}}&=\Psi_r^\top K\Psi_r .
+  \end{aligned}
+  \label{eq:minimal-decay-release}
+\end{equation}
+
+여기서 \(\widehat E_r^t\)는 inter-patch/Global cross term을 소유하지 않는
+scale-aware \emph{release proxy}이지 exact per-patch energy가 아니다.
+Mass norm은 \(\|u\|_M:=\sqrt{u^\top Mu}\)로 정의한다. 따라서 displacement numerator의 단위는
+\(\sqrt{M}L\), velocity numerator의 단위는 \(\sqrt{M}L/T\)이고, displacement/velocity proxy는
+\[
+  \widehat d_{x,r}^t
+  =
+  \frac{\|\Psi_r\widetilde z_r^t\|_M}
+       {\sqrt{M_{r,\mathrm{ref}}}L_{\mathrm{ref}}},
+  \qquad
+  \widehat d_{v,r}^t
+  =
+  \frac{\|\Psi_r\dot{\widetilde z}_r^{\,t}\|_M}
+       {\sqrt{M_{r,\mathrm{ref}}}V_{\mathrm{ref}}}
+\]
+로 고정한다.
+분모에 \(M_{r,\mathrm{ref}}\) 자체를 곱하는 표현은 무차원이 아니고 asset mass scale에 의존하므로
+Minimal V0 contract에 포함하지 않는다.
+\(\gamma_r^t=0\)이고
+\(\widehat E_r^t<\tau_E\), \(\widehat d_{x,r}^t<\tau_x\),
+\(\widehat d_{v,r}^t<\tau_v\)와 zeroing 시 예상 anchor pop
+\(\delta_{\mathrm{pop},r}^t<\tau_{\mathrm{pop}}\)가
+\(N_{\mathrm{hold}}\) frame 연속 성립할 때만 slot을 release하고 zero로 만든다.
+Frame \(t\)에서 이 네 proxy와 hold predicate는 식~\eqref{eq:minimal-coupled-step}이 산출한
+post-solve, pre-zero \((\widetilde z_r^t,\dot{\widetilde z}_r^t)\)로 평가한다.
+여기서 scale-aware pop proxy는
+\[
+  \delta_{\mathrm{pop},r}^t
+  =
+  \max_{i\in\operatorname{supp}(\Psi_r)}
+  \frac{
+    \| (\Psi_r\widetilde z_r^t)_i \|_2
+    +\Delta t\,\| (\Psi_r\dot{\widetilde z}_r^{\,t})_i \|_2
+  }{L_{\mathrm{ref}}+\varepsilon_L}
+\]
+로 고정한다.
+다시 선택되면 state reset 없이 Active로 돌아간다.
+별도 Dormant dynamics, learned hysteresis와 future-benefit label은 만들지 않는다.
+
+\section{Direct generalized projection과 single coupled solve}
+
+\subsection{Selected basis와 reduced blocks}
+
+Admission 직후의 selection/decay union을
+\(\mathcal S_t^{\mathrm{solve}}
+:=\mathcal A_t^{\mathrm{pre}}\cup\mathcal D_t^{\mathrm{pre}}\)라 한다.
+아래 식의 compact subscript \(\mathcal S_t\)는 모두 이 pre-release
+\(\mathcal S_t^{\mathrm{solve}}\)를 뜻한다.
+
+\begin{equation}
+  B_{\mathcal S_t}
+  =
+  \left[\Phi,\Psi_{\mathcal S_t}\right].
+  \label{eq:minimal-selected-basis}
+\end{equation}
+
+\begin{equation}
+\begin{aligned}
+  M_{\mathcal S_t}&=B_{\mathcal S_t}^\top MB_{\mathcal S_t},\\
+  C_{\mathcal S_t}&=B_{\mathcal S_t}^\top CB_{\mathcal S_t},\\
+  K_{\mathcal S_t}&=B_{\mathcal S_t}^\top KB_{\mathcal S_t}.
+\end{aligned}
+  \label{eq:minimal-coupled-blocks}
+\end{equation}
+
+모든 cross block을 포함한다. 작은 active rank에서는 precomputed block을 gather해
+dense Cholesky/LDL로 직접 푼다. Incremental Cholesky, block-PCG와 dynamic cache는
+profiling에서 factorization이 실제 병목으로 확인되기 전에는 구현하지 않는다.
+
+\subsection{Force는 한 번만 투영한다}
+
+Core quantitative run은 gravity-off로 고정하고 \(f_{\mathrm{ext}}^t=f_{\mathrm{aero}}^t\)로 둔다.
+따라서 zero-wind rest-recovery fixture의 목표는 undeformed rest다.
+Gravity는 Gate A/B/C 뒤 별도 pre-equilibrated sag preset으로만 추가한다.
+Global block에는 항상 계수 1을, Active Local에는 \(\gamma_r^t=1\),
+Decay Local에는 \(0\leq\gamma_r^t<1\)을 적용하는 block diagonal matrix를
+\(\Gamma_{\mathcal S_t}^t\)라 한다. Decay에서 줄이는 것은 새 external excitation뿐이며
+structural target, inertia, stiffness와 damping에는 gate를 곱하지 않는다.
+
+\begin{equation}
+  r_{\mathcal S_t}^t
+  =
+  B_{\mathcal S_t}^\top\bar h^t
+  +\Gamma_{\mathcal S_t}^t
+  B_{\mathcal S_t}^\top f_{\mathrm{ext}}^t.
+  \label{eq:minimal-direct-load}
+\end{equation}
+
+하나의 external anchor force가 \(\Phi\)와 \(\Psi_{\mathcal S_t}\) coordinate에 동시에 투영되는 것은
+double counting이 아니다. 이는 결합 Galerkin basis에서 같은 virtual work를 표현한 것이고,
+질량/강성/감쇠 cross block을 포함한 한 system에서 함께 푼다.
+
+Physics-only V0는 full-anchor force를 patch로 잘랐다가 다시 조립하지 않는다.
+따라서 nodal lifting, owner-weighted force assembly, exact wrench KKT와 support reaction이 없다.
+
+\subsection{한 번의 implicit midpoint step}
+
+Reduced coordinate를 \(y_{\mathcal S_t}=[q,z_{\mathcal S_t}]\)로 두고,
+frame 동안 \(h^t,f_{\mathrm{aero}}^t\)를 hold한다.
+
+\begin{equation}
+\begin{aligned}
+  A_{\mathcal S_t}^{\mathrm{MP}}
+  &=
+  \frac{4}{\Delta t^2}M_{\mathcal S_t}
+  +\frac{2}{\Delta t}C_{\mathcal S_t}
+  +K_{\mathcal S_t},\\
+  A_{\mathcal S_t}^{\mathrm{MP}}\Delta y^t
+  &=
+  2r_{\mathcal S_t}^t
+  -2K_{\mathcal S_t}y^{t-1}
+  +\frac{4}{\Delta t}M_{\mathcal S_t}\dot y^{t-1},\\
+  \widetilde y^t&=y^{t-1}+\Delta y^t,\qquad
+  \dot{\widetilde y}^{\,t}
+  =\frac{2}{\Delta t}\Delta y^t-\dot y^{t-1}.
+\end{aligned}
+  \label{eq:minimal-coupled-step}
+\end{equation}
+
+Implicit midpoint는 high-frequency visual band를 과도하게 지우지 않으면서
+fixed-Hessian solve를 유지하기 위한 구현 선택이며 novelty가 아니다.
+Backward Euler는 robustness baseline으로만 비교할 수 있다.
+한 frame 안에 aerodynamic force를 다시 평가하거나 Global corrector를 추가하지 않는다.
+이 단일 solve 뒤 기존 hold counter를 갱신하고, release predicate를
+\(N_{\mathrm{hold}}\) frame 연속 통과한 unit 집합을
+\(\mathcal R_t\subseteq\mathcal D_t^{\mathrm{pre}}\)라 한다. Frame-end contract는
+\[
+  \mathcal D_t^{\mathrm{end}}
+  =\mathcal D_t^{\mathrm{pre}}\setminus\mathcal R_t,
+  \qquad
+  (z_r^t,\dot z_r^t)
+  =
+  \begin{cases}
+    (0,0),&r\in\mathcal R_t,\\
+    (\widetilde z_r^t,\dot{\widetilde z}_r^{\,t}),&r\notin\mathcal R_t,
+  \end{cases}
+  \qquad
+  (q^t,\dot q^t)=(\widetilde q^t,\dot{\widetilde q}^{\,t})
+\]
+이다. Reconstruction은 이 frame-end state를 사용하고, 다음 frame admission은
+\(\mathcal D_t^{\mathrm{end}}\)에서 시작한다. Frame \(t\) actual-rank/timing trace는
+\(\mathcal S_t^{\mathrm{solve}}\)를 기록한다. 이 순서는 solve를 추가하거나 새 runtime state/stage를 만들지 않는다.
+
+\section{Anchor-to-Gaussian affine transport}
+
+Gaussian \(j\)는 setup에서 고정한 same-layer nearby anchor, weight \(\omega_{ji}\),
+rest tangent frame \(T_j^0=[t_{j1}^0,t_{j2}^0]\), normal \(n_j^0\)와
+2D rest coordinate \(\xi_{ji}\)를 가진다.
+Thin-surface neighborhood만으로 일반 3\(\times\)3 affine map의 normal column을 식별할 수 없으므로,
+먼저 tangent map만 fit한다.
+
+Setup binding은 식~\eqref{eq:minimal-surface-tangent-fit}과 동일한
+\(\texttt{tangent\_fit\_v1}\)을 사용한다.
+즉 positive normalized weights, weighted rest/current centering과
+fixed rest coordinate convention을 그대로 따른다.
+\begin{equation}
+\begin{aligned}
+  &\omega_{ji}>0,\qquad
+  \sum_{i\in\mathcal N_j}\omega_{ji}=1,\\
+  &\bar x_j^s=\sum_{i\in\mathcal N_j}\omega_{ji}x_i^s
+  \quad(s\in\{0,t\}),\qquad
+  \xi_{ji}=(T_j^0)^\top(x_i^0-\bar x_j^0),\\
+  &\sum_i\omega_{ji}\xi_{ji}=0,\qquad
+  G_j^0=\sum_i\omega_{ji}\xi_{ji}\xi_{ji}^\top,\qquad
+  G_j^0\ \text{passes}\ \eqref{eq:minimal-tangent-numerical-rank},\quad
+  \kappa(G_j^0)\leq\kappa_{\mathrm{MLS}}.
+\end{aligned}
+  \label{eq:minimal-affine-weights}
+\end{equation}
+따라서 각 support에는 최소 세 개의 non-collinear same-layer anchor가 필요하다.
+Rest와 current support에서 같은 \(\xi_{ji}\)에 대한 3\(\times\)2 fitted tangent Jacobian을
+각각 구하고, rest fit에 대한 상대 map만 transport에 사용한다.
+
+\begin{equation}
+\begin{aligned}
+  C_j^s
+  &=\sum_{i\in\mathcal N_j}\omega_{ji}
+    (x_i^s-\bar x_j^s)\xi_{ji}^\top,\\
+  J_j^s
+  &=C_j^s(G_j^0)^{-1},\\
+  J_j^s
+  &=\arg\min_{J\in\mathbb R^{3\times2}}
+  \sum_{i\in\mathcal N_j}\omega_{ji}
+  \left\|(x_i^s-\bar x_j^s)-J\xi_{ji}\right\|_2^2,
+  \qquad s\in\{0,t\},\\
+  F_{j,\parallel}^t
+  &=J_j^t\bigl((J_j^0)^\top J_j^0\bigr)^{-1}(J_j^0)^\top .
+\end{aligned}
+  \label{eq:minimal-affine-fit}
+\end{equation}
+
+\(J_j^0\)와 \(J_j^t\)는 식~\eqref{eq:minimal-tangent-numerical-rank}을 통과하고
+\(\kappa((J_j^s)^\top J_j^s)\leq\kappa_{J,\mathrm{MLS}}\),
+\(s\in\{0,t\}\)여야 한다.
+Ordered tangent column과 rest orientation sign \(s_j\in\{-1,+1\}\)로
+\[
+  \widetilde n_j^s=J_j^s(:,1)\times J_j^s(:,2),\qquad
+  n_{j,\mathrm{fit}}^s
+  =s_j\frac{\widetilde n_j^s}{\|\widetilde n_j^s\|_2},
+  \quad s\in\{0,t\},
+\]
+를 정한다. \(s_j\)는 \(n_{j,\mathrm{fit}}^0\)가 stored \(n_j^0\)와 같은 방향이 되도록
+setup에서 동결한다. Rest \(G_j^0,J_j^0\)의 numerical-rank/condition과
+orientation 또는 normal norm이 cap을
+통과하지 못하면 binding/package를 reject한다. Valid affine path에서는 V0의 declared unit normal
+extension을 사용해
+
+\begin{equation}
+  F_{j,\mathrm{shell}}^t
+  =
+  F_{j,\parallel}^t
+  +n_{j,\mathrm{fit}}^t(n_{j,\mathrm{fit}}^0)^\top
+  \label{eq:minimal-shell-extension}
+\end{equation}
+
+을 만든다. 이 상대 정의는 identity에서 \(F_{j,\mathrm{shell}}^0=I\),
+proper rigid motion \(Q\)에서 \(F_{j,\mathrm{shell}}^t=Q\)를 정확히 재현한다.
+
+Current \(J_j^t\)의 numerical-rank/condition 또는 normal norm이 cap을 통과하지 못하면
+renderer transport consumer는 다음 centered weighted proper-Kabsch fallback을 시도한다.
+\begin{equation}
+\begin{aligned}
+  r_{ji}^s&=x_i^s-\bar x_j^s,\qquad s\in\{0,t\},\\
+  H_{j,\mathrm{rigid}}^t
+  &=\sum_{i\in\mathcal N_j}\omega_{ji}r_{ji}^t(r_{ji}^0)^\top
+    =U_j\operatorname{diag}(\sigma_{j1},\sigma_{j2},\sigma_{j3})V_j^\top,\\
+  R_{j,\mathrm{rigid}}^t
+  &=U_j\operatorname{diag}
+    \left(1,1,\det(U_jV_j^\top)\right)V_j^\top\\
+  &=\arg\min_{R\in\mathrm{SO}(3)}
+    \sum_{i\in\mathcal N_j}\omega_{ji}
+    \left\|r_{ji}^t-Rr_{ji}^0\right\|_2^2 .
+\end{aligned}
+  \label{eq:minimal-renderer-rigid-fallback}
+\end{equation}
+Singular values는 \(\sigma_{j1}\geq\sigma_{j2}\geq\sigma_{j3}\geq0\)로 정렬한다.
+\(0<\tau_K<1\)에 대해 numerical rank는
+\[
+  \operatorname{rank}_{\tau_K}(H)
+  :=\#\left\{k:\sigma_1>0,\ \sigma_k/\sigma_1\geq\tau_K\right\}
+\]
+인 relative singular-value convention으로 고정한다.
+Fallback 성공은 stored support order/rest orientation에 따른 deterministic SVD sign/tie-break,
+\(R_{j,\mathrm{rigid}}^t\in\mathrm{SO}(3)\)와
+\[
+\begin{aligned}
+  \operatorname{rank}_{\tau_K}(H_{j,\mathrm{rigid}}^t)&=2,
+  &\frac{\sigma_{j2}}{\sigma_{j1}}&\geq\tau_{K,\mathrm{ratio}},
+  &\frac{\sigma_{j3}}{\sigma_{j2}}&\leq\tau_{K,\mathrm{plane}},\\
+  \rho_{K,j}^t
+  &:=\frac{
+    \left(\sum_i\omega_{ji}
+    \|r_{ji}^t-R_{j,\mathrm{rigid}}^tr_{ji}^0\|_2^2\right)^{1/2}
+  }{
+    \left(\sum_i\omega_{ji}\|r_{ji}^0\|_2^2\right)^{1/2}}
+  \leq\tau_{K,\mathrm{res}}.
+\end{aligned}
+\]
+를 모두 요구한다. 따라서 reflection, rank-1 collapsed support와 numerical rank-3 ambiguity를
+rigid 성공으로 간주하지 않는다. Finite하고 식~\eqref{eq:minimal-tangent-numerical-rank}의 tangent fit과
+stored orientation을 통과한 affine candidate의 다음 3\(\times\)3 SVD로 full-rank/orientation 조건을
+먼저 검사하고, 통과한 경우에만 singular value를 clip한다.
+\begin{equation}
+\begin{aligned}
+  F_{j,\mathrm{shell}}^t
+  &=U_{F,j}^t
+    \operatorname{diag}(\sigma_{F,j1}^t,\sigma_{F,j2}^t,\sigma_{F,j3}^t)
+    (V_{F,j}^t)^\top,\\
+  \sigma_{F,j1}^t&\geq\sigma_{F,j2}^t\geq\sigma_{F,j3}^t
+    \geq\sigma_{F,\mathrm{rank}}>0,
+  \qquad \det(F_{j,\mathrm{shell}}^t)>0,\\
+  \bar\sigma_{F,jk}^t
+  &=\operatorname{clip}(\sigma_{F,jk}^t;\sigma_{F,\min},\sigma_{F,\max}),
+  \qquad 0<\sigma_{F,\min}\leq1\leq\sigma_{F,\max},\\
+  F_{j,\mathrm{safe}}^t
+  &=U_{F,j}^t
+    \operatorname{diag}(\bar\sigma_{F,j1}^t,
+                        \bar\sigma_{F,j2}^t,
+                        \bar\sigma_{F,j3}^t)
+    (V_{F,j}^t)^\top .
+\end{aligned}
+  \label{eq:minimal-affine-safe-map}
+\end{equation}
+여기서 \(\sigma_{F,\mathrm{rank}},\sigma_{F,\min},\sigma_{F,\max}\)는 dimensionless다.
+Non-finite value, numerical rank loss 또는 orientation disagreement는
+defensive affine-invalid event다. 다음 orientation failure도 같은 event로 처리한다.
+\[
+  \det(F_{j,\mathrm{shell}}^t)\leq0.
+\]
+Singular-vector sign을 바꾸어
+reflection을 조용히 proper map으로 수선하지 않고, 식~\eqref{eq:minimal-renderer-rigid-fallback}의 기존
+proper-rigid fallback을 시도한다. Affine path가 위 식을 통과하면 그 \(F_{j,\mathrm{safe}}^t\)를 사용하고,
+affine path는 실패했지만 rigid path가 성공하면
+\(F_{j,\mathrm{safe}}^t=R_{j,\mathrm{rigid}}^t\)로 둔다.
+
+Binding package는 \texttt{tangent\_fit\_version}, ordered-neighbor/weight version,
+\(\kappa_{\mathrm{MLS}}\), \(\kappa_{J,\mathrm{MLS}}\),
+normal floor, rigid-fallback ID와
+\(\tau_K,\tau_{K,\mathrm{ratio}},\tau_{K,\mathrm{plane}},\tau_{K,\mathrm{res}}\),
+\(\sigma_{F,\mathrm{rank}},\sigma_{F,\min},\sigma_{F,\max}\), deterministic 3D-SVD ID,
+covariance eigenvalue bound와
+development에서 동결한 renderer fallback-rate cap \(\tau_{\mathrm{rigid}}\)을 저장한다.
+Required affine attempt 중 invalid와 singular-value clip event 비율
+\(r_{\mathrm{affine,invalid}},r_{\mathrm{affine,clip}}\)을 각각 trace에 기록하고,
+event definition, threshold와 package hash를 함께 저장한다.
+Run의 required Gaussian--frame transport attempt 수에 대한 successful rigid-fallback event 비율을
+\(r_{\mathrm{rigid}}\)로 기록한다. Rigid fallback이 성공하고
+\(r_{\mathrm{rigid}}\leq\tau_{\mathrm{rigid}}\)이면 fallback-marked renderer 결과를 사용할 수 있다.
+Rigid fit 자체가 실패하거나 cap을 넘으면 식~\eqref{eq:minimal-attempt-success-contract}의
+in-envelope method failure다. 이 fallback은 식~\eqref{eq:minimal-surface-tangent-fit}의
+surface/aero consumer에는 적용하지 않는다. Gaussian mean/covariance는
+
+\begin{equation}
+\begin{aligned}
+  \mu_j^t
+  &=
+  \bar x_j^t+F_{j,\mathrm{safe}}^t(\mu_j^0-\bar x_j^0),\\
+  \widetilde\Sigma_j^t
+  &=
+  F_{j,\mathrm{safe}}^t\Sigma_j^0(F_{j,\mathrm{safe}}^t)^\top
+  =Q_j^t\operatorname{diag}(\lambda_{j1}^t,\lambda_{j2}^t,\lambda_{j3}^t)(Q_j^t)^\top,\\
+  \bar\lambda_{jk}^t
+  &=\operatorname{clip}(\lambda_{jk}^t;\lambda_{\min},\lambda_{\max}),
+  \qquad k\in\{1,2,3\},\\
+  \Sigma_j^t
+  &=
+  Q_j^t\operatorname{diag}(\bar\lambda_{j1}^t,\bar\lambda_{j2}^t,\bar\lambda_{j3}^t)(Q_j^t)^\top .
+\end{aligned}
+  \label{eq:minimal-gaussian-transport}
+\end{equation}
+
+로 한 번만 갱신한다. Eigenvalue가 renderer-safe 범위 안이면 clip은 identity이며,
+unconditional \(\varepsilon_\Sigma I\)를 더하지 않는다. 범위를 벗어난 경우에만 conditional clamp하고
+clamp rate를 보고한다.
+Accepted rest Gaussian은
+\(\lambda_k(\Sigma_j^0)\in[\lambda_{\min},\lambda_{\max}]\)를 setup에서 먼저 통과해야 하므로
+identity deformation에서는 covariance clamp가 작동하지 않는다.
+Identity, rigid transform, in-plane affine reproduction과 declared normal extension, SPD가 hard test다.
+Planar evidence로 arbitrary 3D affine 또는 thickness deformation을 복원한다고 주장하지 않는다.
+
+Canonical quantitative rendering은
+\(\texttt{appearance\_mode=degree0\_v0}\) 하나만 사용한다.
+각 Gaussian의 opacity와 degree-0/DC color coefficient는 rest asset 값을 유지하고,
+higher-order SH coefficient는 삭제하지 않되 canonical renderer에서 비활성화한다.
+따라서 V0 transport가 갱신하는 것은 mean과 covariance뿐이며, 회전하는 surface의 higher-order
+view-dependent lobe를 world frame에 고정한 채 appearance 성능으로 주장하지 않는다.
+Local rigid frame으로 view direction 또는 SH frame을 analytic하게 회전하는 방식은
+Gate A/B/C 이후 별도 appearance tag를 가진 optional ablation이다. 이는 V0 DoD가 아니며
+appearance residual network나 새 runtime physics stage를 추가하는 근거가 아니다.
+
+이 transport는 known physics-inspired upsampling과 연결되며
+\cite{kavan2011upsampling}, 독립 algorithm novelty로 주장하지 않는다.
+
+\section{Minimal safety contract}
+
+다음 여덟 항목만 구현 차단 hard gate로 둔다.
+
+\begin{longtable}{L{0.08\linewidth}L{0.38\linewidth}L{0.44\linewidth}}
+\toprule
+ID & Hard acceptance & 실패 시 조치\\
+\midrule
+\endfirsthead
+\toprule
+ID & Hard acceptance & 실패 시 조치\\
+\midrule
+\endhead
+S0 & Frame/unit/index, SI/nd typed mapping, operating envelope와 \(N_{\mathrm{sub}}=1\),
+canonical method signature 및 \(\texttt{appearance\_mode=degree0\_v0}\)를 포함한
+package/state/run hash와 save--load round trip &
+Fail-fast. Dataset/run 생성 금지.\\
+S1 & Positive area/mass, total ownership, attachment-line eigengap/gauge, versioned relation-to-constraint
+mapping, flat-rest planarity/tangential residual cap, valid hard attachment와 close-layer shortcut 없음 &
+Package reject, user hint 또는 explicit scaffold fallback.\\
+S2 & \texttt{corotated\_tangent\_plane\_v2} one-local-step fixed-Hessian PD package,
+\(M\succ0\), projector rest/rigid/normal-response fixture, zero-wind recovery와 bounded 10--30초 rollout &
+Preset/backend 수정 또는 package reject. 새 shell feature 자동 추가 금지.\\
+S3 & \texttt{generalized\_eigen\_v1} Global basis,
+\(\Phi^\top M\Psi_r\approx0\), reachable \(B_{\mathcal S}\) full rank/conditioned, cross block 보존 &
+Local basis prune/rebuild. Dynamic remapping 금지.\\
+S4 & \texttt{tangent\_fit\_v1}의 fixed same-layer weights, rank/condition/orientation,
+3\(\times\)2 tangent normal/area, zero-relative-wind force, finite load와 force channel 1회 소비 &
+Frame/package fail. H/corrector로 우회 금지.\\
+S5 & Direct \(B_{\mathcal S}^\top f\), one coupled solve, frozen dwell/fade/release,
+no energetic reset와 activation/release pop tolerance &
+Admission 지연. 반복 실패 시 MC2/selectivity를 철회하고 always-on Local baseline으로 재분류;
+canonical selective result로 사용 금지.\\
+S6 & Normalized rank-2 affine support, 식~\eqref{eq:minimal-renderer-rigid-fallback}의
+renderer-only proper-rigid fallback과 rate cap, identity/rigid/in-plane-affine transport,
+declared normal extension, conditional covariance clamp와 SPD &
+Affine 실패 후 valid rigid와 cap 이하는 marked render 허용.
+Rigid 실패/cap 초과는 method failure; surface/aero fallback 금지.\\
+S7 & GPU synchronization/warmup, p50/p95/p99, dynamics/end-to-end 분리,
+actual active rank 기록 &
+Speed/real-time/actual-skip claim 금지.\\
+\bottomrule
+\end{longtable}
+
+S0--S7은 engineering fidelity test가 아니라 visible failure와 claim invalidation을 막는 계약이다.
+Exact force/torque, exact reaction과 exact modal closure를 hard gate로 다시 올리지 않는다.
+
+\section{Topology distillation contract}
+
+\subsection{V0-R1 versioned executable package}
+
+Topology distillation은 runtime network가 아니라 setup용 V0-R1 module 하나다. 그 실행 계약을
+\begin{equation}
+  \mathcal V_{\mathrm{R1}}
+  =(\nu_{\mathrm{anchor}},\nu_{\mathrm{cand}},\nu_{\mathrm{feat}},
+    \nu_{\mathrm{arch}},\nu_{\mathrm{label}},\nu_{\mathrm{loss}},
+    \nu_{\mathrm{decode}},\nu_{\mathrm{split}})
+  \label{eq:minimal-r1-version-contract}
+\end{equation}
+로 저장한다. 각 \(\nu\)는 algorithm ID, normalization, threshold/cap, seed와 deterministic tie-break를
+포함한다. Surface-valid Gaussian에서 anchor를 만드는
+\(\mathcal S_{\mathrm{anchor}}^{\nu_{\mathrm{anchor}}}\)와 각 anchor의 broad proposal set
+\(\mathcal P_i^{\nu_{\mathrm{cand}}}\)를 config에서 정확히 하나 선택하고
+\begin{equation}
+  V=\mathcal S_{\mathrm{anchor}}^{\nu_{\mathrm{anchor}}}(\mathcal G_{\mathrm{valid}}),
+  \qquad
+  E_{\mathrm{cand}}=\bigl\{\{i,k\}:k\in\mathcal P_i\ \text{or}\ i\in\mathcal P_k\bigr\}
+  \label{eq:minimal-r1-anchor-candidate}
+\end{equation}
+로 undirected candidate graph를 만든다. Weighted FPS, deterministic radius/kNN 또는 이들의 고정
+조합은 허용 가능한 config 후보지만 어느 하나를 방법 전체의 유일한 선택으로 선언하지 않는다.
+각 training run은 아래 lifecycle에 따라 routine, cardinality/radius와 normalization이 모두 채워진
+정확히 한 training-static config만 사용하며, asset별 retuning을 금지한다.
+
+Object center/scale로 정규화한 position, versioned positive Gaussian surface scale
+\(\ell_i^{\mathrm{GS}}>0\)와 eigenvalue ratio, surface normal의 sign-invariant
+quantity, attachment distance와 식~\eqref{eq:minimal-local-line-gauge}의 line projector로 node feature
+\(\phi_i^{\nu_{\mathrm{feat}}}\)를 만든다.
+\(\bar\ell_{ik}^{\mathrm{GS}}=(\ell_i^{\mathrm{GS}}+\ell_k^{\mathrm{GS}})/2\),
+\(r_{ik}=(x_k^0-x_i^0)/\bar\ell_{ik}^{\mathrm{GS}}\)와
+\(\{a,b\}_{\mathrm{sym}}=(a+b,|a-b|)\)를 사용해 pair feature를
+\begin{equation}
+\begin{aligned}
+  \chi_{ik}=\bigl[&\|r_{ik}\|_2,\ |(n_i^0)^\top n_k^0|,
+  \{ |r_{ik}^\top n_i^0|,|r_{ik}^\top n_k^0|\}_{\mathrm{sym}},\\
+  &\{r_{ik}^\top L_i^0r_{ik},r_{ik}^\top L_k^0r_{ik}\}_{\mathrm{sym}},
+  |\log(\ell_i^{\mathrm{GS}}/\ell_k^{\mathrm{GS}})|\bigr]
+\end{aligned}
+  \label{eq:minimal-r1-symmetric-features}
+\end{equation}
+로 고정한다. Feature의 정확한 field order와 epsilon은 \(\nu_{\mathrm{feat}}\)가 소유한다.
+Node encoder \(h_i=E_\theta(\phi_i)\) 뒤 relation/layer logit은
+\begin{equation}
+  \ell_{ik}^{c}
+  =g_{\theta,c}\!\left(h_i+h_k,|h_i-h_k|,\chi_{ik}\right),\qquad
+  p_{ik}^{c}=\sigma(\ell_{ik}^{c})=p_{ki}^{c},\quad
+  c\in\{\mathrm{rel},\mathrm{layer}\}
+  \label{eq:minimal-r1-symmetric-logit}
+\end{equation}
+처럼 symmetry를 construction으로 보장한다. Width/depth/activation은
+\(\nu_{\mathrm{arch}}\)에서 하나로 동결하되 특정 architecture를 method claim으로 만들지 않는다.
+Area head는 node embedding \(h_i\)만 소비하는 scalar head이며 global pooling이나 추가
+message-passing stage를 사용하지 않는다. Dimensionless floor
+\(\varepsilon_{a,\mathrm{raw}}>0\)에 대해
+\begin{equation}
+\begin{aligned}
+  \zeta_i^a
+  &=g_{\theta,a}(h_i),\\
+  \widetilde a_i
+  &=\operatorname{softplus}(\zeta_i^a)+\varepsilon_{a,\mathrm{raw}},\\
+  a_i^0
+  &=A_{\mathrm{ref}}\frac{\widetilde a_i}{\sum_{k\in V}\widetilde a_k}.
+\end{aligned}
+  \label{eq:minimal-r1-area-decode}
+\end{equation}
+로 \(\lvert V\rvert\times1\) scalar output과 positive total ownership을 construction으로 만족한다.
+Area-head width/depth/activation과 output field ID는 \(\nu_{\mathrm{arch}}\)가 소유한다.
+여기서 unit-typed \(A_{\mathrm{ref}}>0\)는 물리적 절대 면적 추정값이 아니라
+식~\eqref{eq:minimal-area-mass}의 deterministic 소유권 정규화 상수다.
+Package build 전에 \(L_{\mathrm{ref}}=\operatorname{diameter}(x^0)>0\),
+\(A_{\mathrm{ref}}=L_{\mathrm{ref}}^2\)로 고정하고, object-normalized nondimensional geometry에서
+\(L_{\mathrm{ref}}=1\)이면 \(A_{\mathrm{ref}}=1\)이다. Training source mesh나 target static GS에
+별도의 absolute-area calibration estimator를 만들지 않는다.
+
+Training-only source mesh에는 anchor-to-surface map과 label generator
+\(\mathcal Y^{\nu_{\mathrm{label}}}\)를 적용해 relation, close-layer/shortcut과 area target
+\((y_{ik}^{\mathrm{rel}},y_{ik}^{\mathrm{layer}},a_i^\star)\)를 만든다. Connectivity-hop, geodesic-radius
+또는 versioned side/layer rule 중 선택한 정확한 한 규칙과 모든 radius/hop/mapping tie-break를 config/hash에
+저장하며, geodesic radius 하나를 모든 asset의 유일한 ground truth로 강제하지 않는다. Source mesh는
+label 생성에만 쓰고 target setup/runtime 입력에는 들어가지 않는다. 식~\eqref{eq:minimal-attachment-line-gauge}의
+in-plane gauge는 analytic이므로 orientation label/output/loss를 만들지 않고 \(\Delta\theta_i=0\)을 유지한다.
+Binary label polarity는
+\[
+\begin{aligned}
+  y_{ik}^{\mathrm{rel}}=1
+  &\iff \{i,k\}\text{가 valid same-layer material relation이고},\\
+  y_{ik}^{\mathrm{layer}}=1
+  &\iff \{i,k\}\text{가 invalid cross-layer 또는 geometric shortcut candidate다}
+\end{aligned}
+\]
+로 고정한다. 따라서 valid relation은 \((y_{ik}^{\mathrm{rel}},y_{ik}^{\mathrm{layer}})=(1,0)\)이고,
+invalid layer/shortcut은 relation positive로 중복 표기하지 않는다.
+\(p_{ik}^{\mathrm{rel}}\)과 \(p_{ik}^{\mathrm{layer}}\)는 각각 이 positive class의 probability이며,
+label enum/string, model-output metadata와 decoder metadata를 \(\nu_{\mathrm{label}}\) hash에 함께 저장한다.
+
+Class weight가 동결된 weighted BCE를 \(\operatorname{BCE}_{w}\)라 하면
+\begin{equation}
+\begin{aligned}
+  \mathcal L_{\mathrm{edge}}
+  &=|E_{\mathrm{cand}}|^{-1}\sum_{\{i,k\}}\operatorname{BCE}_{w_e}
+    (p_{ik}^{\mathrm{rel}},y_{ik}^{\mathrm{rel}}),\\
+  \mathcal L_{\mathrm{layer}}
+  &=|E_{\mathrm{cand}}|^{-1}\sum_{\{i,k\}}\operatorname{BCE}_{w_l}
+    (p_{ik}^{\mathrm{layer}},y_{ik}^{\mathrm{layer}}),\\
+  \mathcal L_{\mathrm{area}}
+  &=|V|^{-1}\sum_i\left[\log(a_i^0/A_{\mathrm{ref}}+\varepsilon_{a,\log})-
+    \log(a_i^\star/A_{\mathrm{ref}}+\varepsilon_{a,\log})\right]^2,\\
+  \mathcal L_{\mathrm{topo}}
+  &=\lambda_e\mathcal L_{\mathrm{edge}}
+    +\lambda_a\mathcal L_{\mathrm{area}}
+    +\lambda_{\mathrm{layer}}\mathcal L_{\mathrm{layer}}.
+\end{aligned}
+  \label{eq:minimal-topology-loss}
+\end{equation}
+여기서 dimensionless \(\varepsilon_{a,\log}>0\)를 사용하고 teacher area target도
+합이 \(A_{\mathrm{ref}}\)가 되도록 정규화한다.
+Loss weight, 두 dimensionless epsilon, optimizer/seed와 stopping rule은 \(\nu_{\mathrm{loss}}\)에 저장한다.
+Frozen decoder는 \(p_{ik}^{\mathrm{rel}}\geq\tau_{\mathrm{rel}}\),
+\(p_{ik}^{\mathrm{layer}}\leq\tau_{\mathrm{layer}}\), degree/radius/layer hard check와 stable-ID tie-break를
+모두 통과한 undirected edge만 accept한다. Degree cap 충돌은 score와 stable ID로 결정하고 hidden graph
+repair나 per-asset threshold 변경을 금지한다.
+
+Split의 독립 단위는 source object group이다. 같은 source object의 GS density/seed/reconstruction variant는
+한 group에만 속하고 train/development/test 사이에 나뉘지 않는다. V0-R1 lifecycle은 다음 순서만 허용한다.
+\begin{enumerate}
+  \item 먼저 \(\nu_{\mathrm{split}}\), object-group assignment와 data hash를 동결하고 test object/package ID를
+  seal한다. 이후 config/model/decoder 선택 동안 test payload와 result를 열지 않는다.
+  \item 각 training entry 전에
+  \(\nu_{\mathrm{anchor}},\nu_{\mathrm{cand}},\nu_{\mathrm{feat}},\nu_{\mathrm{arch}},
+  \nu_{\mathrm{label}},\nu_{\mathrm{loss}},\nu_{\mathrm{split}}\), decoder schema와 threshold/cap
+  candidate rule, seed 및 training data/label hash가 non-placeholder인 training-static config인지 검사하고
+  하나라도 비었으면 fail-fast한다. 이때 최종 numerical threshold/cap은 아직 동결하지 않는다.
+  \item Preregistered candidate run은 train group만 학습하고 development group만으로 정확히 한
+  model/config와 decoder threshold/cap을 선택한다. Asset별 또는 test-aware retuning은 금지한다.
+  \item Test payload를 처음 열기 전에 \(\mathcal V_{\mathrm{R1}}\)의 모든 field와 선택한 model weight를
+  동결하며, development에서 선택한 최종 threshold/cap을 포함하는 \(\nu_{\mathrm{decode}}\)도 이 시점에
+  처음 완결한다. Training source, label, data, config, decoder와 split의 full hash도 같은 immutable
+  manifest에 기록한다.
+  Test failure 뒤 어느 field라도 바꾸면 새 preregistered run이지 같은 result의 보정이 아니다.
+\end{enumerate}
+따라서 training 전 freeze는 decoder schema와 candidate rule의 재현성을 소유하고,
+최종 \(\nu_{\mathrm{decode}}\) numerical threshold/cap은 development-only 선택 뒤 test-open 전에 동결한다.
+최종 \(\nu_{\mathrm{decode}}\)를 training 전에 요구하거나 test 결과를 보고 다시 고르는 두 순서 모두 금지한다.
+이 lifecycle의 미완료나 실패는 V0-R1 predicted scaffold와 Gate A/MC1 evidence만 막는다.
+Explicit Oracle scaffold의 V0-01--04, privileged-teacher-ranked Local을 쓰는 Gate B와
+dynamics-only Gate C 경로를 막지 않는다.
+\(\mathcal V_{\mathrm{R1}}\), training source/label hash, model/config hash, decoder와 accepted/rejected reason을
+package에 저장한다. Network가 material, attachment,
+dense \(M,C,K\), dynamic state, force 또는 constraint triplet을 예측하지 않는다. Accepted output은
+식~\eqref{eq:minimal-topology-to-constraints}의 단일 analytic decoder만 거치며 full confidence calibrator를
+추가하지 않는다. Edge AUPRC는 diagnostic이고, 최종 MC1 evidence는 predicted scaffold가 Oracle scaffold에 근접하고
+oriented-kNN보다 response robustness와 \(R_{\mathrm{accept}}\)에서 낫다는 것이다.
+
+\subsection{Gate A가 실패할 때}
+
+Confidence network를 추가하는 대신 다음 순서로 축소한다.
+
+\begin{enumerate}
+  \item 지원 asset class를 제한한다.
+  \item close-layer/user orientation hint를 받는다.
+  \item explicit target scaffold 또는 Oracle scaffold fallback을 공개한다.
+  \item 그래도 실패하면 MC1을 철회하고 MC2를 Oracle scaffold에서만 진단한다.
+\end{enumerate}
+
+\section{연구 Gate A/B/C}
+
+\subsection{Gate A --- Representation}
+
+Independent GS 2--3개씩의 strip/flag에서 Oracle/source scaffold와 predicted scaffold를 비교한다.
+필수 증거는 area/mass consistency, close-layer false edge, coarse low-frequency band,
+동일 wind의 tip/velocity/PSD response consistency와 density/seed robustness다.
+첫 8--16 mode의 exact match는 diagnostic이지 universal hard threshold가 아니다.
+식~\eqref{eq:minimal-attempt-success-contract}의 \(R_{\mathrm{accept}}\)도 primary evidence이며,
+동결한 \(\tau_{\mathrm{fail},A}\)를 넘는 package failure는 accepted package의 conditional
+response가 좋아도 Gate A 실패다.
+
+Gate A 실패는 MC1을 축소하지만 Oracle scaffold에서 Gate B를 자동 기각하지 않는다.
+
+\subsection{Gate B --- Local necessity}
+
+동일 p95 dynamics latency에서
+
+\[
+\begin{aligned}
+  &\text{strong Global rank sweep}\qquad\text{vs.}\\
+  &\text{Global + privileged-teacher-ranked}\\
+  &\text{complementary Local}
+\end{aligned}
+\]
+
+을 비교한다. Privileged-teacher-ranked Local이 tip flutter, traveling gust, velocity trajectory 또는
+target-band PSD에서 식~\eqref{eq:minimal-pareto-effects}의 clustered effect-margin improvement를
+반복적으로 만들지 못하면
+MC2와 selector 개발을 중단하고 Global-only 방향으로 축소한다.
+
+Privileged-teacher-ranked selector는 setup에서 동결한 동일 atomic units와 \(K_A,K_D\),
+동일 coupled solver를 사용하되,
+privileged teacher의 다음 \(H\) frame velocity/target-band error 감소량으로 unit을 rank한다.
+Future label search 비용은 runtime latency에서 제외하지만 선택 뒤 실제 execution 비용은 포함한다.
+\(H\), error metric과 tie-break를 development split에서 한 번 동결한다.
+Offline scoring protocol은 \texttt{teacher\_counterfactual\_v1}로 고정한다. 각 scoring 시점의 full serialized
+\texttt{RuntimeState}를 candidate별로 deep-copy하되 Global/Local coordinate와 velocity,
+Active/Decay membership, dwell age, fade/release 상태 및 모든 timer/counter를 빠짐없이 복제한다.
+Gate B manifest는 이 protocol ID, \(H\), error metric, tie-break, scoring 시작 initial serialized
+\texttt{RuntimeState} hash, wind hash, reference hash와 solver/precision/seed를 포함한 config hash를 소유한다.
+Scoring 시작 state에서 minimum dwell을 아직 채우지 않아 반드시 유지해야 하는 Active unit 집합을
+\(\mathcal A_{\mathrm{mand}}\)라 한다. 각 candidate \(r\)는 동일 initial copy에서 base desired request
+\(\mathcal A_{\mathrm{mand}}\)와 isolated-candidate desired request
+\(\mathcal A_{\mathrm{mand}}\cup\{r\}\)를 비교하며, \(r\)은 optional priority 중 최상위로 둔다.
+두 branch는 동일 wind/reference horizon, solver, precision과 seed를 사용하고, 각각의 desired-set request를
+\(H\) frame 동안 고정한 채 기존 capacity-\(K_A\) admission/fade/release policy로 membership을 resolve한다.
+따라서 \(|\mathcal A_{\mathrm{mand}}|=K_A\)이면 candidate가 즉시 admit되지 않을 수 있으며 그 이득은
+첫 frame shortcut이 아니라 이후 dwell/admission dynamics를 포함한 전체 horizon으로 판정한다.
+중간 state reset, recursive re-ranking과 subset search는 금지한다. 이 counterfactual은 ranking-only이며,
+선택 뒤 실제 teacher-ranked execution만 기존 fixed \(K_A\)와 \(K_D\)를 따른다. Candidate가 첫 frame에
+admit되지 않았다는 이유만으로 score를 0으로 두지 않고, 두 \(H\)-frame rollout의 전체 state/metric trace가
+동일할 때만 0으로 둔다.
+이는 per-unit ranking으로 Local 필요성을 빠르게 판정하는 scope-control diagnostic이며,
+cross-unit coupling과 redundancy를 탐색하는 exact best-subset oracle이나 formal upper bound가 아니다.
+
+\subsection{Gate C --- Actual deployable gain}
+
+Deterministic selector를 포함한 실제 V0가 다음 중 하나를 보여야 한다.
+
+\begin{itemize}
+  \item optimized same-anchor sparse solver 대비 dynamics-only speedup
+  \item 동일 p95에서 더 낮은 trajectory/velocity/spectrum error
+  \item matched quality의 multi-object batch에서 same-anchor baseline보다 높은 throughput
+\end{itemize}
+
+Rendering Gaussian 수 증가와 거의 분리된 dynamics cost는 SYS scaling evidence이며,
+그 결과만으로 Gate C 또는 MC2를 통과시키지 않는다.
+Final deployable 판정은 식~\eqref{eq:minimal-attempt-success-contract}의
+\(R_{\mathrm{success}}\)와 \(\tau_{\mathrm{fail},C}\)도 동시에 통과해야 한다.
+In-envelope failure가 cap을 넘으면 성공 sequence의 Pareto가 좋아도 Gate C를 통과하지 않는다.
+
+임의의 \(2\times\)는 보편 합격선이 아니다.
+그러나 speed를 headline으로 쓰려면 strong-baseline Pareto envelope에
+식~\eqref{eq:minimal-pareto-effects}의 practical margin과 uncertainty를 통과한 새 영역이 있어야 한다.
+
+\section{최소 실험과 baseline}
+
+\subsection{첫 sweep}
+
+\begin{itemize}
+  \item Strip과 flag, asset별 independent GS 2--3개
+  \item Material preset 2--3개, hard edge attachment 하나
+  \item Steady, start/stop, sinusoidal, traveling gust
+  \item Curated subset만 사용하고 full Cartesian product를 만들지 않음
+\end{itemize}
+
+\subsection{필수 baseline}
+
+\begin{enumerate}
+  \item High-resolution prescribed-wind structural reference: accuracy reference 전용
+  \item 동일 constraint와 timestep을 쓰는 optimized full-coordinate same-anchor PD backend
+  \item Global ROM rank sweep
+  \item Global + always-on Local upper bound
+  \item Global + privileged-teacher-ranked Local
+  \item Global + deterministic selected Local
+  \item Oracle scaffold, predicted scaffold, simple oriented-kNN scaffold
+  \item 최종 단계의 explicit target-mesh extraction 한 방법
+  \item Paper evidence 단계의 direct 3DGS wind/animation baseline 한 방법
+\end{enumerate}
+
+초기 kill test에서 여러 sparse solver, 다수 neural dynamics baseline,
+MPM speed comparison, H/F/G variant와 corrector sweep을 구현하지 않는다.
+Direct 3DGS baseline은 Gate A/B/C의 초기 판정을 막지 않으며,
+Gate 뒤 공개 코드와 비교 가능성이 가장 높은 한 방법만 선택해 adaptation contract를 동결한다.
+\emph{Gaussian Swaying}은 surface-aware Gaussian aerodynamics가 직접 겹치는 paper-stage 우선
+후보지만 확정 baseline은 아니다. 공개 구현, 입력/출력 적합성과 공정한 adaptation 비용을 확인한 뒤
+V0-05에서 한 방법만 확정하며 후보 이름을 모두 구현할 의무는 없다.
+
+\subsection{Reference, sequence metric과 clustered inference}
+
+High-resolution reference는 단순히 더 많은 anchor를 쓴 run이 아니다. 모든 method/refinement에
+동일하게 적용하는 common evaluation-anchor lumped mass를 \(M_{\mathrm{eval}}\)로 고정한다. 두 refinement
+\((h,\Delta t)\), \((h/2,\Delta t/2)\)를 common evaluation anchor와 time grid에 resample하고
+\begin{equation}
+  e_{\mathrm{ref}}
+  =
+  \left[
+  \frac{\sum_t\|v_{\mathrm{ref}}^{h,\Delta t}(t)
+    -v_{\mathrm{ref}}^{h/2,\Delta t/2}(t)\|_{M_{\mathrm{eval}}}^2}
+       {\sum_t\|v_{\mathrm{ref}}^{h/2,\Delta t/2}(t)\|_{M_{\mathrm{eval}}}^2+\varepsilon_v}
+  \right]^{1/2}
+  \leq\tau_{\mathrm{ref}}
+  \label{eq:minimal-reference-convergence}
+\end{equation}
+를 통과해야 accuracy reference로 사용한다. 실패는 method failure로 바꾸지 않고
+reference-construction failure와 denominator를 별도 보고하며, 해당 accuracy comparison을 성공 사례처럼
+선택적으로 남기지 않는다.
+
+Frame은 독립 표본이 아니라 sequence metric의 내부 sample이다. Sequence \(s\)에 대해
+\begin{equation}
+\begin{aligned}
+  e_{v,s}
+  &=
+  \left[
+  \frac{\sum_t\|v_s^t-v_{\mathrm{ref},s}^t\|_{M_{\mathrm{eval}}}^2}
+       {\sum_t\|v_{\mathrm{ref},s}^t\|_{M_{\mathrm{eval}}}^2+\varepsilon_v}
+  \right]^{1/2},\\
+  e_{\mathrm{tip},s}
+  &=
+  \left[
+  \frac{\sum_t\|x_{\mathrm{tip},s}^t-x_{\mathrm{tip,ref},s}^t\|_2^2}
+       {\sum_t\|x_{\mathrm{tip,ref},s}^t-x_{\mathrm{tip,ref},s}^0\|_2^2
+        +\varepsilon_x}
+  \right]^{1/2}
+\end{aligned}
+  \label{eq:minimal-sequence-errors}
+\end{equation}
+를 계산한다. 이 절의 \(f_{\mathrm{PSD}}\)는 temporal frequency다.
+여기서 canonical lumped \(M_{\mathrm{eval}}\)이 mass-typed일 때
+\[
+\begin{aligned}
+  &\varepsilon_v>0\ \text{and finite},
+  &&[\varepsilon_v]=ML^2/T^2,
+  &&\widehat\varepsilon_v
+    =\varepsilon_v\frac{T_0^2}{M_0L_0^2},\\
+  &\varepsilon_x>0\ \text{and finite},
+  &&[\varepsilon_x]=L^2,
+  &&\widehat\varepsilon_x=\frac{\varepsilon_x}{L_0^2}.
+\end{aligned}
+\]
+역변환은
+\(\varepsilon_v=\widehat\varepsilon_vM_0L_0^2/T_0^2\),
+\(\varepsilon_x=\widehat\varepsilon_xL_0^2\)로 고정한다.
+두 typed value, SI/nondimensional branch, conversion과 \(M_{\mathrm{eval}}\) convention을
+evaluation hash에 포함하며, 식~\eqref{eq:minimal-reference-convergence}와
+식~\eqref{eq:minimal-sequence-errors}는 같은 \(\varepsilon_v\) contract를 공유한다.
+PSD는 per-bin power가 아니라 one-sided velocity-density PSD convention으로 고정하며
+\([P]=L^2/T\)다. Sampling rate, window normalization, DC/Nyquist 처리와 development에서 동결한
+frequency bin \(B\)를 evaluation hash에 저장한다. PSD와 같은 unit을 가진
+\(\varepsilon_P>0\)를 사용하고, unit-parity를 나타내는 기존 typed conversion scale
+\((L_0,T_0)\)에 대해
+\begin{equation}
+\begin{aligned}
+  \widehat f_{\mathrm{PSD}}&=f_{\mathrm{PSD}}T_0,&
+  \widehat\varepsilon_P&=\varepsilon_P\frac{T_0}{L_0^2},\\
+  \widehat P_s(\widehat f_{\mathrm{PSD}})
+  &=P_s(f_{\mathrm{PSD}})\frac{T_0}{L_0^2},\\
+  \widehat P_{\mathrm{ref},s}(\widehat f_{\mathrm{PSD}})
+  &=P_{\mathrm{ref},s}(f_{\mathrm{PSD}})\frac{T_0}{L_0^2},\\
+  \delta_s(\widehat f_{\mathrm{PSD}})
+  &=\log\!\left(\widehat P_s(\widehat f_{\mathrm{PSD}})+\widehat\varepsilon_P\right)
+    -\log\!\left(\widehat P_{\mathrm{ref},s}(\widehat f_{\mathrm{PSD}})+\widehat\varepsilon_P\right),\\
+  e_{\mathrm{PSD,RMS},s}
+  &=\left(\frac{1}{|\widehat B|}
+    \sum_{\widehat f_{\mathrm{PSD}}\in\widehat B}
+    \delta_s(\widehat f_{\mathrm{PSD}})^2\right)^{1/2},\\
+  e_{\mathrm{PSD,L1},s}
+  &=\frac{1}{|\widehat B|}
+    \sum_{\widehat f_{\mathrm{PSD}}\in\widehat B}
+    |\delta_s(\widehat f_{\mathrm{PSD}})|.
+\end{aligned}
+  \label{eq:minimal-log-psd-errors}
+\end{equation}
+를 둘 다 보고한다. Gate와 표의 primary PSD metric은 development에서 두 값 중 하나를 사전 등록하고,
+다른 하나는 mandatory secondary로 유지하며 결과를 본 뒤 primary를 바꾸지 않는다.
+여기서 \(\widehat B=\{f_{\mathrm{PSD}}T_0:f_{\mathrm{PSD}}\in B\}\)다. 같은 값은
+\(\delta_s(f_{\mathrm{PSD}})=
+\log[(P_s(f_{\mathrm{PSD}})+\varepsilon_P)/
+(P_{\mathrm{ref},s}(f_{\mathrm{PSD}})+\varepsilon_P)]\)로 직접
+계산할 수 있으므로 SI direct branch에 새 독립 \(T_{\mathrm{PSD,ref}}\)를 만들지 않는다.
+\(\varepsilon_P\)의 typed value/conversion과 위 convention 전체를 evaluation hash에 포함한다.
+Signed mean log-PSD처럼 cancellation이 가능한 값 하나로 대체하지 않는다.
+
+같은 source object의 모든 reconstruction은 하나의 outer object cluster에 속하고,
+각 independent-GS reconstruction은 그 안의 nested package cluster다. Method--baseline paired difference는
+sequence에서 계산하되 uncertainty는 object를 먼저 resample하고, 그 안의 package와 sequence를
+순서대로 resample하는 clustered paired bootstrap으로 구한다. Object/package 수가 작은 경우 p-value를
+headline으로 쓰지 않고 모든 object/package/sequence effect와 descriptive interval을 공개한다.
+Aggregate, bootstrap seed/replicate, failure handling과 cluster 내 weighting은 결과를 보기 전에 동결한다.
+독립 source-object 수의 최소값 \(N_{\mathrm{obj,min}}\)도 development에서 사전 등록한다.
+그보다 적으면 interval과 Gate 판정을 exploratory/descriptive로 표시하고 accept-ready 통계 주장을 하지 않는다.
+표본 부족을 본 뒤 asset을 소급 추가하지 않으며, 다음 paper-evidence 단계의 별도 수집 계획으로만 넘긴다.
+
+Pre-registered baseline-envelope matching rule로 짝지은 method \(m\), baseline \(b\)에 대해
+\begin{equation}
+  g_{E,s}=\frac{E_{b,s}-E_{m,s}}{E_{b,s}+\varepsilon_{\mathrm{err}}},\qquad
+  g_{L,s}=\frac{L_{b,s}-L_{m,s}}{L_{b,s}+\varepsilon_{\mathrm{lat}}}
+  \label{eq:minimal-pareto-effects}
+\end{equation}
+를 사용한다. \(E\)는 위 dimensionless sequence error 중 사전 지정한 primary이고
+\(\varepsilon_{\mathrm{err}}>0\)도 dimensionless다. \(L\)은 synchronized sequence latency aggregate이고
+\(\varepsilon_{\mathrm{lat}}>0\)는 같은 time unit을 가진다.
+Development에서 practical margin \((\delta_E,\delta_L)\)와 non-inferiority tolerance
+\((\delta_E^{\mathrm{NI}},\delta_L^{\mathrm{NI}})\)를 동결한다. Pareto improvement는 clustered 95\% interval의
+lower bound가
+\[
+  \operatorname{LB}(g_E)\geq\delta_E,\quad
+  \operatorname{LB}(g_L)\geq-\delta_L^{\mathrm{NI}}
+  \quad\text{또는}\quad
+  \operatorname{LB}(g_L)\geq\delta_L,\quad
+  \operatorname{LB}(g_E)\geq-\delta_E^{\mathrm{NI}}
+\]
+를 만족할 때만 primary evidence다. Margin 없는 strict non-dominance는 diagnostic으로만 남긴다.
+
+\subsection{지표}
+
+\begin{longtable}{L{0.22\linewidth}L{0.30\linewidth}L{0.38\linewidth}}
+\toprule
+목적 & Primary & 필수 보조\\
+\midrule
+\endfirsthead
+\toprule
+목적 & Primary & 필수 보조\\
+\midrule
+\endhead
+Gate A & GS variant response consistency와 \(R_{\mathrm{accept}}\) &
+area/mass, false edge, coarse spectrum, failure reason\\
+Gate B & velocity error 대 p95 dynamics & tip trajectory, dominant frequency/PSD\\
+Gate C & p95 dynamics/throughput와 \(R_{\mathrm{success}}\) &
+p99, memory, end-to-end latency, time-to-failure\\
+Safety & zero-wind recovery와 in-envelope method-failure rate &
+activation jerk/pop, invalid covariance/fallback rate\\
+SYS & dynamics cost 대 Gaussian 수 & transport/render time 분리\\
+\bottomrule
+\end{longtable}
+
+Teacher error가 낮더라도 same-anchor wall-clock가 나쁘면 speed contribution으로 보지 않는다.
+반대로 exact force error가 커도 silhouette, trajectory, dominant band와 temporal coherence가
+설득력 있고 Pareto가 좋으면 CG 목적에는 허용한다.
+
+\section{Minimal V0 method/contract freeze와 deferred-module policy}
+
+위 canonical signature와 V0-R1 version contract가 이 method/contract freeze를 닫는다.
+Gate A/B/C evidence 전에는 명백한 수식 오류의 정정 외에 새 method equation, backend 또는 runtime stage를
+추가하지 않는다. 정정은 기존 signature의 의미를 바꾸지 않을 때만 허용하며 변경 hash를 기록한다.
+
+\begin{longtable}{L{0.22\linewidth}L{0.67\linewidth}}
+\toprule
+Deferred module & 재검토 조건\\
+\midrule
+\endfirsthead
+\toprule
+Deferred module & 재검토 조건\\
+\midrule
+\endhead
+H: aero hyper-reduction & Full-anchor aero가 실제 synchronized p95 dynamics의 지배적 병목일 때\\
+F: missing-force network & Physics-only Local에 반복 가능하고 시각적으로 중요한 defect가 남을 때\\
+G: learned selector & Teacher-ranked와 deterministic selector의 same-\(K\)/same-latency gap이 클 때\\
+KKT/Schur & F가 서로 겹치는 nodal patch force를 실제 출력하도록 채택될 때\\
+Same-frame corrector & One-frame lag가 visible phase jump/instability를 만들고 same-p95에서 개선될 때\\
+Confidence calibrator & Hard triage의 reject/fallback rate가 MC1을 실제로 막을 때\\
+Teacher-FSI & Wake/unsteady-aero claim을 논문에 추가하기로 결정할 때\\
+Advanced solver backend & Direct small dense solve의 factorization이 profiler에서 병목일 때\\
+\bottomrule
+\end{longtable}
+
+새 module은 core benchmark에서 다음 중 하나를 실제로 보여야만 승격한다.
+
+\begin{enumerate}
+  \item 발산 또는 눈에 띄는 visual artifact 제거
+  \item MC1/MC2를 직접 무효화하는 실패 해결
+  \item 동일 p95에서 유의미한 quality 개선
+  \item matched quality에서 유의미한 latency/throughput 개선
+\end{enumerate}
+
+이론적 edge case만 있고 core 결과에 영향이 없으면 limitation으로 종료한다.
+새 core stage를 추가하면 기존 stage 하나를 대체해야 하며 병렬 mainline을 만들지 않는다.
+
+\section{Claim 축소와 실패 경로}
+
+\begin{longtable}{L{0.17\linewidth}L{0.17\linewidth}L{0.57\linewidth}}
+\toprule
+MC1 & MC2 & 연구 경로\\
+\midrule
+\endfirsthead
+\toprule
+MC1 & MC2 & 연구 경로\\
+\midrule
+\endhead
+Pass & Pass & Topology-distilled scaffold + selective complementary wind dynamics\\
+Pass & Fail & Topology-distilled reduced physical package/Global animation 중심으로 축소\\
+Fail & Pass & Oracle/explicit scaffold 기반 selective ROM; novelty/venue 재검토\\
+Fail & Fail & 현재 주제 중단 또는 mesh-proxy/visual wind controller로 재설계\\
+\bottomrule
+\end{longtable}
+
+Selector의 error relevance가 증명되기 전 제목은 \emph{Selective}로 유지한다.
+Compliance score가 유효하면 \emph{Compliance-Guided}를 사용할 수 있지만,
+certified error estimator 또는 Error-Triggered라고 주장하지 않는다.
+현재 canonical 제목의 \emph{Wind Dynamics}는 작업용 framing이다. Prescribed one-way wind에 의해
+구동된다는 경계를 더 정확히 드러내는 \emph{Wind-Driven Dynamics} 변경은 Gate A/B/C와
+식~\eqref{eq:minimal-pareto-effects}의 effect evidence를 확인한 V0-05에서만 결정한다.
+Gate 결과 전에는 특정 venue의 accept 가능성을 claim으로 쓰지 않고 venue 선택도 V0-05 이후로 보류한다.
+
+\section{구현 순서와 Definition of Done}
+
+\subsection{구현 순서}
+
+\begin{enumerate}
+  \item \textbf{V0-00:} typed contract, complete SI/nondimensional map,
+  operating envelope, attempt/failure 분모, method/contract freeze와 S0 fixture
+  \item \textbf{V0-01:} attachment-line gauge, Oracle flat-rest strip scaffold,
+  fixed edge/triplet PD backend와 corotated tangent-plane projector,
+  topology-to-constraint mapping, \texttt{generalized\_eigen\_v1} Global basis,
+  patch-local complement와 S1--S3
+  \item \textbf{V0-02:} full-anchor aero, Global rank sweep, same-anchor baseline과 S4
+  \item \textbf{V0-03:} privileged-teacher-ranked Local, deterministic selector,
+  frozen decay/release schedule,
+  single coupled solve와 S5
+  \item \textbf{V0-04:} shared tangent-fit contract,\newline
+  normalized/rank-checked affine transport,
+  renderer-only proper-rigid fallback와 cap, degree-0 appearance,
+  conditional covariance clamp,
+  integrated profiling과 S6--S7, transport/render를 포함한 final deployable Gate C
+  \item \textbf{V0-R1:} strip/flag independent-GS topology distillation과 Gate A
+  \item \textbf{V0-05:} Gate A/B/C 결과 집계 및 claim/research-route freeze decision
+\end{enumerate}
+
+V0-R1은 V0-01에서 scaffold 요구가 고정된 뒤 V0-02--04와 병렬 수행할 수 있다.
+각 P0 contract는 위에서 소유한 milestone 전에만 닫으면 되며,
+뒤 milestone의 transport/state 세부사항 때문에 앞선 Oracle fixture 구현을 막지 않는다.
+Gate B는 V0-03의 privileged-teacher-ranked Local 결과가 생기면,
+Gate C의 dynamics-only 판정은 V0-02 baseline과
+V0-03 deterministic timing이 생기면 즉시 먼저 실행할 수 있다.
+Transport/render를 포함한 final deployable Gate C는 V0-04 직후 실행한다.
+V0 method/contract와 architecture는 구현 전에 이미 위 canonical source로 동결한다.
+V0-05는 early evidence를 종합해 최종 claim과 research route를 동결하는 단계이지
+판정을 강제로 늦추는 barrier가 아니다.
+기존 full-design implementation/experiment 완료 상태는 자동 승계하지 않는다.
+
+\subsection{Definition of Done}
+
+\begin{itemize}
+  \item Oracle 및 accepted predicted package에서 관련 S0--S7 통과
+  \item Gate A/B/C 각각 pass/fail/defer와 claim 축소 경로 기록
+  \item Runtime trace에 deferred module이 존재하지 않음
+  \item Strip/flag 핵심 영상과 failure case를 공개할 수 있음
+  \item \nolinkurl{basis_type}, \nolinkurl{tangent_fit_version},
+  \nolinkurl{tangent_gauge_version}, \nolinkurl{bend_projection_version},
+  \nolinkurl{core_scope}와
+  derived array/report를 포함한 package hash가 run manifest와 일치
+  \item Degree-0 appearance mode, metric/Rayleigh mapping과 renderer fallback
+  threshold/cap을 run hash에서 재현 가능
+  \item Command, hardware, precision, unit branch와 operating envelope 재현 가능
+  \item Pre-registered denominator, \(R_{\mathrm{accept}}\), \(R_{\mathrm{success}}\),
+  first-failure reason과 conditional quality/timing을 함께 보고
+  \item Dynamics, transport와 render p50/p95/p99를 분리 보고
+\end{itemize}
+
+\section{최종 Minimal V0 요약}
+
+Minimal V0는 static GS에서 topology-distilled sparse scaffold를 만들고,
+flat-rest core에서 one-local-step fixed-Hessian PD-style structural backend,
+\texttt{generalized\_eigen\_v1} Global basis와 full-anchor quasi-steady aero를 사용한다.
+Cheap deterministic selector가 선택한 complementary Local basis와 Global basis를
+한 coupled Galerkin system으로 한 번 적분한 뒤, aero surface와 Gaussian transport가 공유하는
+\texttt{tangent\_fit\_v1} convention으로 Gaussian을 affine transport하고
+\texttt{degree0\_v0} appearance로 정량 렌더한다.
+
+방법의 성공은 수식의 완전성이 아니라 다음 세 증거로 판정한다.
+
+\begin{enumerate}
+  \item independent GS에서 stable and controllable scaffold를 반복 생성하는가?
+  \item strong Global rank보다 selected Local이 같은 p95에서 유용한 detail을 복원하는가?
+  \item optimized same-anchor solver를 포함한 Pareto envelope에 새 영역을 만드는가?
+\end{enumerate}
+
+이 세 질문에 답하기 전에는 KKT/Schur, corrector, learned residual/gate,
+confidence calibration과 새로운 shell mechanics를 추가하지 않는다.
+
+\bibliographystyle{plain}
+\bibliography{refs_topology_distilled_selective_global_local_wind_dynamics}
+
+\end{document}

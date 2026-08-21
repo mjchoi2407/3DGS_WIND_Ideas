@@ -1,0 +1,1062 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=21mm,headheight=15pt]{geometry}
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Serif CJK KR}
+\setCJKsansfont{Noto Sans CJK KR}
+\setCJKmonofont{Noto Sans Mono CJK KR}
+
+\usepackage{amsmath,amssymb,bm,mathtools}
+\usepackage{booktabs,longtable,tabularx,array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage[most]{tcolorbox}
+\usepackage{listings}
+\usepackage{needspace}
+\usepackage{seqsplit}
+
+\definecolor{CoreBlue}{HTML}{1F4E79}
+\definecolor{CoreLight}{HTML}{EAF3F8}
+\definecolor{SafeGreen}{HTML}{38761D}
+\definecolor{SafeLight}{HTML}{EAF4E2}
+\definecolor{WarnOrange}{HTML}{B45F06}
+\definecolor{WarnLight}{HTML}{FFF2CC}
+\definecolor{RejectRed}{HTML}{9C0006}
+\definecolor{RejectLight}{HTML}{FCE8E6}
+\definecolor{GrayLight}{HTML}{F4F5F7}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=CoreBlue,
+  urlcolor=CoreBlue,
+  pdftitle={Minimal V0 Implementation Readiness Review},
+  pdfauthor={Wind3DGS Project}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Minimal V0 Implementation Readiness Review}
+\rhead{\small 2026-08-21}
+\cfoot{\thepage}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.48em}
+\setlength{\emergencystretch}{2em}
+\setlist[itemize]{leftmargin=1.55em,itemsep=0.18em,topsep=0.28em}
+\setlist[enumerate]{leftmargin=1.85em,itemsep=0.20em,topsep=0.28em}
+\renewcommand{\arraystretch}{1.20}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\src}[1]{\textcolor{CoreBlue}{\nolinkurl{#1}}}
+\newcommand{\pass}{\textcolor{SafeGreen}{\textbf{PASS}}}
+\newcommand{\pzero}{\textcolor{RejectRed}{\textbf{P0}}}
+\newcommand{\pone}{\textcolor{WarnOrange}{\textbf{P1}}}
+\newcommand{\scopezero}{\textcolor{SafeGreen}{\textbf{Scope delta: 0 module}}}
+\newcommand{\R}{\mathbb{R}}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{GrayLight},
+  columns=fullflexible,
+  keepspaces=true
+}
+
+\title{\textbf{Minimal V0 구현 착수 가능성 검토 보고서}\\[0.35em]
+\large Canonical Idea Sketch 기준 수식ㆍ계약ㆍ범위 검증}
+\author{Wind3DGS Project}
+\date{2026-08-21}
+
+\begin{document}
+\maketitle
+
+\begin{tcolorbox}[
+  colback=SafeLight,
+  colframe=SafeGreen,
+  title=최종 판정,
+  fonttitle=\bfseries
+]
+\centering
+{\Large\textbf{IMPLEMENT}}\\[0.45em]
+검증된 P0 blocker는 없다. 현재 canonical TeX는 V0-00 및 Oracle strip 기반 V0-01을
+즉시 시작하기에 충분하며, 발견 사항은 V0-02/V0-03 및 평가 Gate 전에 닫을 수 있는
+국소 manifestㆍstate-orderㆍclamp 정의 P1이다.
+\end{tcolorbox}
+
+\begin{tcolorbox}[
+  colback=CoreLight,
+  colframe=CoreBlue,
+  title=검토 목적과 판정 경계,
+  fonttitle=\bfseries
+]
+이 검토의 목적은 engineering-grade 물리 정확성을 증명하는 것이 아니라,
+CG 논문용 Minimal V0가 \emph{visual coherence, bounded stability, switching continuity,
+same-anchor actual p95 fairness}를 검증할 수 있도록 구현 계약이 닫혀 있는지를 판정하는 것이다.
+Flat-rest strip/flag, fixed-Hessian one-local-step PD-style backend, one-frame staggered aero,
+cached compliance selector, fixed-cardinality Active/Decay, direct Galerkin projection,
+degree-0 appearance와 fail-fast는 의도된 근사로 취급하였다.
+\end{tcolorbox}
+
+\tableofcontents
+\newpage
+
+\section{A. Snapshot 확인}
+
+\subsection{검토 자료와 freshness}
+
+\begin{tabularx}{\textwidth}{L{0.27\textwidth}Y}
+\toprule
+항목 & 확인 결과 \\
+\midrule
+Canonical source & \code{붙여넣은 텍스트 (1).txt}; 완전한 XeLaTeX 문서이며 문서 날짜는 2026-08-15이다. \\
+SHA-256 & \texttt{\seqsplit{d48c4dbcc1ef70c7d160158f3f2874b2fc6efe7cca6038705fe0cbfd943c3e35}} \\
+Source 규모 & CRLF 기준 1,997 lines; equation label 47개; duplicate label 0개; undefined \code{\textbackslash eqref}/\code{\textbackslash ref} 0개 \\
+주요 immutable signature & \code{basis\_type=generalized\_eigen\_v1}, \code{tangent\_fit\_version=tangent\_fit\_v1}, \code{tangent\_gauge\_version=attachment\_line\_v1}, \code{bend\_projection\_version=corotated\_tangent\_plane\_v2}, \code{core\_scope=flat\_rest\_v0}, \code{appearance\_mode=degree0\_v0} \\
+Local compile 참고값 & 외부 bibliography가 없는 상태에서 XeLaTeX 임시 컴파일 시 28 pages. 이는 첨부 PDF의 권위 있는 page count가 아니라 source-layout 참고값이다. \\
+Freshness 판정 & 현재 첨부 source의 hash와 signature를 기준으로 검토하였다. 과거 review 또는 오래된 snapshot은 근거로 사용하지 않았다. \\
+\bottomrule
+\end{tabularx}
+
+\subsection{판독 불확실 또는 미검토 범위}
+
+\begin{itemize}
+  \item 현재 implementation checklist TeX가 첨부되지 않아 sketch--checklist label, milestone 및 실행 계약의 상호 일치는 판독 불확실하다.
+  \item 현재 PDF가 첨부되지 않아 실제 PDF page count, 줄바꿈, 표 넘침 및 수식 배치의 최종 layout은 판독 불확실하다.
+  \item source가 참조하는 {\footnotesize\nolinkurl{refs_topology_distilled_selective_global_local_wind_dynamics.bib}}가 첨부되지 않아\ bibliography completeness는 판독 불확실하다.
+  \item 위 세 항목은 method equation의 구현 착수 가능성을 막지 않는다.
+\end{itemize}
+
+\subsection{핵심 수식 검산}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=SI--nd typed map,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-si-nd-typed-map}
+
+예를 들어
+\[
+\widehat\kappa_{\mathrm{str}}
+=\kappa_{\mathrm{str}}\frac{T_0^2}{M_0},
+\qquad
+[\kappa_{\mathrm{str}}]=\frac{M}{T^2}
+\]
+이므로 $\widehat\kappa_{\mathrm{str}}$는 무차원이다. 같은 방식으로
+\[
+\widehat\kappa_{\mathrm{bend}}
+=\kappa_{\mathrm{bend}}\frac{T_0^2}{M_0L_0^2},
+\qquad
+\widehat f=f\frac{T_0^2}{M_0L_0}
+\]
+도 무차원이다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Stretch weight,fonttitle=\bfseries]
+\textbf{Source:} relation weight 정의부
+\[
+\begin{aligned}
+[w_e^{\mathrm{str}}]
+&=
+\left[
+\kappa_{\mathrm{str}}
+\frac{a_e^{\mathrm{own}}}{(\ell_e^0)^2+\varepsilon_\ell^2}
+\right]\\
+&=
+\frac{M}{T^2}\frac{L^2}{L^2}
+=
+\frac{M}{T^2}
+=
+\frac{\mathrm N}{\mathrm m}.
+\end{aligned}
+\]
+Position residual quadratic weight와 일치한다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Bending weight,fonttitle=\bfseries]
+\textbf{Source:} relation weight 정의부
+\[
+\begin{aligned}
+[w_{ia}^{\mathrm{bend}}]
+&=
+\left[
+\kappa_{\mathrm{bend}}
+\frac{a_{ia}^{\mathrm{own}}}{\bar\ell_{ia}^{4}+\varepsilon_\ell^4}
+\right]\\
+&=
+\frac{ML^2}{T^2}\frac{L^2}{L^4}
+=
+\frac{M}{T^2}.
+\end{aligned}
+\]
+Stretch channel과 동일한 residual-weight 차원이다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Rest-offset structural load,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-structural-backend}
+
+$x=x^0+By$를 사용하면
+\[
+\begin{aligned}
+B^\top(Kx-h)
+&=B^\top KBy+B^\top(Kx^0-h)\\
+&=B^\top KBy-B^\top(h-Kx^0).
+\end{aligned}
+\]
+따라서 $\bar h=h-Kx^0$를 reduced load에 사용하는 것이 맞다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Implicit midpoint,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-coupled-step}
+
+$\Delta y=y^t-y^{t-1}$,
+$\dot y^t=2\Delta y/\Delta t-\dot y^{t-1}$이면
+\[
+\dot y^{t-1/2}=\frac{\Delta y}{\Delta t},
+\qquad
+\ddot y^{t-1/2}
+=
+\frac{2\Delta y}{\Delta t^2}
+-
+\frac{2\dot y^{t-1}}{\Delta t}.
+\]
+$M\ddot y+C\dot y+Ky=r$를 midpoint에서 평가하고 2배하면
+\[
+\left(
+\frac{4}{\Delta t^2}M+
+\frac{2}{\Delta t}C+K
+\right)\Delta y
+=
+2r-2Ky^{t-1}+\frac{4}{\Delta t}M\dot y^{t-1}
+\]
+가 되어 source와 일치한다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Quasi-steady aero,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-aero}
+
+\[
+[\rho_{\mathrm{air}}av^2]
+=
+\frac{M}{L^3}L^2\frac{L^2}{T^2}
+=
+\frac{ML}{T^2}
+\]
+로 force 차원이다. $n\mapsto -n$이면 $v_n\mapsto -v_n$이므로
+\[
+|{-v_n}|(-v_n)(-n)=|v_n|v_nn
+\]
+이고 $v_nn$도 불변이어서 tangential component 역시 불변이다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Selector proxy,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-selector}
+
+$g^\top A^{-1}g$는 compliance energy 차원이다. 따라서
+\[
+\left[
+\frac{g^\top A^{-1}g}{m_{\mathcal G}^{\mathrm{own}}}
+\right]
+=
+\frac{L^2}{T^2},
+\qquad
+[\eta_{\mathcal G}]=\frac{L}{T}.
+\]
+Canonical score는 scale-aware velocity-like quantity다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Release proxies,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-decay-release}, L1072--L1103
+
+$\widehat E$, $\widehat d_x$, $\widehat d_v$, $\delta_{\mathrm{pop}}$는 모두 무차원이다.
+발견한 문제는 차원이 아니라 strict inequality와 threshold domain, 그리고 release 적용 시점이다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Shell affine extension,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-shell-extension}
+
+Rest에서는
+\[
+F_{\parallel}^0
+=J^0((J^0)^\top J^0)^{-1}(J^0)^\top
+=I-n^0(n^0)^\top
+\]
+이고 normal projector를 더하면 $F_{\mathrm{shell}}^0=I$다.
+Proper rigid motion $Q$에서는 $F_{\mathrm{shell}}^t=Q$다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=Proper Kabsch fallback,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-renderer-rigid-fallback}
+
+$H=U\Sigma V^\top$ convention에서
+\[
+R
+=U\operatorname{diag}\left(1,1,\det(UV^\top)\right)V^\top
+\]
+는 weighted proper-rotation minimizer와 일치한다. \pass
+\end{tcolorbox}
+
+\begin{tcolorbox}[breakable,colback=white,colframe=black!35,title=PSD unit map,fonttitle=\bfseries]
+\textbf{Source:} \src{eq:minimal-log-psd-errors}
+
+Velocity-density PSD의 단위가 $L^2/T$이므로
+\[
+\widehat P=P\frac{T_0}{L_0^2},
+\qquad
+\widehat\varepsilon_P=\varepsilon_P\frac{T_0}{L_0^2}
+\]
+가 맞다. 두 log term에 공통 unit scale이 적용되어 log difference에서 소거된다. \pass
+\end{tcolorbox}
+
+\section{B. 최종 판정}
+
+\begin{tcolorbox}[colback=SafeLight,colframe=SafeGreen,title=IMPLEMENT,fonttitle=\bfseries]
+현재 canonical TeX는 V0-00과 Oracle strip 기반 V0-01의 구현을 즉시 시작하기에 충분하며,
+검증된 P0 blocker는 없다. 발견 사항은 V0-02/V0-03 및 평가 Gate 전에 닫을 수 있는
+manifestㆍstate-orderㆍclamp 정의의 milestone-local P1이고,
+새 solver, runtime state class, network 또는 hard gate를 요구하지 않는다.
+\end{tcolorbox}
+
+\section{C. P0 blocker}
+
+\begin{tcolorbox}[colback=SafeLight,colframe=SafeGreen,title=P0 blocker: 없음,fonttitle=\bfseries]
+사용자가 정의한 P0 조건 다섯 가지를 모두 만족하는 항목은 확인되지 않았다.
+현재 지적들은 V0-00/01의 crash, NaN, unbounded rollout 또는 MC1/MC2/same-p95 claim의 즉시 무효화를
+입증하지 않으며, 각 owner milestone 전에 국소 수정으로 통제할 수 있다.
+\end{tcolorbox}
+
+\section{D. Milestone-local P1}
+
+\subsection{P1-S5-01: Atomic unit 정의와 $K_A$ hash 계약 누락}
+
+\begin{tabularx}{\textwidth}{L{0.22\textwidth}Y}
+\toprule
+필드 & 내용 \\
+\midrule
+정확한 source & L956--L971, L992--L996, L1027--L1034; \src{eq:minimal-local-drive}, \src{eq:minimal-selector} \\
+Owner milestone & V0-03; S5 및 Gate B/C 실행 전 \\
+판정 & \pone; V0-00/01 시작은 막지 않음 \\
+\bottomrule
+\end{tabularx}
+
+\paragraph{원문의 식과 계약.}
+\begin{equation}
+  g_{\mathcal G}^t
+  =
+  \Psi_{\mathcal G}^\top f_{\mathrm{aero}}^t.
+  \tag{source: eq:minimal-local-drive}
+\end{equation}
+
+\begin{equation}
+  \vartheta_{\mathrm{state}}
+  =
+  \left(
+  N_{\mathrm{dwell}},N_{\mathrm{fade}},N_{\mathrm{hold}},K_D,
+  \tau_E,\tau_x,\tau_v,\tau_{\mathrm{pop}}
+  \right).
+  \tag{source: L1027--L1034}
+\end{equation}
+
+Source는 capacity-$K_A$ TopK와 fixed active cardinality를 사용하지만,
+manifest에 저장한다고 명시한 $\vartheta_{\mathrm{state}}$에는 $K_A$가 없다.
+또한 strong-overlap patch를 atomic group으로 병합한 뒤 $\Psi_{\mathcal G}$의 column 구성,
+coordinate range 및 persistent slot ordering이 명시되지 않았다.
+
+\paragraph{구체적 반례 또는 실패 경로.}
+같은 package와 같은 현재 $\vartheta_{\mathrm{state}}$로 한 실행은 $K_A=1$,
+다른 실행은 $K_A=4$를 사용할 수 있다. 두 실행은 selected rank, coupled solve rank,
+Local quality 및 p95 latency가 달라지지만 현재 명시된 state-parameter tuple만으로는 구분되지 않는다.
+
+또한 $\mathcal G=\{r,s\}$, $k_r=2$, $k_s=3$인 strong-overlap group에서 구현 A가
+$\Psi_{\mathcal G}=[\Psi_r,\Psi_s]$를 사용하고 구현 B가 merged patch eigenbasis를 다시 생성하면,
+둘은 같은 이름의 atomic unit이지만 score dimension, cross block 및 persistent state semantics가 달라진다.
+
+\paragraph{무효화될 수 있는 core claim.}
+MC2의 fixed-cardinality execution과 Gate B의 same-$(K_A,K_D)$ 비교가 영향을 받는다.
+Gate C의 actual p95 replay, switching continuity와 run-to-run reproducibility도 직접 영향을 받는다.
+
+\paragraph{기존 fail-fast/diagnostic으로 부족한 이유.}
+S3 full-rank check와 S7 actual-rank trace는 결과를 사후 관측할 수 있을 뿐,
+서로 다른 $K_A$ 또는 group-column semantics가 같은 method signature 아래 실행되는 것을 막지 못한다.
+
+\paragraph{최소 수정안.}
+Stable ordered member list를
+$\operatorname{members}(\mathcal G)=(r_1,\ldots,r_m)$라 하고,
+setup pruning 이후 retained column만 다음처럼 concatenate한다.
+\begin{align}
+  \Psi_{\mathcal G}
+  &:=
+  \left[\Psi_{r_1},\Psi_{r_2},\ldots,\Psi_{r_m}\right],
+  \\
+  z_{\mathcal G}
+  &:=
+  \operatorname{col}\left(z_{r_1},z_{r_2},\ldots,z_{r_m}\right),
+  \\
+  k_{\mathcal G}
+  &:=
+  \sum_{j=1}^{m}k_{r_j},
+  \\
+  g_{\mathcal G}^t
+  &:=
+  \Psi_{\mathcal G}^{\top}f_{\mathrm{aero}}^t.
+\end{align}
+
+State/config tuple은 다음처럼 $K_A$를 포함한다.
+\begin{equation}
+  \vartheta_{\mathrm{state}}^{\mathrm{fixed}}
+  =
+  \left(
+  K_A,K_D,
+  N_{\mathrm{dwell}},N_{\mathrm{fade}},N_{\mathrm{hold}},
+  \tau_E,\tau_x,\tau_v,\tau_{\mathrm{pop}}
+  \right).
+\end{equation}
+
+Package/run hash에는 최소한 다음 field를 넣는다.
+\begin{equation}
+\begin{aligned}
+  H_{\mathrm{run}}
+  =\operatorname{Hash}\bigl(&H_{\mathrm{package}},
+  \vartheta_{\mathrm{state}}^{\mathrm{fixed}},
+  \texttt{atomic\_group\_map},\\
+  &\texttt{group\_member\_order},
+  \texttt{group\_column\_ranges},
+  \texttt{stable\_unit\_order}\bigr).
+\end{aligned}
+\end{equation}
+
+\paragraph{Scope delta.}
+\scopezero. Metadata/schema field와 serialization rule만 추가한다.
+새 basis construction, runtime module, solver, state class 또는 gate는 만들지 않는다.
+
+\subsection{P1-S5-02: 0을 허용한 release threshold와 strict inequality의 모순}
+
+\begin{tabularx}{\textwidth}{L{0.22\textwidth}Y}
+\toprule
+필드 & 내용 \\
+\midrule
+정확한 source & L1027--L1036, \src{eq:minimal-decay-release} L1051--L1068, release condition L1088--L1092 \\
+Owner milestone & V0-03; Active/Decay state-machine fixture 전 \\
+판정 & \pone; positive development preset을 사용하면 V0-00/01에는 영향 없음 \\
+\bottomrule
+\end{tabularx}
+
+\paragraph{원문의 식과 계약.}
+Source는 모든 threshold가 0 이상이라고 허용한다.
+\begin{equation}
+  \tau_E,\tau_x,\tau_v,\tau_{\mathrm{pop}}\geq0.
+\end{equation}
+그러나 release는 strict inequality를 사용한다.
+\begin{equation}
+\begin{aligned}
+  \widehat E_r^t&<\tau_E, &
+  \widehat d_{x,r}^t&<\tau_x,\\
+  \widehat d_{v,r}^t&<\tau_v, &
+  \delta_{\mathrm{pop},r}^t&<\tau_{\mathrm{pop}}.
+\end{aligned}
+\tag{source: L1088--L1092}
+\end{equation}
+
+\paragraph{구체적 반례 또는 실패 경로.}
+$\tau_E=0$이면 $\widehat E_r^t\geq0$이므로 state가 정확히 0이어도
+$0<0$은 거짓이다. 네 threshold 중 하나만 0이어도 conjunction 전체가 영구적으로 거짓이 된다.
+Traveling gust가 patch를 순차적으로 이동시키는 동안 $K_D$개의 Decay slot이 찬 뒤 release가 발생하지 않으면,
+outgoing Active를 유지해야 하므로 새 desired candidate의 activation delay가 무기한 누적될 수 있다.
+
+\paragraph{무효화될 수 있는 core claim.}
+Fixed-cardinality selective execution, switching continuity, deterministic selector의 deployability,
+actual p95에서의 Local skip 이득이 영향을 받는다.
+
+\paragraph{기존 fail-fast/limitation으로 부족한 이유.}
+반복 실패 시 MC2를 철회하는 S5 조치는 잘못 허용된 config domain 때문에 정상 state machine을 실패시킨 뒤의
+사후 축소다. 이 문제는 config validation에서 제거할 수 있으므로 failure evidence로 소비할 이유가 없다.
+
+\paragraph{최소 수정안.}
+수치적 release tolerance라는 현재 의미를 유지하며 다음 positivity를 hard validation으로 둔다.
+\begin{equation}
+  \tau_E>0,\qquad
+  \tau_x>0,\qquad
+  \tau_v>0,\qquad
+  \tau_{\mathrm{pop}}>0.
+\end{equation}
+
+전체 config validator는 최소한 다음 conjunction을 검사한다.
+\begin{equation}
+\begin{aligned}
+\operatorname{ValidStateConfig}
+:=&\ (K_A\geq1)\land(K_D\geq1)
+\land(N_{\mathrm{dwell}}\geq1)
+\land(N_{\mathrm{fade}}\geq1)
+\land(N_{\mathrm{hold}}\geq1)\\
+&\land\bigwedge_{\tau\in\{\tau_E,\tau_x,\tau_v,\tau_{\mathrm{pop}}\}}
+\left(\operatorname{finite}(\tau)\land\tau>0\right).
+\end{aligned}
+\end{equation}
+Exact-zero release를 별도로 원한다면 strict $<$를 $\leq$로 바꾸어야 하지만,
+floating-point Minimal V0에는 positive tolerance가 더 일관적이다.
+
+\paragraph{Scope delta.}
+\scopezero. Scalar domain validation만 수정한다.
+
+\subsection{P1-S5-03: $\mathcal D_t$의 pre-solve/post-release 의미가 순환적임}
+
+\begin{tabularx}{\textwidth}{L{0.22\textwidth}Y}
+\toprule
+필드 & 내용 \\
+\midrule
+정확한 source & \src{eq:minimal-frame-dependency} L346--L356, release L1088--L1103, \src{eq:minimal-selected-basis} L1111--L1118 \\
+Owner milestone & V0-03; 첫 switching fixture 전 \\
+판정 & \pone; 실행 순서 명문화 필요 \\
+\bottomrule
+\end{tabularx}
+
+\paragraph{원문의 식과 계약.}
+\begin{equation}
+\begin{aligned}
+  (x^{t-1},v^{t-1},W^t)
+  &\longrightarrow(n^{t-1},a^{t-1},f_{\mathrm{aero}}^t)
+  \longrightarrow\mathcal S_t,\\
+  (p^t,h^t,f_{\mathrm{aero}}^t,\mathcal S_t)
+  &\longrightarrow(q^t,z^t),\\
+  \mathcal S_t&=\mathcal A_t\cup\mathcal D_t.
+\end{aligned}
+\end{equation}
+그러나 release 여부는 같은 frame의 $z_r^t,\dot z_r^t$로 판정한다.
+
+\paragraph{구체적 반례 또는 실패 경로.}
+어떤 Decay unit이 frame $t$ solve 후 처음으로 $N_{\mathrm{hold}}$을 충족한다고 하자.
+$\mathcal D_t$를 post-release set으로 해석하면 $B_{\mathcal S_t}$를 구성하기 전에 $z^t$가 필요하여
+순환한다. 반대로 $t-1$ state만 보고 pre-release하면 source가 의도한
+``$z^t$가 tolerance를 만족한 뒤 release''보다 한 frame 일찍 basis를 제거할 수 있다.
+두 구현은 trajectory, release pop, solve rank 및 actual p95 trace가 달라진다.
+
+\paragraph{무효화될 수 있는 core claim.}
+Switching continuity, release pop bound, actual-rank/p95 trace 및 same-state replay가 영향을 받는다.
+
+\paragraph{기존 fail-fast/diagnostic으로 부족한 이유.}
+$\delta_{\mathrm{pop}}$는 제거 크기만 제한하고 제거가 어느 solve에 반영되는지는 결정하지 않는다.
+S7 rank trace 역시 서로 다른 순서를 하나의 canonical method로 통일하지 못한다.
+
+\paragraph{최소 수정안: frame 내 순서 고정.}
+Admission 직후의 집합을 pre-state로 명명한다.
+\begin{equation}
+  \mathcal S_t^{\mathrm{solve}}
+  :=
+  \mathcal A_t^{\mathrm{pre}}\cup\mathcal D_t^{\mathrm{pre}}.
+\end{equation}
+
+이 집합으로 한 번만 coupled solve하여 provisional state를 얻는다.
+\begin{equation}
+  (\widetilde q^t,\widetilde z^t,
+   \dot{\widetilde q}^{\,t},\dot{\widetilde z}^{\,t})
+  :=
+  \operatorname{CoupledSolve}(\mathcal S_t^{\mathrm{solve}}).
+\end{equation}
+
+Decay unit별 release predicate를 provisional state에서 계산한다.
+\begin{equation}
+\begin{aligned}
+  \chi_r^t
+  :=&\ [\gamma_r^t=0]
+  \land[\widehat E_r^t<\tau_E]
+  \land[\widehat d_{x,r}^t<\tau_x]\\
+  &\land[\widehat d_{v,r}^t<\tau_v]
+  \land[\delta_{\mathrm{pop},r}^t<\tau_{\mathrm{pop}}].
+\end{aligned}
+\end{equation}
+
+연속 hold counter는 다음처럼 갱신한다.
+\begin{equation}
+  h_r^t
+  =
+  \begin{cases}
+    \min(h_r^{t-1}+1,N_{\mathrm{hold}}),
+      & r\in\mathcal D_t^{\mathrm{pre}}\ \land\ \chi_r^t,\\
+    0, & \text{otherwise}.
+  \end{cases}
+\end{equation}
+
+Release set과 frame-end Decay set은
+\begin{align}
+  \mathcal R_t
+  &:=
+  \left\{r\in\mathcal D_t^{\mathrm{pre}}:h_r^t=N_{\mathrm{hold}}\right\},\\
+  \mathcal D_t^{\mathrm{end}}
+  &:=
+  \mathcal D_t^{\mathrm{pre}}\setminus\mathcal R_t
+\end{align}
+로 둔다. 최종 저장 state는
+\begin{equation}
+  (z_r^t,\dot z_r^t)
+  =
+  \begin{cases}
+    (0,0), & r\in\mathcal R_t,\\
+    (\widetilde z_r^t,\dot{\widetilde z}_r^{\,t}), & \text{otherwise}
+  \end{cases}
+\end{equation}
+로 정하고 reconstruction은 이 final state를 사용한다.
+Frame $t$의 timing trace에는 $\mathcal S_t^{\mathrm{solve}}$의 actual solve rank를 기록하고,
+frame $t+1$ solve에는 $\mathcal D_t^{\mathrm{end}}$가 들어간다.
+
+\paragraph{Scope delta.}
+\scopezero. 이미 암묵적으로 필요한 hold counter와 zeroing의 적용 시점을 명문화한다.
+추가 solve, new dynamics stage 또는 new state class는 없다.
+
+\subsection{P1-S4-01: Area-ratio clamp의 출력과 aero consumer가 연결되지 않음}
+
+\begin{tabularx}{\textwidth}{L{0.22\textwidth}Y}
+\toprule
+필드 & 내용 \\
+\midrule
+정확한 source & \src{eq:minimal-area-normal} L854--L864, clamp 문장 L891--L896, \src{eq:minimal-aero} L910--L928 \\
+Owner milestone & V0-02; full-anchor aero 및 S4 fixture 전 \\
+판정 & \pone; 기존 clamp의 consumer를 명시하면 됨 \\
+\bottomrule
+\end{tabularx}
+
+\paragraph{원문의 식과 계약.}
+\begin{equation}
+  a_i^t
+  =
+  a_i^0
+  \frac{\|\widetilde n_i^t\|}{\|\widetilde n_i^0\|}.
+  \tag{source: eq:minimal-area-normal}
+\end{equation}
+Source는 valid frame의 area ratio를 visual-stability 범위로 clamp한다고 서술하지만,
+aero law는 다시 $a_i^{t-1}$를 소비한다.
+\begin{equation}
+  f_{\mathrm{raw},i}^t
+  =
+  \frac12\rho_{\mathrm{air}}a_i^{t-1}
+  \left[
+  C_n|v_{n,i}^t|v_{n,i}^tn_i^{t-1}
+  +C_\tau\|v_{\tau,i}^t\|v_{\tau,i}^t
+  \right].
+\end{equation}
+현재 표기만으로 $a_i^{t-1}$가 raw인지 clamped인지 결정되지 않는다.
+
+\paragraph{구체적 반례 또는 실패 경로.}
+유효한 rank/condition을 통과한 frame에서 raw area ratio가 3이고 frozen upper bound가 2라고 하자.
+Force clamp가 작동하지 않는 범위라면
+\begin{equation}
+  f_{\mathrm{raw}}^{\mathrm{raw\ area}}
+  =
+  \frac{3}{2}
+  f_{\mathrm{raw}}^{\mathrm{clamped\ area}}
+\end{equation}
+가 된다. 두 구현 모두 finite이고 current-rank check를 통과하므로 fail-fast되지 않지만,
+response amplitude, selector score 및 same-anchor 비교가 달라진다.
+
+\paragraph{무효화될 수 있는 core claim.}
+SI/nd parity와 deterministic selector replay가 영향을 받는다.
+Strong Global/same-anchor baseline quality 비교와 MC2 same-p95 Pareto도 영향을 받는다.
+
+\paragraph{기존 fail-fast/limitation으로 부족한 이유.}
+Force radial clamp는 $f_{\max}$ 아래에서 area interpretation을 결정하지 않는다.
+Rank/condition fail-fast 역시 raw와 clamped area를 구분하지 못한다.
+
+\paragraph{최소 수정안.}
+먼저 raw area ratio를 계산한다.
+\begin{equation}
+  \rho_{a,i}^t
+  :=
+  \frac{\|\widetilde n_i^t\|}{\|\widetilde n_i^0\|}.
+\end{equation}
+
+Operating envelope가 소유한 frozen bounds로 clamp한다.
+\begin{align}
+  \bar\rho_{a,i}^t
+  &:=
+  \operatorname{clip}
+  \left(\rho_{a,i}^t;\rho_{a,\min},\rho_{a,\max}\right),\\
+  a_{i,\mathrm{safe}}^t
+  &:=
+  a_i^0\bar\rho_{a,i}^t.
+\end{align}
+
+Aero consumer는 명시적으로 safe area를 사용한다.
+\begin{equation}
+  f_{\mathrm{raw},i}^t
+  =
+  \frac12\rho_{\mathrm{air}}a_{i,\mathrm{safe}}^{t-1}
+  \left[
+  C_n|v_{n,i}^t|v_{n,i}^tn_i^{t-1}
+  +C_\tau\|v_{\tau,i}^t\|v_{\tau,i}^t
+  \right].
+\end{equation}
+
+Clamp event와 rate는
+\begin{align}
+  c_{a,i}^t
+  &:=
+  \mathbf 1[\bar\rho_{a,i}^t\neq\rho_{a,i}^t],\\
+  r_{a,\mathrm{clip}}
+  &:=
+  \frac{1}{|\mathcal I_a|}
+  \sum_{(i,t)\in\mathcal I_a}c_{a,i}^t
+\end{align}
+로 계산한다. $\mathcal I_a$는 run 전 등록한 required valid anchor--frame index set이다.
+
+\paragraph{Scope delta.}
+\scopezero. 이미 선언된 area clamp의 output variable과 consumer만 명명한다.
+
+\subsection{P1-EVAL-01: $\varepsilon_v,\varepsilon_x$의 positivityㆍunitㆍhash 누락}
+
+\begin{tabularx}{\textwidth}{L{0.22\textwidth}Y}
+\toprule
+필드 & 내용 \\
+\midrule
+정확한 source & \src{eq:minimal-reference-convergence} L1722--L1735, \src{eq:minimal-sequence-errors} L1740--L1758 \\
+Owner milestone & V0-02 evaluation fixture; 늦어도 Gate B 최초 판정 전 \\
+판정 & \pone; evaluator contract 보강 \\
+\bottomrule
+\end{tabularx}
+
+\paragraph{원문의 식과 계약.}
+\begin{equation}
+  e_{\mathrm{ref}}^2
+  =
+  \frac{
+  \sum_t\|v_{\mathrm{ref}}^{h,\Delta t}(t)-
+  v_{\mathrm{ref}}^{h/2,\Delta t/2}(t)\|_{M_{\mathrm{eval}}}^2
+  }{
+  \sum_t\|v_{\mathrm{ref}}^{h/2,\Delta t/2}(t)\|_{M_{\mathrm{eval}}}^2
+  +\varepsilon_v
+  }.
+\end{equation}
+
+\begin{equation}
+  e_{\mathrm{tip},s}^2
+  =
+  \frac{
+  \sum_t\|x_{\mathrm{tip},s}^t-x_{\mathrm{tip,ref},s}^t\|_2^2
+  }{
+  \sum_t\|x_{\mathrm{tip,ref},s}^t-x_{\mathrm{tip,ref},s}^0\|_2^2
+  +\varepsilon_x
+  }.
+\end{equation}
+
+\paragraph{구체적 반례 또는 실패 경로.}
+Zero-wind recovery 또는 정확히 정지한 reference에서 denominator의 signal term은 0이다.
+$\varepsilon_v$ 또는 $\varepsilon_x$가 0ㆍ미초기화ㆍnon-finite이면 $0/0$ 또는 division-by-zero가 발생한다.
+또한 SI와 nd run에서 같은 raw 숫자를 사용하면 작은-response sequence의 normalized error가 달라져
+unit parity와 Gate 판정이 달라질 수 있다.
+
+\paragraph{무효화될 수 있는 core claim.}
+Gate A/B reference consistency, sequence-level paired effect, SI/nd parity와
+Pareto envelope matching이 영향을 받는다.
+
+\paragraph{기존 fail-fast/limitation으로 부족한 이유.}
+$\varepsilon_P$, $\varepsilon_{\mathrm{err}}$, $\varepsilon_{\mathrm{lat}}$에는 positivity 및 unit contract가 있지만,
+$\varepsilon_v$, $\varepsilon_x$에는 같은 수준의 contract가 없다.
+Reference-construction failure로 사후 분류하는 것만으로는 evaluator 구현을 통일하지 못한다.
+
+\paragraph{최소 수정안.}
+Canonical $M_{\mathrm{eval}}$가 mass-typed lumped matrix일 때
+\begin{align}
+  \varepsilon_v&>0,
+  & [\varepsilon_v]&=ML^2/T^2,
+  & \widehat\varepsilon_v
+  &:=\varepsilon_v\frac{T_0^2}{M_0L_0^2},\\
+  \varepsilon_x&>0,
+  & [\varepsilon_x]&=L^2,
+  & \widehat\varepsilon_x
+  &:=\frac{\varepsilon_x}{L_0^2}.
+\end{align}
+
+역변환은
+\begin{equation}
+  \varepsilon_v
+  =
+  \widehat\varepsilon_v\frac{M_0L_0^2}{T_0^2},
+  \qquad
+  \varepsilon_x
+  =
+  \widehat\varepsilon_xL_0^2
+\end{equation}
+로 고정한다. 두 typed value, unit branch와 conversion을
+\code{evaluation\_hash}에 저장한다.
+
+$M_{\mathrm{eval}}$을 무차원 정규화 mass로 정의한다면 해당 convention이 위 단위식을 대체하며,
+동일 evaluation hash가 이 convention도 소유해야 한다.
+
+\paragraph{Scope delta.}
+\scopezero. Evaluation scalar 두 개와 typed conversion field만 추가한다.
+
+\subsection{P1 우선순위와 착수 영향 요약}
+
+\begin{tabularx}{\textwidth}{L{0.18\textwidth}L{0.18\textwidth}L{0.24\textwidth}Y}
+\toprule
+ID & Owner & V0-00/01 영향 & 반드시 닫을 시점 \\
+\midrule
+P1-S4-01 & V0-02 & 없음 & 첫 full-anchor aero/S4 fixture 전 \\
+P1-EVAL-01 & V0-02 & 없음 & 첫 reference/evaluation run 전 \\
+P1-S5-01 & V0-03 & 없음 & selector state serialization 및 Gate B/C 전 \\
+P1-S5-02 & V0-03 & 없음 & Active/Decay config fixture 전 \\
+P1-S5-03 & V0-03 & 없음 & 첫 switching rollout 전 \\
+\bottomrule
+\end{tabularx}
+
+\section{E. Diagnostic 또는 deferred backlog}
+
+\begin{longtable}{L{0.24\textwidth}L{0.66\textwidth}}
+\toprule
+항목 & 처리 원칙 \\
+\midrule
+\endfirsthead
+\toprule
+항목 & 처리 원칙 \\
+\midrule
+\endhead
+Fixed-Hessian bending & Tangential artificial stiffness, damping 변화 및 normal response는 S2 fixture와 10--30초 rollout에서 측정한다. 실제 visible artifact가 나오기 전 tangent-consistent Hessian, nonlinear iteration 또는 새 shell backend를 추가하지 않는다. \\
+One-frame staggered aero & Abrupt start/stop과 traveling gust에서 phase lag, acceleration peak 및 p95를 기록한다. 반복 가능한 phase jump/instability가 관찰되고 same-p95 개선이 확인될 때만 same-frame corrector를 재검토한다. \\
+Cached compliance selector & $\bar h^t$, Global/inter-group coupling과 future error를 보지 않는 것은 의도된 근사다. Teacher-ranked gap, activation delay, churn과 actual solve rank만 진단한다. Gap의 실측 증거 없이 learned $G$를 추가하지 않는다. \\
+Same-anchor baseline 최적화 & Fixed Hessian과 fixed $\Delta t$에서는 factorization reuse를 포함해 optimized baseline을 구성한다. Proposed method만 precomputed block을 활용하고 baseline을 매 frame refactorize하는 비교는 허용하지 않는다. \\
+Paper-stage baseline & Explicit target-mesh extraction 1개, direct 3DGS wind/animation 1개, POD, Backward Euler 및 SH-frame rotation은 Gate 이후 paper evidence 또는 optional ablation이다. V0-00/01의 선행 조건이 아니다. \\
+계속 deferred & H/F/G, nodal-force KKT/Schur, exact reaction routing, compliant attachment, FSI teacher, curved-shell mechanics 및 nonlinear tangent solver는 현재 core failure evidence가 없으므로 재도입하지 않는다. \\
+\bottomrule
+\end{longtable}
+
+\section{F. 의도된 근사로서 유지할 사항}
+
+\begin{longtable}{L{0.29\textwidth}L{0.61\textwidth}}
+\toprule
+현재 선택 & 유지 판정 \\
+\midrule
+\endfirsthead
+\toprule
+현재 선택 & 유지 판정 \\
+\midrule
+\endhead
+Flat-rest strip/flag quantitative core & MC1/MC2를 가장 낮은 비용으로 반증할 수 있는 적절한 scope다. Curved shell을 core에 재도입하지 않는다. \\
+One-local-step fixed-Hessian PD backend & S2 visible stability를 통과하는 동안 exact nonlinear shell tangent를 요구하지 않는다. \\
+One-frame staggered aero & 실제 phase artifact 증거 전에는 corrector를 추가하지 않는다. \\
+Cached isolated-compliance selector & Certified estimator로 포장하지 않고 empirical proxy로만 사용한다. \\
+Fixed-cardinality Active/Decay & 유지한다. 단, $K_A$, atomic group map, release order를 명확히 한다. \\
+Direct $B_{\mathcal S}^{\top}f$ projection & 동일 anchor force의 Global/Local projection은 coupled Galerkin virtual work이며 double counting이 아니다. \\
+Degree-0 appearance & View-dependent SH rotation 문제를 quantitative core에서 제거하는 정당한 scope control이다. \\
+Renderer-only proper-rigid fallback & Surface/aero geometry에는 적용하지 않는 현재 분리가 맞다. \\
+Fail-fast invalid package/frame & 유지한다. In-envelope attempt를 denominator에서 제거하지 않는 현재 failure-accounting contract도 함께 유지한다. \\
+Engineering force/reaction/stress 비주장 & CG 목표인 visual coherence, bounded stability 및 measured Pareto와 정합된다. \\
+\bottomrule
+\end{longtable}
+
+\section{G. 다음 실행 작업}
+
+\begin{tcolorbox}[
+  colback=CoreLight,
+  colframe=CoreBlue,
+  title=지금 수행할 가장 작은 구현 단위,
+  fonttitle=\bfseries
+]
+추가 문서 review가 아니라 \code{oracle\_flat\_strip\_3x7} V0-00/01 contract fixture를 구현한다.
+이 fixture는 GS loader, aero, selector, renderer 및 topology network를 아직 연결하지 않고,
+typed contract, structural package, Global basis, one Local complement와 save--load replay만 닫는다.
+\end{tcolorbox}
+
+\subsection{Fixture geometry와 stable indexing}
+
+Zero-based stable ID를
+\begin{equation}
+  i(p,q)=3p+q,
+  \qquad
+  p\in\{0,\ldots,6\},\quad q\in\{0,1,2\}
+\end{equation}
+로 고정하고, rest anchor를
+\begin{equation}
+  x_{p,q}^0
+  =
+  \left(p\Delta,(q-1)\Delta,0\right),
+  \qquad \Delta>0
+\end{equation}
+로 둔다. 총 anchor 수는
+\begin{equation}
+  K=7\times3=21
+\end{equation}
+이다.
+
+Hard attachment는 왼쪽 edge다.
+\begin{equation}
+  \mathcal A_{\mathrm{att}}
+  =
+  \{i(0,0),i(0,1),i(0,2)\}.
+\end{equation}
+
+Rest normal과 attachment line은
+\begin{equation}
+  n_{p,q}^0=(0,0,1)^\top,
+  \qquad
+  g_{\mathrm{att}}=(0,1,0)^\top
+\end{equation}
+로 고정한다. 따라서
+\begin{align}
+  P_i^0&=I-n_i^0(n_i^0)^\top,\\
+  q_i&=P_i^0g_{\mathrm{att}}=(0,1,0)^\top,\\
+  L_i^0&=q_iq_i^\top,\\
+  t_{i1}^0&=(0,1,0)^\top,\\
+  t_{i2}^0&=n_i^0\times t_{i1}^0=(-1,0,0)^\top.
+\end{align}
+이 fixture에서 gauge 결과는 모든 anchor에 대해 analytic ground truth를 가진다.
+
+\subsection{Area와 mass ground truth}
+
+Asset diameter는 대각 extreme anchor 사이 거리다.
+\begin{align}
+  L_{\mathrm{ref}}
+  &=
+  \sqrt{(6\Delta)^2+(2\Delta)^2}
+  =\sqrt{40}\,\Delta,\\
+  A_{\mathrm{ref}}
+  &=L_{\mathrm{ref}}^2
+  =40\Delta^2.
+\end{align}
+
+Uniform owner fixture에서는
+\begin{align}
+  a_i^0&=\frac{A_{\mathrm{ref}}}{K}
+  =\frac{40\Delta^2}{21},\\
+  m_i&=\rho_Aa_i^0,\\
+  \sum_{i=1}^{K}a_i^0&=A_{\mathrm{ref}},\\
+  \sum_{i=1}^{K}m_i&=\rho_AA_{\mathrm{ref}}
+\end{align}
+가 정확히 성립해야 한다.
+
+\subsection{Stretch graph와 tangent support}
+
+Horizontal, vertical 및 two-diagonal edge 집합을
+\begin{align}
+\mathcal E_h
+&=
+\{(i(p,q),i(p+1,q)):0\leq p\leq5,\ 0\leq q\leq2\},\\
+\mathcal E_v
+&=
+\{(i(p,q),i(p,q+1)):0\leq p\leq6,\ 0\leq q\leq1\},\\
+\mathcal E_d
+&=
+\left\{
+\begin{array}{l}
+(i(p,q),i(p+1,q+1)),\\
+(i(p,q+1),i(p+1,q))
+\end{array}
+:0\leq p\leq5,\ 0\leq q\leq1
+\right\}
+\end{align}
+로 정의하고
+\begin{equation}
+  \mathcal R_{\mathrm{str}}
+  =\mathcal E_h\cup\mathcal E_v\cup\mathcal E_d
+\end{equation}
+를 사용한다. 이는 Oracle fixture에서 단순 grid shear mechanism이 남는 것을 피하기 위한 고정 graph다.
+
+Surface/tangent-fit support는
+\begin{equation}
+\mathcal N_{p,q}^{\mathrm{surf}}
+=
+\left\{
+  i(p',q'):\begin{array}{l}
+  (p',q')\neq(p,q),\\
+  |p'-p|\leq1,\ |q'-q|\leq1,\\
+  0\leq p'\leq6,\ 0\leq q'\leq2
+  \end{array}
+\right\}
+\end{equation}
+로 두고 uniform positive weight
+\begin{equation}
+  \omega_{ik}^{\mathrm{surf}}
+  =
+  \frac{1}{|\mathcal N_i^{\mathrm{surf}}|}
+\end{equation}
+를 사용한다. Corner도 세 개의 non-collinear neighbor를 가져 rank-2 rest tangent fit을 계산할 수 있다.
+
+\subsection{Bending triplet ground truth}
+
+Geometric $x$ 방향 triplet은
+\begin{equation}
+  \mathcal R_{\mathrm{bend}}^x
+  =
+  \{(i(p-1,q),i(p,q),i(p+1,q)):1\leq p\leq5,\ 0\leq q\leq2\},
+\end{equation}
+$y$ 방향 triplet은
+\begin{equation}
+  \mathcal R_{\mathrm{bend}}^y
+  =
+  \{(i(p,0),i(p,1),i(p,2)):0\leq p\leq6\}
+\end{equation}
+로 둔다. Retained center가 hard-attached DOF인지에 따른 제거 규칙은 package build에서 한 번 명시하고
+stable relation ordering에 포함한다. Exact uniform grid이므로 retained triplet마다
+\begin{equation}
+  \ell_- = \ell_+ = \Delta,
+  \qquad
+  \beta_- = \beta_+ = \frac12,
+  \qquad
+  d_{ia}^0=0
+\end{equation}
+가 ground truth다.
+
+\subsection{One Local patch fixture}
+
+Tip-side core와 one-column halo를
+\begin{align}
+  \mathcal C_r
+  &=\{i(p,q):p\in\{4,5,6\},\ q\in\{0,1,2\}\},\\
+  \mathcal H_r
+  &=\{i(3,q):q\in\{0,1,2\}\},\\
+  \operatorname{supp}(E_r)
+  &=\mathcal C_r\cup\mathcal H_r
+\end{align}
+로 고정한다. Source의 restricted complement construction으로 $\Psi_r$를 만들고,
+첫 fixture에서는 lowest accepted $k_r=2$ columns만 유지한다.
+
+필수 검사는
+\begin{equation}
+  \|\Phi^\top M\Psi_r\|_F\leq\tau_{\Phi\Psi},
+  \qquad
+  \|\Psi_r^\top M\Psi_r-I\|_F\leq\tau_{\Psi M\Psi}
+\end{equation}
+이며, $B=[\Phi,\Psi_r]$의 reachable free-coordinate rank와 condition cap을 통과해야 한다.
+
+\subsection{자동 fixture acceptance}
+
+\begin{enumerate}
+  \item \code{dt\_run}이 finite positive이며 canonical run 동안 고정된다.
+  \item SI package와 typed nd package의 $M,C,K,h,f$ 및 one-step state가 registered tolerance 내에서 일치한다.
+  \item Attachment-line eigengap, $L_{\mathrm{att}}^2=L_{\mathrm{att}}$, $\operatorname{tr}L_{\mathrm{att}}=1$, sign invariance가 통과한다.
+  \item $\sum_i a_i^0=A_{\mathrm{ref}}$, $\sum_i m_i=\rho_AA_{\mathrm{ref}}$와 모든 owner denominator positivity가 통과한다.
+  \item Bending projector가 rest exactness, random proper-rigid reproduction, fixed-frame normal perturbation response를 통과한다.
+  \item Free-coordinate $M_f\succ0$, $K_f=K_f^\top\succeq0$, $\Phi^\top M\Phi=I$가 통과한다.
+  \item One Local patch에서 complement orthogonality, normalization 및 selected block full rank가 통과한다.
+  \item Zero wind와 nonzero initial displacement에서 10초 rollout이 rest 방향으로 감쇠하며 NaN, scale explosion 또는 발산이 없다.
+  \item Save--load 후 package hash, stable ordering, basis array 및 validation report가 byte-equivalent하다.
+\end{enumerate}
+
+\subsection{첫 산출물}
+
+첫 구현 산출물은 다음 다섯 개로 제한한다.
+\begin{itemize}
+  \item \code{package\_manifest}
+  \item \code{contract\_report}
+  \item \code{operators} ($M,C,K$ 및 free map)
+  \item \code{global\_basis}
+  \item \code{one\_local\_patch\_basis}
+\end{itemize}
+
+GS loader, aero, selector, Gaussian transport, renderer 및 V0-R1 network는 이 fixture가 통과한 뒤 연결한다.
+이 순서는 새 module을 추가하지 않으면서 V0-00/01의 가장 작은 실행 가능 단위를 닫는다.
+
+\section*{최종 결론}
+
+현재 source는 물리적으로 완전한 shell/FSI solver가 아니라 CG Minimal V0로서 구현 착수가 가능하다.
+P1 다섯 항목은 각각 V0-02 또는 V0-03 owner milestone 전에 국소적으로 수정하며,
+그 전에는 scope를 확대하지 않는다.
+
+\begin{center}
+\Large\textbf{FINAL: IMPLEMENT}
+\end{center}
+
+\end{document}

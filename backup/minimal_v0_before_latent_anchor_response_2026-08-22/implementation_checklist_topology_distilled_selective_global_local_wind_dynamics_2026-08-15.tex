@@ -1,0 +1,1099 @@
+\documentclass[10pt]{article}
+
+\usepackage[a4paper,margin=18mm,headheight=14pt]{geometry}
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}
+\setCJKmainfont{Noto Serif CJK KR}
+\setCJKsansfont{Noto Sans CJK KR}
+\setCJKmonofont{Noto Sans Mono CJK KR}
+
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,longtable,tabularx,array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage[most]{tcolorbox}
+
+\definecolor{CoreBlue}{HTML}{1F4E79}
+\definecolor{CoreLight}{HTML}{EAF3F8}
+\definecolor{StopRed}{HTML}{9C0006}
+\definecolor{StopLight}{HTML}{FCE8E6}
+\definecolor{GateGreen}{HTML}{38761D}
+\definecolor{GateLight}{HTML}{EAF4E2}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=CoreBlue,
+  urlcolor=CoreBlue,
+  pdftitle={Minimal V0 Implementation Checklist for Topology-Distilled Selective Global-Local Wind Dynamics},
+  pdfauthor={Wind3DGS Project}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Minimal V0 Implementation Checklist}
+\rhead{\small 2026-08-15}
+\cfoot{\thepage}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.25em}
+\setlist[itemize]{leftmargin=1.45em,itemsep=0.08em,topsep=0.18em}
+\setlist[enumerate]{leftmargin=1.75em,itemsep=0.12em,topsep=0.2em}
+\renewcommand{\arraystretch}{1.15}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\code}[1]{{\small\nolinkurl{#1}}}
+\newcommand{\must}[1]{\textcolor{CoreBlue}{\textbf{#1}}}
+\newcommand{\haltitem}[1]{\textcolor{StopRed}{\textbf{#1}}}
+\newcommand{\pass}[1]{\textcolor{GateGreen}{\textbf{#1}}}
+
+\title{\textbf{Minimal V0 Implementation Checklist}\\
+Topology-Distilled Selective Global--Local Wind Dynamics}
+\author{Wind3DGS Project}
+\date{2026-08-15}
+
+\begin{document}
+\maketitle
+
+\begin{tcolorbox}[colback=CoreLight,colframe=CoreBlue,title=Authority contract,fonttitle=\bfseries]
+이 checklist는 \code{README.md}가 가리키는 current Minimal V0 sketch의
+stable equation label을 실행 항목으로 옮긴 파생 문서다.
+수식을 별도로 재정의하지 않으며, 불일치하면 sketch가 method authority다.
+이전 full-design checklist의 완료 상태는 승계하지 않는다.
+\end{tcolorbox}
+
+\tableofcontents
+\newpage
+
+\section{목적, 범위와 즉시 중단 조건}
+
+목표는 평면 rest strip/rectangular flag에서 visually plausible하고 stable한 wind animation을 만들면서
+strong Global rank와 same-anchor sparse solver 밖의 quality--latency Pareto 점을 찾는 것이다.
+Engineering-grade shell accuracy는 완료 조건이 아니다.
+정량 core scope는 고정된 계약 \code{flat\_rest\_v0}이며,
+shallow/pre-curved rest surface는 Gate 이후의 non-blocking extension으로 남겨 둔다.
+
+\subsection{V0 core}
+
+\begin{enumerate}
+  \item static GS에서 \code{flat\_rest\_v0} sparse oriented anchor scaffold와
+  area/mass를 만든다.
+  \item user material/hard attachment로 one-local-step fixed-Hessian PD-style
+  stretch--bending backend를 고정한다.
+  \item 모든 anchor에서 current-surface quasi-steady aero를 한 번 계산한다.
+  \item future-error estimator가 아닌 deterministic dwell-reserved capacity-\(K_A\)
+  compliance proxy selector와
+  Active/Decay state를 사용한다.
+  \item \([\Phi,\Psi_{\mathcal S}]\)에 direct projection하고 cross block을 포함해 한 번 푼다.
+  \item anchor deformation을 Gaussian mean/covariance로 affine transport한다.
+\end{enumerate}
+
+\begin{tcolorbox}[colback=StopLight,colframe=StopRed,title=V0 forbidden work,fonttitle=\bfseries]
+Gate A/B/C 전에는 H/F/G, patch-force lifting/KKT/Schur, support reaction routing,
+same-frame corrector, calibrated confidence network, Teacher-FSI, nonlinear shell extension과
+learned hysteresis를 구현하지 않는다. Incremental factorization은 direct factor/solve가
+synchronized profiler에서 실제 병목으로 확인되기 전에는 구현하지 않는다.
+이론적 edge case만으로 새 core module을 추가하지 않는다.
+\end{tcolorbox}
+
+\subsection{즉시 중단 또는 축소}
+
+\begin{itemize}
+  \item Oracle scaffold에서도 stable backend를 만들지 못하면 topology training을 시작하지 않는다.
+  \item Privileged-teacher-ranked Local이 strong Global-rank보다 낫지 않으면 selector와 MC2를 중단한다.
+  \item Predicted scaffold가 Gate A를 못 통과하면 MC1을 user-hinted/explicit scaffold로 축소한다.
+  \item Same-anchor baseline 대비 실제 Pareto 이득이 없으면 speed headline을 철회한다.
+\end{itemize}
+
+\section{Canonical reference와 typed contract}
+
+\subsection{반드시 참조할 sketch label}
+
+\begin{longtable}{L{0.38\linewidth}L{0.53\linewidth}}
+\toprule
+Stable label & 구현 소유권\\
+\midrule
+\endfirsthead
+\toprule
+Stable label & 구현 소유권\\
+\midrule
+\endhead
+\code{eq:minimal-setup-input}, \code{eq:minimal-si-metric-conversion},
+\code{eq:minimal-si-nd-typed-map}, \code{eq:minimal-rayleigh-unit-map} &
+Setup 입력, scale/material/aero/attachment와 SI/nd 단위 mapping\\
+\code{eq:minimal-operating-envelope},\newline
+{\footnotesize\nolinkurl{eq:minimal-attempt-success-contract}} &
+fixed substep, wind/gust/clamp 정량 범위와 OOD/method-failure 평가 분모\\
+\code{eq:minimal-frame-dependency} & one-frame staggered runtime 순서\\
+\code{eq:minimal-area-mass} & area/mass ownership\\
+\code{eq:minimal-attachment-line-gauge}, \code{eq:minimal-local-line-gauge} &
+attachment 기반 sign-invariant in-plane line gauge와 degeneracy reject\\
+\code{eq:minimal-structural-backend} & one-local-step fixed-Hessian PD-style action,
+constraint projector와 rest offset\\
+\code{eq:minimal-topology-to-constraints},\newline
+{\footnotesize\nolinkurl{eq:minimal-irregular-rest-diagnostic}} &
+topology/geometry relation에서 analytic constraint package로의 deterministic mapping과 diagnostic\\
+\code{eq:minimal-bending-corotated-frame},\newline
+{\footnotesize\nolinkurl{eq:minimal-bending-corotated-projector}} &
+\code{corotated\_tangent\_plane\_v2} frame, target와 projector\\
+\code{eq:minimal-global-basis} & Global basis\\
+\code{eq:minimal-local-complement}, \code{eq:minimal-complement-check} & patch Local complement\\
+\code{eq:minimal-state-reconstruction}, \code{eq:minimal-decay-release} &
+persistent slot에서 anchor state 복원과 pre-solve Decay/single-solve/frame-end release 순서\\
+\code{eq:minimal-surface-tangent-fit}, \code{eq:minimal-flat-rest-planarity},
+\code{eq:minimal-area-normal}, \code{eq:minimal-aero} &
+shared current-surface fit, raw-to-safe area와 safe-area full-anchor aero\\
+\code{eq:minimal-tangent-numerical-rank} &
+surface/transport가 공유하는 \(J/G\) relative--absolute numerical-rank 및 inverse-before-check 금지 계약\\
+\code{eq:minimal-local-drive}, \code{eq:minimal-selector} & deterministic score\\
+\code{eq:minimal-selected-basis}--\code{eq:minimal-coupled-step} & direct load와 single coupled step\\
+\code{eq:minimal-affine-weights}, \code{eq:minimal-affine-fit}, \code{eq:minimal-shell-extension},
+\code{eq:minimal-affine-safe-map},
+\code{eq:minimal-renderer-rigid-fallback}, \code{eq:minimal-gaussian-transport} & renderer transport와
+reflection-invalid/SVD singular-value clamp\\
+\code{eq:minimal-r1-version-contract}, \code{eq:minimal-r1-anchor-candidate},
+\code{eq:minimal-r1-symmetric-features}, \code{eq:minimal-r1-symmetric-logit},
+\code{eq:minimal-r1-area-decode}, \code{eq:minimal-topology-loss} &
+topology-distillation executable version, candidate, symmetric decoder와 output/loss 경계\\
+\code{eq:minimal-reference-convergence}, \code{eq:minimal-sequence-errors},
+\code{eq:minimal-log-psd-errors}, \code{eq:minimal-pareto-effects} &
+reference eligibility, sequence metric와 practical Pareto evidence\\
+\bottomrule
+\end{longtable}
+
+\subsection{Typed artifacts}
+
+\begin{longtable}{L{0.25\linewidth}L{0.65\linewidth}}
+\toprule
+Type & 필수 필드\\
+\midrule
+\endfirsthead
+\toprule
+Type & 필수 필드\\
+\midrule
+\endhead
+\code{SetupInput} & static-GS ID/hash, \code{unit\_mode}, SI \(s_{\mathrm{metric}},\rho_A\) 또는
+nondimensional \((L_0,M_0,T_0,\widehat\rho_A)\), native-to-internal
+position/covariance/area와 SI-to-nd \(\Delta t,m,\rho_A,\kappa_{\rm str},\kappa_{\rm bend},
+\rho_{\rm air},W,\dot W,\nabla W,f\) typed map, unit-typed Rayleigh coefficients,
+모든 bound/epsilon의 branch tag, material/aero preset, hard attachment IDs와 wind/gust operating envelope\\
+{\ttfamily\small TopologyDistillation\hspace{0pt}Artifact} & object-grouped train/dev/test split와 data hash,
+  anchor sampler/candidate graph/feature normalization/model architecture,
+  \(h_i\)만 입력으로 소비하고 \(|V|\times1\)을 출력하는 shared scalar area head,
+  global pooling/new message-passing 없음 policy와 area-head architecture/output field ID를 포함한
+  \code{topology\_architecture\_version} hash, attachment-based unoriented frame gauge,
+  source-label polarity/loss/symmetric decoder/split version, staged freeze state,
+  \(A_{\rm ref}=L_{\rm ref}^2\) ownership convention,
+  \(\Delta\theta_i\equiv0\) 및 learned orientation output 없음 policy,
+  \code{PRE\_TRAIN} decoder schema/threshold--cap candidate space와 training seed/data-label hash,
+  \code{PRE\_TEST} dev-selected final \(\nu_{\rm decode}\)와 selected model-weight hash,
+  pre-test immutable full hash와 deterministic replay report\\
+\code{AnchorScaffold} & anchor rest positions, unit-normalized attachment direction과
+sign-invariant rank-1 line projector, tangent/normal frame,
+accepted material edge와
+\code{edge-opposite-triplet-v1}의 ordered neighbor pair, \code{atomic\_group\_map},
+\code{group\_member\_order}, stable core--halo member IDs, area/mass,
+Gaussian binding, validity report\\
+\code{StructuralPackage} & one-local-step fixed-Hessian PD-style backend version과 package operator, free-DOF map,
+edge-length stretch 및 opposite-triplet \code{corotated\_tangent\_plane\_v2} bending
+support/projector, owner-area material-to-weight rule,
+neighbor angle/length/tangential-residual threshold, retained bending coverage와 reject/fallback policy,
+\code{mass\_matrix\_type=lumped\_anchor\_v1}, stable-anchor ordering의
+\(m_i=\rho_Aa_i^0\) 또는 동등한 \code{mass\_diag=repeat(m\_i,3)},
+hard-attachment free-map과 각 hash, \(M,C,K\), target operators/weights, fixed timestep range;
+\(K\)는 minimized nonlinear energy의 exact rest tangent가 아님\\
+\code{ConstraintMapReport} & scaffold/preset hash, \code{edge-opposite-triplet-v1} ID,
+stretch/bending support, opposite-pair selection, owner-area/projector/weight summary,
+irregular-flat \(\delta_{ia}^{\mathrm{rest}}\) diagnostic, rejected relation reason,
+rest/rigid/quadratic-normal projector fixture와 deterministic replay hash\\
+\code{ReducedPackage} & \code{basis\_type=generalized\_eigen\_v1}, ordered generalized
+eigenpair/eigenvalue metadata, \(M\)-normalization rule, \(\Phi,\{\Psi_r\}\), all retained
+\(M/C/K\) blocks, \code{stable\_unit\_order}, \code{atomic\_group\_map},
+\code{group\_member\_order}, \code{group\_column\_ranges}, mapping hash,
+각 atomic group의 versioned merge/prune 뒤 exact serialized retained \(\Psi_{\mathcal G}\),
+rank/condition report\\
+\code{RuntimeState} & \(q,\dot q,z_{\rm sup},\dot z_{\rm sup}\), Active/Decay IDs,
+\code{stable\_unit\_order}/\code{group\_column\_ranges}에 따른 persistent-slot coordinate ordering,
+per-unit dwell age/off-frame/fade/release-hold timer/counter인 기존 state field,
+\(K_A,K_D,N_{\rm dwell},N_{\rm fade},N_{\rm hold},\tau_E,\tau_x,\tau_v,\tau_{\rm pop}\),
+\(M_{r,\rm ref},L_{\rm ref},V_{\rm ref},E_{r,\rm ref}\), package hash\\
+\code{SurfaceState} & current anchor position/velocity,
+\code{tangent\_fit\_version=tangent\_fit\_v1}, shared rest coordinates/positive normalized weights,
+shared numerical-rank threshold와 inverse-before-check 결과, rank-2 rest/current tangent columns,
+normal, \(\rho_{a,i}^{t,\mathrm{raw}}\), \(\bar\rho_{a,i}^t\),
+\(a_{i,\mathrm{safe}}^t\), degeneracy/area-clamp flags\\
+\code{AnchorForceField} & bounded safe area를 소비한 full-anchor raw force와 Euclidean-radial bounded aero,
+non-finite/clamp flag, applied external total,
+owner ledger with bounded-force one-consumption assertion\\
+\code{LocalSelection} & score, desired/admitted dwell-reserved capacity-\(K_A\) sets,
+Decay set, activation delay, active/solve rank and unique support count\\
+\code{GaussianFrame} & means, conditionally eigen-clamped SPD covariances,
+MLS numerical rank와 affine-safe/proper-Kabsch SVD ID, singular-value/reflection/eigen clamp 및 fallback flags,
+preserved DC/opacity와 canonical-disabled higher-order SH\\
+\code{FrameTrace} & synchronized component p50/p95/p99 source samples,
+active/solve rank, activation delay, OOD/method/reference-failure reason,
+package/sequence attempt--accept--success denominator, invalid/fallback counters,
+required raw-force anchor--frame denominator \(|\mathcal I_f|\), force-clamp event count/rate,
+area-clamp event count/rate, sequence metric과 object/package cluster ID\\
+\bottomrule
+\end{longtable}
+
+\subsection{API와 manifest}
+
+필수 API는 다음 이름과 책임을 가진다. 내부 signature는 구현 언어에 맞춰도 되지만
+입출력 type과 owner는 바꾸지 않는다.
+
+\begin{itemize}
+  \item \code{build\_anchor\_scaffold(setup) -> AnchorScaffold}
+  \item \code{build\_structural\_package(scaffold, setup) -> StructuralPackage}
+  \item \code{build\_reduced\_package(scaffold, structural) -> ReducedPackage}
+  \item \code{reconstruct\_surface(state, packages) -> SurfaceState}
+  \item \code{evaluate\_full\_anchor\_aero(surface, wind) -> AnchorForceField}
+  \item \code{select\_local\_units(force, state, reduced) -> LocalSelection}
+  \item \code{solve\_coupled\_step(force, selection, state, packages) -> RuntimeState}
+  \item \code{transport\_gaussians(state, scaffold) -> GaussianFrame}
+\end{itemize}
+
+모든 run은 \code{minimal\_v0\_manifest.json}에 source commit, package hashes와
+asset/GS seed를 기록한다. \code{unit\_mode}와 해당 branch payload,
+\code{core\_scope=flat\_rest\_v0}, structural backend 및 constraint-map version,
+material/aero preset, \(r_g,K_A,K_D,\Delta t\)를 기록한다.
+\code{atomic\_group\_map}, \code{group\_member\_order},
+\code{group\_column\_ranges}, \code{stable\_unit\_order}와 각 atomic group의
+versioned merge/prune 뒤 exact serialized retained \(\Psi_{\mathcal G}\)는
+reduced-package hash가 소유한다. Run manifest/hash는 \(K_A\)와 이 exact reduced-package
+identity를 함께 기록한다. 둘 중 하나라도 다르면 동일 method replay로 취급하지 않고 fail-fast한다.
+이는 member basis의 unconditional concatenation이나 하나의 전역 concatenated-array 저장을
+강제하지 않는다.
+
+Bending projection signature는 \code{bend\_projection\_version}과
+\code{corotated\_tangent\_plane\_v2}의 pair로 기록한다.
+Setup frame signature도 \code{tangent\_gauge\_version}과
+\code{attachment\_line\_v1}의 pair로 기록한다.
+Canonical Minimal V0의 in-plane orientation policy는 learned \(\Delta\theta_i=0\)이며
+별도 orientation output을 호출하지 않는다.
+Gauge의 attachment reference, degeneracy threshold/reject rule, accepted unoriented axis와
+unit normalization, line-projector idempotence/sign--raw-scale replay 결과를
+scaffold/structural package hash에 포함한다.
+
+V0-R1 artifact에는 다음 version group과 object-grouped split/data hash,
+모든 threshold/cap을 기록한다.
+\begin{itemize}
+  \item \code{anchor\_sampler\_version}, \code{candidate\_graph\_version},
+  \code{feature\_norm\_version}
+  \item \code{topology\_architecture\_version}, \code{topology\_label\_version},
+  \code{topology\_loss\_version}
+  \item \code{topology\_decoder\_version}, \code{topology\_split\_version}
+\end{itemize}
+\code{topology\_architecture\_version}과 \(\nu_{\rm arch}\) hash는
+shared scalar area head의 \(h_i\)-only input contract, \(|V|\times1\) output shape,
+width/depth/activation과 output field ID를 포함한다. Area logit 앞에 global pooling이나
+새 message-passing stage를 추가하지 않는다.
+Object-grouped split/data hash와 test seal을 먼저 고정한다.
+각 training run 전 \code{PRE\_TRAIN}에는 anchor/candidate/feature/architecture/label/loss field를
+concrete non-placeholder로 만들고 decoder schema와 threshold/cap candidate space,
+training seed, training data/label hash와 train-only statistic을 포함한 run hash를 닫는다.
+이때 dev 결과로 정할 최종 numerical threshold/cap과 \(\nu_{\rm decode}\)는 요구하지 않는다.
+Decoder threshold/cap, selected model weight와 최종 canonical config는 train/dev 결과로만 선택한다.
+Test payload를 처음 열기 전 \code{PRE\_TEST}에는 dev-selected final \(\nu_{\rm decode}\),
+선택한 model weight 및 source/label/data/config/decoder/split의 immutable full hash를 동결한다.
+Test result 확인 뒤 field를 바꾸면 새 preregistered run으로 취급한다.
+각 단계의 required field가 unset이면 해당 V0-R1 entry point는 fail-fast하지만,
+이 상태가 explicit Oracle scaffold 기반 V0-01--04 또는 privileged-teacher-ranked Gate B와
+preliminary/final Gate C를 막지는 않는다.
+이는 이미 선언한 MC1의 offline artifact 계약이며 새 runtime stage나 learned output이 아니다.
+
+Global basis signature는 \code{basis\_type=generalized\_eigen\_v1}로 기록한다.
+
+\code{tangent\_fit\_version} 값은 \code{tangent\_fit\_v1}로 기록한다.
+Shared \(J/G\) relative--absolute numerical-rank threshold,
+unit-typed \(\lambda_{G,\mathrm{abs}}^{(\mathsf u)}\), inverse-before-check fixture를 package hash에 포함한다.
+
+Canonical V0의 binding/run manifest는 별도 실행 field
+\code{appearance\_mode=degree0\_v0}를 기록한다. 이는 위 method signature를
+늘리거나 method authority를 바꾸는 field가 아니다.
+
+Active/Decay 수치 parameter도 기록한다.
+\[
+\begin{gathered}
+  K_A,K_D,N_{\rm dwell},N_{\rm fade},N_{\rm hold},\\
+  \tau_E,\tau_x,\tau_v,\tau_{\rm pop}.
+\end{gathered}
+\]
+첫 줄은 1 이상인 integer이고, 둘째 줄은 모두 finite positive scalar인지
+manifest validation에서 확인한다. Strict \(<\) release predicate는 유지하며 0 tolerance를 허용하지 않는다.
+Operating-envelope field
+\[
+  W_{\max},\quad \dot W_{\max},\quad G_{W,\max},\quad f_{\max},\quad
+  \mathcal B_{\rm area/affine/cov}
+\]
+와 fixed internal substep \(N_{\rm sub}=1\), hardware, precision, command,
+deferred-module flags와 이미 동결한 force/area/affine/covariance clamp-rate cap도 기록한다.
+선택한 unit branch에 맞는 typed invariant \(f_{\max}>0\)를 manifest validation에서 확인한다.
+Deferred flag는 모두 false여야 canonical V0 run이다.
+S4/Gate manifest는 실행 전에 raw-force가 finite여야 하는 required anchor--frame index set
+\(\mathcal I_f\)를 등록한다. 이는 실행 뒤 관측한 finite sample subset이 아니다.
+\[
+  N_{\rm force}^{\rm req}=|\mathcal I_f|,\qquad
+  N_{\rm force}^{\rm clamp}
+  =\sum_{(i,t)\in\mathcal I_f}
+  \mathbf 1[\,f_{\rm raw,i}^t\text{ finite}\ \land\
+  \|f_{\rm raw,i}^t\|_2>f_{\max}\,],\qquad
+  r_{f,\mathrm{clip}}=\frac{N_{\rm force}^{\rm clamp}}{N_{\rm force}^{\rm req}}.
+\]
+Non-finite raw-force event는 별도 method failure이며 \(\mathcal I_f\) 분모에서 제거하거나
+성공 표본으로 숨기지 않는다. \(r_{f,\mathrm{clip}}\)에는 이미 동결한 generic force
+clamp-rate cap만 적용하고 별도 cap, threshold 또는 gate를 만들지 않는다.
+Scaffold/structural/reduced/binding package hash와 더불어 constraint-map,
+generalized-eigen basis, tangent-fit contract의 각 replay hash를 저장한다.
+SI/nd conversion table의 모든 값, bound와 typed epsilon은 선택한 branch payload와
+round-trip fixture hash에 포함한다. Evaluation epsilon은 finite positive이고
+\[
+\begin{aligned}
+  \operatorname{unit}(\varepsilon_v)&=ML^2/T^2,&
+  \widehat\varepsilon_v&=\varepsilon_vT_0^2/(M_0L_0^2),\\
+  \operatorname{unit}(\varepsilon_x)&=L^2,&
+  \widehat\varepsilon_x&=\varepsilon_x/L_0^2
+\end{aligned}
+\]
+로 변환한다. \(\varepsilon_v,\varepsilon_x\), unit branch, 변환 결과와 inverse
+round-trip 결과는 \code{evaluation\_hash}가 소유한다.
+각 Gate manifest는 실행 전에 canonical package/sequence attempt 목록과 다음 집계량을 고정한다.
+\[
+\begin{gathered}
+N_{\mathrm{pkg}}^{\mathrm{attempt}},\quad N_{\mathrm{pkg}}^{\mathrm{accepted}},\\
+N_{\mathrm{seq}}^{\mathrm{attempt}},\quad N_{\mathrm{seq}}^{\mathrm{successful}}.
+\end{gathered}
+\]
+집계 규칙과
+development split에서 동결한 \(\tau_{\mathrm{fail},A},\tau_{\mathrm{fail},C}\)를 저장한다.
+Binding/run manifest에는 relative singular-value numerical-rank threshold \(\tau_K\),
+affine-safe SVD의 \(\sigma_{F,\mathrm{rank}},\sigma_{F,\min},\sigma_{F,\max}\), reflection-invalid rule,
+proper-rigid fallback ID와 renderer fallback-rate cap \(\tau_{\mathrm{rigid}}\)을 저장한다.
+Affine singular-value clamp, reflection invalidation과 rigid-fallback event rate도 각각 trace/hash에 남긴다.
+Gate evidence manifest에는 reference refinement pair/common evaluation grid,
+fixed common evaluation mass, reference-convergence threshold, sequence metric aggregation,
+object/package cluster ID와 \(N_{\rm obj,min}\),
+paired-CI procedure와 practical Pareto margin을 결과 확인 전에 저장한다.
+PSD evaluation에는 기존 typed \((L_0,T_0)\),
+\(\widehat f_{\rm PSD}=f_{\rm PSD}T_0\),
+\(\widehat P(\widehat f_{\rm PSD})=P(f_{\rm PSD})T_0/L_0^2\),
+\(\widehat\varepsilon_P=\varepsilon_PT_0/L_0^2\), window와 dimensionless bin을 저장한다.
+L1/RMS log-PSD를 모두 보고하되 development split에서 정확히 하나를 primary로 동결하고
+다른 하나를 mandatory secondary로 저장한다. SI direct ratio 계산에 새 독립 PSD time scale을 만들지 않는다.
+
+\section{여덟 개 hard gate}
+
+\subsection{S0 --- schema, units, persistence}
+
+\begin{itemize}
+  \item [\(\square\)] setup/runtime field와 coordinate frame이 분리되어 있다.
+  \item [\(\square\)] \code{unit\_mode=SI}는 direct surface mass density \(\rho_A\)와 SI wind/force만,
+  \code{unit\_mode=nd}는 \((L_0,M_0,T_0,\widehat\rho_A)\)와 dimensionless preset만 사용한다.
+  \item [\(\square\)] SI branch는
+  \(x_{\mathrm{SI}}=s_{\mathrm{metric}}x_{\mathrm{native}}\),
+  \(\Sigma_{\mathrm{SI}}=s_{\mathrm{metric}}^2\Sigma_{\mathrm{native}}\),
+  \(a_{\mathrm{SI}}=s_{\mathrm{metric}}^2a_{\mathrm{native}}\)를 typed field와 replay test로 확인한다.
+  \item [\(\square\)] SI-to-nd payload는
+  \(\widehat{\Delta t}=\Delta t/T_0\),
+  \(\widehat a=a/L_0^2\), \(\widehat\Sigma=\Sigma/L_0^2\),
+  \(\widehat m=m/M_0\), \(\widehat\rho_A=\rho_A L_0^2/M_0\),
+  \(\widehat\kappa_{\rm str}=\kappa_{\rm str}T_0^2/M_0\)와
+  \(\widehat\kappa_{\rm bend}=\kappa_{\rm bend}T_0^2/(M_0L_0^2)\)를 사용한다.
+  \item [\(\square\)] Aero payload는
+  \(\widehat\rho_{\rm air}=\rho_{\rm air}L_0^3/M_0\),
+  \(\widehat W=WT_0/L_0\),
+  \(\widehat{\dot W}=\dot W T_0^2/L_0\),
+  \(\widehat{\nabla W}=(\nabla W)T_0\),
+  \(\widehat f=fT_0^2/(M_0L_0)\)를 사용하고 \(f_{\max}\)에도 같은 force map을 적용한다.
+  \item [\(\square\)] Rayleigh damping \(C=\alpha M+\beta K\)에서 SI payload는
+  \([\alpha]=\mathrm{s}^{-1}\), \([\beta]=\mathrm{s}\)이고, nd payload는
+  \(\widehat\alpha=\alpha T_0\), \(\widehat\beta=\beta/T_0\) mapping을 사용한다.
+  \item [\(\square\)] Area/covariance eigen bound, clamp와 numerical epsilon도 소유 quantity와
+  같은 typed map을 사용한다. 각 변환은 SI\(\rightarrow\)nd\(\rightarrow\)SI round trip에서
+  typed tolerance를 통과하고 package hash에 들어간다.
+  \item [\(\square\)] Tangent-fit \(J\) absolute singular floor는 dimensionless field로,
+  rest-coordinate Gram \(G\) absolute eigen floor는 SI에서 \(L^2\)-typed,
+  nd branch에서 dimensionless field로 저장하고
+  \(\widehat\lambda_{G,\mathrm{abs}}=\lambda_{G,\mathrm{abs}}/L_0^2\)를 사용한다.
+  두 branch의 accept/reject가 unit-conversion replay에서 일치한다.
+  \item [\(\square\)] SI/nd field 혼용이나 internal substep \(\ne 1\)은 fail-fast하고,
+  canonical quantitative run은 operating envelope 밖의 input에서 fail-fast하고,
+  non-canonical qualitative run만 out-of-domain으로 기록한다.
+  \item [\(\square\)] 사전 선언한 in-envelope package/sequence attempt는 package reject,
+  tangent/covariance degeneracy, divergence 또는 invalid output이 발생해도 OOD로 재분류하거나
+  각 canonical denominator에서 제거하지 않고 method failure로 집계한다.
+  \item [\(\square\)] canonical quantitative run은
+  \code{core\_scope=flat\_rest\_v0}를 정확히 기록한다.
+  \item [\(\square\)] \code{basis\_type=generalized\_eigen\_v1}을 정확히 기록한다.
+  \item [\(\square\)] \code{tangent\_fit\_version=tangent\_fit\_v1}을 정확히 기록하며,
+  다른 signature의 package/run 혼용은 fail-fast한다.
+  \item [\(\square\)] \code{bend\_projection\_version}은
+  \code{corotated\_tangent\_plane\_v2},
+  \code{tangent\_gauge\_version}은 \code{attachment\_line\_v1}로 정확히 기록하고
+  learned \(\Delta\theta_i=0\) policy가 package artifact와 일치하는지 확인한다.
+  \item [\(\square\)] package/state save--load round trip이 bitwise 또는 typed-tolerance 내에서 일치한다.
+  \item [\(\square\)] mismatched package hash, timestep 또는 asset ID는 fail-fast한다.
+\end{itemize}
+
+\pass{통과 산출물:} \code{s0\_contract\_report.json}, minimal saved package/state fixture.
+
+\subsection{S1 --- scaffold, area/mass, layer safety}
+
+\begin{itemize}
+  \item [\(\square\)] hard attachment geometry에서 object-level unoriented reference line을
+  deterministic하게 만들고 각 valid anchor tangent plane에 project한
+  \code{attachment\_line\_v1} gauge를 사용한다. Axis sign \(\pm\)은 동치로 취급하고
+  stored normal과 cross-product order만 orientation을 소유한다.
+  \item [\(\square\)] Eigensolver 출력 \(g_{\rm att}\)는 \(q_i\) 또는 line projector를 만들기 전에
+  \(\|g_{\rm att}\|_2=1\)로 normalize한다.
+  \(L_{\rm att}=g_{\rm att}g_{\rm att}^{\top}\)와 accepted local \(L_i^0\)는
+  \(\|L^2-L\|_F\), \(|\operatorname{tr}L-1|\) tolerance를 통과한다.
+  \item [\(\square\)] attachment direction의 eigengap/condition 또는 tangent projection norm이
+  cap을 통과하지 못하면 arbitrary secondary/world-axis/runtime fallback을 만들지 않고
+  package를 reject한다.
+  \item [\(\square\)] input ordering/PCA seed를 바꾸거나 raw eigensolver vector에
+  임의 \(c\neq0\)를 곱한 replay에서, normalization 뒤 package accept/reject,
+  unoriented projector, accepted edge와 opposite triplet이 동결한 tolerance 안에서 일치한다.
+  \(g_{\rm att}\mapsto-g_{\rm att}\)에서도 feature/label/decoder 결과가 동일하다.
+  Canonical V0는 learned in-plane correction을 호출하지 않고 \(\Delta\theta_i=0\)으로 둔다.
+  \item [\(\square\)] relation rank/condition, 위 tangent gauge와 hard attachment ID가 유효하다.
+  \item [\(\square\)] area/mass가 양수이고
+  \(\sum_i a_i^0=A_{\rm ref}\) total ownership error가 dev threshold 이하다.
+  Canonical unknown-area package는 calibrated area estimator 없이
+  \(L_{\rm ref}=\operatorname{diameter}(x^0)>0\),
+  \(A_{\rm ref}=L_{\rm ref}^2\)를 사용하며 object-normalized geometry에서는 둘을 1로 둔다.
+  \(A_{\rm asset}:=A_{\rm ref}\), \(M_{\rm asset}:=\rho_AA_{\rm ref}\)는
+  physical measurement가 아닌 package convention으로 기록한다.
+  \item [\(\square\)] \code{mass\_matrix\_type=lumped\_anchor\_v1}를 사용하고 stable anchor ordering의
+  \(m_i=\rho_Aa_i^0\) 또는 동등한 \code{mass\_diag=repeat(m\_i,3)}와
+  hard-attachment free-map을 structural-package hash에 저장한다.
+  \(M=\operatorname{blkdiag}_{i\in V}(m_iI_3)\)와
+  \(M_f=N_f^\top MN_f\)가 이 payload에서 exact 재구성되고 deterministic replay에서 일치해야 한다.
+  \item [\(\square\)] \(A_{\rm ref}\mapsto cA_{\rm ref}\) diagnostic은
+  force/area clamp가 비활성이고 mass/energy floor와 epsilon이 함께 scale되거나 negligible인
+  조건에서 \(M,C,K,\bar h,f_{\rm aero}\)의 공통 scaling과 trajectory/selector 불변성을 검사한다.
+  Clamp가 작동하면 event rate를 별도 실패 신호로 기록하고 exact invariance를 주장하지 않는다.
+  \item [\(\square\)] folded close-layer fixture에서 front/back shortcut edge가 없다.
+  \item [\(\square\)] accepted material edge에서 edge-length stretch support로 가는 mapping이
+  deterministic하다.
+  \item [\(\square\)] oriented opposite-neighbor pair에서 bending triplet과
+  \code{corotated\_tangent\_plane\_v2} target으로 가는 mapping이 deterministic하다.
+  \item [\(\square\)] tangent gauge에서 neighbor ordering으로, area/material preset에서
+  weight로 가는 mapping이 deterministic하다.
+  \item [\(\square\)] boundary/missing-pair axis는 deterministic하게 skip하고,
+  irregular-flat opposite triplet은 rest planarity와 tangential interpolation residual의
+  frozen cap을 모두 통과할 때만 유지하며 retained bending coverage도 frozen cap을 통과한다.
+  \item [\(\square\)] retained irregular-flat relation의 \(\delta_{ia}^{\mathrm{rest}}\) 분포를
+  \code{ConstraintMapReport}에 diagnostic으로 저장한다. 이는 새 S1 hard gate, package-reject 조건 또는
+  새 curvature/shell solver의 승격 trigger가 아니다.
+  \item [\(\square\)] shallow/pre-curved rest fixture는 \code{flat\_rest\_v0}
+  canonical quantitative result에 포함하지 않는다.
+  \item [\(\square\)] relation threshold와 schema version을 development split에서 동결하고,
+  동일 input hash의 replay artifact가 일치한다.
+  \item [\(\square\)] invalid package는 reject/user hint/explicit scaffold 중 선언한 fallback으로만 간다.
+  \item [\(\square\)] V0-R1 anchor sampler는 surface-valid eligibility, \(K\), local scale,
+  canonical spatial/attribute ordering과 exact-tie rule을 version으로 고정한다.
+  Raw Gaussian index만으로 first anchor/tie를 정하지 않으며 input permutation replay를 통과한다.
+  \item [\(\square\)] Broad candidate graph는 각 training run 전에 concrete non-placeholder인
+  symmetric kNN/radius config를 사용하고,
+  training-only source relation에 대한 candidate recall, degree와 rejection reason을 보고한다.
+  Candidate recall 부족을 topology-model false negative로 세지 않는다.
+  \item [\(\square\)] Node/pair feature는 geometry/setup metadata만 사용하며 coordinate/scale
+  normalization, numerical floor와 train-only statistic을 version/hash로 고정한다.
+  Relation/layer logit은 endpoint swap에 대해 construction상 정확히 대칭이고
+  \(p_{ik}=p_{ki}\) replay test를 통과한다.
+  \item [\(\square\)] Training-only source mesh projection tolerance와 reject rule,
+  sparse relation/layer/area label construction을 version/hash로 저장한다.
+  Positive class는
+  \(y_{ik}^{\rm rel}=1\iff\{i,k\}\)가 valid source relation,
+  \(y_{ik}^{\rm layer}=1\iff\{i,k\}\)가 invalid cross-layer/shortcut candidate로 고정한다.
+  같은-layer valid pair는 \((y^{\rm rel},y^{\rm layer})=(1,0)\)이고,
+  folded front/back shortcut은 relation positive로 중복 표기하지 않은
+  \((0,1)\)인 synthetic fixture를 통과한다.
+  Source normal만으로 정의되지 않는 in-plane orientation label/loss는 사용하지 않는다.
+  \item [\(\square\)] Relation/layer class-balanced loss, positive total-normalized area loss와
+  모든 weight를 train/dev에서 동결한다. Shared scalar area head는 각 node embedding \(h_i\)만
+  소비하고 stacked \(|V|\times1\) logit을 출력한다. Global pooling이나 새 message-passing stage를
+  입력 앞에 두지 않으며 area-head architecture/output field ID는
+  \code{topology\_architecture\_version}과 \(\nu_{\rm arch}\) hash에 저장한다.
+  Area decoder는 positivity와 위 \(A_{\rm ref}=L_{\rm ref}^2\) package total을 construction상
+  만족하며 teacher target도 같은 total로 normalize한다. Replay에서 모든 \(a_i^0>0\)와
+  \(\sum_i a_i^0=A_{\rm ref}\)를 동결한 tolerance 안에서 확인한다.
+  Raw-weight floor와 normalized log-area floor는 서로 다른 field다.
+  \item [\(\square\)] Undirected decoder는 relation/layer threshold, global deterministic
+  degree/radius cap과 stable tie-break를 사용한다.
+  \(p_{ik}^{\rm rel}\)가 높고 \(p_{ik}^{\rm layer}\)가 낮을 때만 acceptance로 넘기며,
+  high-\(p^{\rm layer}\) shortcut을 reject하는 polarity replay를 통과한다. Per-asset threshold tuning,
+  directed per-node top-\(k\)와 hidden graph repair는 금지한다.
+  \item [\(\square\)] 같은 source object/geometry의 모든 GS density/seed는 하나의 split cluster에만
+  속한다. Object-grouped split/data hash와 test seal을 먼저 고정하고 feature statistic은 train에서만 fit한다.
+  Anchor/candidate/feature/architecture/label/loss config, decoder schema와 threshold/cap candidate space,
+  training seed와 training data/label hash는 각 training run의 \code{PRE\_TRAIN} 전에 concrete하게 닫되,
+  dev 결과로 정할 최종 numerical threshold/cap과 \(\nu_{\rm decode}\)는 이 시점에 요구하지 않는다.
+  Decoder threshold/cap, selected model weight와 최종 canonical config는 object-disjoint dev에서만 선택하고,
+  test payload를 처음 여는 \code{PRE\_TEST} 전에 dev-selected final \(\nu_{\rm decode}\)와
+  model/source/label/data/config/decoder/split의 immutable full hash를 동결한다.
+  Test result 확인 뒤 field를 바꾸면 새 preregistered run으로 취급한다.
+  단계별 required field가 unset이면 해당 V0-R1 entry point는 fail-fast한다.
+\end{itemize}
+
+위 anchor/candidate/feature/label/loss/decoder/split 항목은 V0-R1 predicted scaffold와
+Gate A 전에 닫는 MC1 owner contract다. 미완료 또는 실패는 MC1/Gate A를 막지만,
+explicit Oracle scaffold의 V0-01--04, privileged-teacher-ranked Gate B 또는
+preliminary/final Gate C를 막지 않는다.
+MC1 때문에 새 runtime stage, learned output 또는 asset class를 추가하지 않는다.
+
+\pass{통과 산출물:} \code{s1\_scaffold\_report.json}, oriented graph visualization,
+area/mass histogram, close-layer negative fixture.\newline
+\code{topology\_to\_constraint\_report.json}, V0-R1 \code{topology\_distillation\_artifact.json}과
+deterministic replay hash.
+
+\subsection{S2 --- simple structural stability}
+
+\begin{itemize}
+  \item [\(\square\)] backend version은 one-local-step fixed-Hessian PD-style stretch--bending으로
+  고정되고 frame당 local projection과 internal substep은 각각 한 번이다.
+  Stored \(K=\sum_jw_jA_j^\top A_j\)는 global step과 basis가 공유하는
+  fixed-Hessian package operator이지 minimized nonlinear constraint energy의 exact rest tangent가 아니다.
+  \item [\(\square\)] declared stretch/bending support, projector와 material weight가
+  \code{ConstraintMapReport}와 일치하고 finite하다.
+  \item [\(\square\)] Opposite-triplet bending의 \code{bend\_projection\_version}은
+  \code{corotated\_tangent\_plane\_v2}만 사용한다.
+  Local projection은 실제 tangent fit으로 얻은 \(R_i^0,R_i^{t,\mathrm{pred}}\)와
+  stored rest displacement \(d_{ia}^0=A_{ia}^{\rm bend}x^0\)의 fitted-rest-normal component를 사용하되
+  relation/support, owner area, fixed global Hessian과 solver stage는 바꾸지 않는다.
+  \item [\(\square\)] Rest fixture에서 projected target이 \(d_{ia}^0\)를 tolerance 안에서
+  재현하고 zero-wind rest generalized force를 만들지 않는다.
+  \item [\(\square\)] Random proper rigid transform \((Q,c)\), \(Q\in\mathrm{SO}(3)\) fixture에서
+  projected target이 transformed descriptor를 재현하고 spurious restoring torque를 만들지 않는다.
+  \item [\(\square\)] Local frame을 \(R_i^0\)로 고정한 unit fixture에서
+  \(d_{ia}^0\pm\epsilon n_{i,\rm fit}^0\) residual이
+  \(\pm\epsilon n_{i,\rm fit}^0\)이고 central finite-difference stiffness가
+  declared \(w_{ia}^{\rm bend}\)와 동결한 relative tolerance 안에서 일치한다.
+  \item [\(\square\)] Frame을 다시 fit하는 integrated normal-perturbation fixture는 positive
+  non-collapsed response를 요구한다. Exact \(w_{ia}^{\rm bend}\) 일치는
+  \(\delta J_i=0\)인 perturbation에만 요구한다.
+  \item [\(\square\)] Projector version, tangent support/weight, stored rest displacement \(d_{ia}^0\),
+  fitted-frame convention과 위 세 fixture의
+  threshold/result가 structural package hash와 deterministic replay artifact에 들어간다.
+  \item [\(\square\)] \(M\succ0\), free-DOF system matrix factorization과 finite update가 성립한다.
+  \item [\(\square\)] rigid transform sanity에서 visible restoring artifact가 없다.
+  \item [\(\square\)] zero-wind release가 rest로 감쇠하고 state를 폭발시키지 않는다.
+  \item [\(\square\)] 10--30초 strip/flag rollout에 NaN, scale explosion과 gross phase collapse가 없다.
+\end{itemize}
+
+Energy/action/modal exact closure는 diagnostic이고 fixed-Hessian mode를 physical/exact tangent mode로
+표현하지 않는다. 실패하면 preset 또는 이미 검증된 backend를 바꾸며,
+새 shell derivation을 core에 추가하지 않는다.
+
+\pass{통과 산출물:} \code{s2\_stability\_report.json},
+\code{corotated\_tangent\_plane\_v2\_fixture.json}, rigid/rest/rollout clips.
+
+\subsection{S3 --- Global/Local complement와 conditioning}
+
+\begin{itemize}
+  \item [\(\square\)] Structural package의 hashed free-map \(N_f\)와
+  \code{lumped\_anchor\_v1} payload에서 재구성한
+  \[
+    M_f=N_f^\top\operatorname{blkdiag}_{i\in V}(m_iI_3)N_f
+  \]
+  가 SPD이고,
+  package save--load/replay에서 동일해야 한다.
+  \item [\(\square\)] Global basis는 free-coordinate fixed-Hessian package operator \((K,M)\)
+  generalized eigenproblem의
+  저주파 eigenvector를 repeated-eigenvalue tie-break와 column-sign convention으로
+  deterministic ordering하고 \(M\)-orthonormalize한 \code{generalized\_eigen\_v1}만 사용한다.
+  \item [\(\square\)] \(\Phi^\top M\Psi_r\) residual과 patch-local normalization이 tolerance 내다.
+  \item [\(\square\)] \(\Psi_r\)가 declared core--halo support 밖에 dense tail을 만들지 않는다.
+  \item [\(\square\)] 서로 다른 patch를 전역 QR로 혼합하지 않았다.
+  \item [\(\square\)] 다음 metadata field가 package save--load와
+  input-permutation replay에서 일치하고 reduced-package hash로 검증된다.
+  \begin{itemize}
+    \item \code{stable\_unit\_order}
+    \item \code{atomic\_group\_map}
+    \item \code{group\_member\_order}
+    \item \code{group\_column\_ranges}
+  \end{itemize}
+  각 atomic group의 versioned merge/prune 뒤 exact serialized retained
+  \(\Psi_{\mathcal G}\)도 같은 검사를 통과한다.
+  Member basis의 unconditional concatenation은 요구하지 않는다.
+  \item [\(\square\)] reachable Active/Decay union의 combined basis가 full rank이고 condition cap 이하다.
+  \item [\(\square\)] 모든 retained inter-patch \(M/C/K\) cross block을 저장하고 solve에 사용한다.
+\end{itemize}
+
+\pass{통과 산출물:} \code{s3\_basis\_report.json}, rank/condition sweep.
+
+POD basis는 Gate A/B/C가 살아난 뒤에만 허용하는 non-blocking ablation이며,
+canonical V0 package의 basis choice나 hard gate를 바꾸지 않는다.
+
+\subsection{S4 --- current surface, aero와 force ownership}
+
+\begin{itemize}
+  \item [\(\square\)] anchor surface와 Gaussian transport는 하나의
+  \code{tangent\_fit\_v1} implementation을 공유한다. 각 support에서 고정한
+  positive normalized weight, 그 weight를 쓴 rest/current centroid와 fixed rest 2D coordinate로
+  \(J^0,J^t\)를 exact weighted least squares fit한다.
+  \item [\(\square\)] 3\(\times\)2 current tangent columns의 ordered cross product로
+  normal과
+  \(\rho_{a,i}^{t,\mathrm{raw}}=\|\widetilde n_i^t\|/\|\widetilde n_i^0\|\)를 만들고,
+  operating-envelope \(\mathcal B_{\rm area}\)가 소유하는
+  \(0<\rho_{a,\min}\leq1\leq\rho_{a,\max}<\infty\)에 대해
+  \(\bar\rho_{a,i}^t=\operatorname{clip}(\rho_{a,i}^{t,\mathrm{raw}};
+  \rho_{a,\min},\rho_{a,\max})\),
+  \(a_{i,\mathrm{safe}}^t=a_i^0\bar\rho_{a,i}^t\)를 별도 field로 만든다.
+  Full-anchor aero는 \(a_{i,\mathrm{safe}}^{t-1}\)만 소비한다.
+  Area clamp event rate는 이미 동결한 generic area clamp-rate cap에만 적용하며
+  새 cap, threshold 또는 gate를 만들지 않는다.
+  \item [\(\square\)] 모든 surface/transport fit은
+  \code{eq:minimal-tangent-numerical-rank}의 동일 relative--absolute convention을 사용한다.
+  \(G\)는 unit branch에 맞춘 \(L^2\)-typed absolute eigen floor
+  \(\lambda_{G,\mathrm{abs}}^{(\mathsf u)}\)와
+  \(\lambda_2/\lambda_1\) floor를 통과한 뒤에만 inverse를 계산하고,
+  \(J^0,J^t\)는 shared singular-value rule로 numerical rank 2를 통과해야 한다.
+  그 뒤 rest Gram 및 rest/current tangent-fit condition이 각 frozen cap 이하이며,
+  rest/current cross norm이 declared surface-normal floor보다 크고,
+  exact division으로 rest-area identity와 unit-normal tolerance를 통과한다.
+  \item [\(\square\)] 위 rank/condition/cross-norm 계약을 위반한 asset/frame은
+  canonical quantitative run에서 rigid fallback으로 계속하지 않고 degeneracy reason을
+  기록한 뒤 fail-fast한다. In-envelope failure는 해당 canonical attempt의 method-failure
+  분모에 남기며 단순히 quality 평균에서 삭제하지 않는다.
+  \item [\(\square\)] Near-rank-1 \(J/G\) fixture는 CPU/GPU 또는 두 linear-algebra backend에서
+  동일하게 inverse 전에 reject되고, well-conditioned planar fixture는 동일하게 accept된다.
+  \item [\(\square\)] Zero relative wind에서 raw/bounded force가 모두 0이고 two-sided normal convention이
+  통과한다. Clamp 전에 raw aero의 모든 component와 \(\ell_2\) norm이 finite인지 검사하며,
+  \(\mathcal I_f\)의 in-envelope non-finite raw force는 대체값이나 clamp로 숨기지 않고
+  fail-fast/method failure로 기록하며 required 분모와 성공 판정에서 누락하지 않는다.
+  \item [\(\square\)] 유일한 force clamp는
+  \(\|f_{\rm raw,i}\|_2>f_{\max}\)일 때 방향을 보존해
+  \(f_{\rm aero,i}=f_{\max}f_{\rm raw,i}/\|f_{\rm raw,i}\|_2\)로 만드는
+  Euclidean radial clamp다. 선언한 max wind/gust boundary에서 bounded force가 finite하고,
+  \(N_{\rm force}^{\rm req},N_{\rm force}^{\rm clamp},r_{f,\mathrm{clip}}\)을 trace하여
+  기존 generic force clamp-rate cap에만 적용한다.
+  \item [\(\square\)] full-anchor aero는 frame당 한 번만 평가된다.
+  \item [\(\square\)] Raw force는 diagnostic에만 남고 bounded \(f_{\rm aero}\)만 applied external field가 되어
+  direct projection에서 정확히 한 번 소비된다.
+\end{itemize}
+
+\pass{통과 산출물:} \code{s4\_surface\_aero\_report.json}, force-owner trace.
+
+\subsection{S5 --- selective coupled solve와 state continuity}
+
+\begin{itemize}
+  \item [\(\square\)] selector는 minimum-dwell unit을 먼저 유지하고 남은 slot만
+  score로 채우는 desired capacity-\(K_A\) set과 실제 admitted Active set을 분리한다.
+  \item [\(\square\)] Decay 재활성화 시 full Active set에서는 non-desired 최저-priority unit과
+  freed Decay slot을 atomic swap하고, 이후 free-slot admission, capacity-checked replacement,
+  full-\(K_D\) activation delay 순서를 지키며 active/solve rank를 별도 기록한다.
+  \item [\(\square\)] compliance score를 isolated external-load proxy로만 표기하고
+  future-error estimator 또는 certified indicator로 표기하지 않는다.
+  \item [\(\square\)] Prior-frame state에서 admission을 먼저 확정해
+  pre-solve \(\mathcal A_t^{\rm pre},\mathcal D_t^{\rm pre}\)와
+  \(\mathcal S_t^{\rm solve}=\mathcal A_t^{\rm pre}\cup\mathcal D_t^{\rm pre}\)를 만든 뒤
+  one coupled implicit-midpoint solve로 provisional \(\widetilde y^t\)만 계산한다.
+  같은 frame의 \(\widetilde y^t\)에서 release predicate와 hold counter를 평가해
+  \(\mathcal R_t\)를 정하고, frame end에 그 state를 zeroing하여
+  \(\mathcal D_t^{\rm end}=\mathcal D_t^{\rm pre}\setminus\mathcal R_t\)로 갱신한다.
+  Reconstruction은 이 frame-end state를 사용한다. 이 제거는 다음 frame부터 basis membership에
+  반영하며 같은 frame을 다시 solve하지 않는다.
+  \item [\(\square\)] Decay는 external excitation만 fade하고 \(M/C/K\), target과 state는 유지한다.
+  \item [\(\square\)] \(K_A,K_D,N_{\rm dwell},N_{\rm fade},N_{\rm hold}\)는 integer이며 1 이상이고,
+  \(M_{r,\rm ref},L_{\rm ref},V_{\rm ref},E_{r,\rm ref}>0\),
+  \(\tau_E,\tau_x,\tau_v,\tau_{\rm pop}\)은 모두 finite이고 strict positive다.
+  이 값과 atomic mapping/run hash는 development split에서 한 번 동결하고 run 중 바꾸지 않는다.
+  \item [\(\square\)] energetic state를 reset하지 않으며 full Decay capacity에서는 activation을 지연한다.
+  \item [\(\square\)] switching fixture에서 position/velocity pop과 target-band PSD artifact가 tolerance 내다.
+\end{itemize}
+
+KKT/Schur, patch-independent integration, same-frame corrector와 learned gate 호출이 trace에 있으면 실패다.
+
+\pass{통과 산출물:} \code{s5\_selection\_solve\_report.json}, switching clips와 state trace.
+
+\subsection{S6 --- Gaussian transport}
+
+\begin{itemize}
+  \item [\(\square\)] affine MLS는 S4와 공유하는 하나의
+  \code{tangent\_fit\_v1}을 호출하고, weight는 positive/normalized이며 weighted
+  rest/current centroid를 사용하고, support는 non-collinear 3-anchor 이상과
+  \code{eq:minimal-tangent-numerical-rank}의 \(G/J\) rank-2 계약을 만족한다.
+  \(G^{-1}\)와 \(((J^0)^\top J^0)^{-1}\)은 각 numerical-rank/condition check 뒤에만 계산한다.
+  \item [\(\square\)] rest \(J^0\)의 rank/condition/orientation 또는 normal-norm 실패는
+  binding/package reject다. Valid rest binding의 current affine tangent fit만 실패하고 centered support가
+  renderer fallback의 rank-2/condition cap을 통과하면, weighted proper Kabsch/Procrustes와
+  deterministic SVD/tie-break로 \(Q\in\mathrm{SO}(3)\), \(\det Q=+1\)인
+  declared closest-frame rigid fallback만 계산한다. Reflection은 허용하지 않는다.
+  \item [\(\square\)] proper rigid fit은
+  \(0<\tau_K<1\)과
+  \(\operatorname{rank}_{\tau_K}(H):=\#\{k:\sigma_1>0,\sigma_k/\sigma_1\geq\tau_K\}\)인
+  relative numerical-rank convention을 사용하고,
+  \(\operatorname{rank}_{\tau_K}(H_{\mathrm{rigid}})=2\),
+  \(\sigma_2/\sigma_1\geq\tau_{K,\mathrm{ratio}}\),
+  \(\sigma_3/\sigma_2\leq\tau_{K,\mathrm{plane}}\)와 normalized weighted residual
+  \(\leq\tau_{K,\mathrm{res}}\)를 모두 검사한다.
+  \item [\(\square\)] proper rigid fit이 성공하고 required Gaussian--frame transport attempt에 대한
+  fallback rate \(r_{\mathrm{rigid}}\)가 동결한 \(\tau_{\mathrm{rigid}}\) 이하이면 frame을
+  fallback-marked로 렌더하고 canonical success에 포함할 수 있다. Rigid fit 실패 또는 cap 초과는
+  in-envelope method failure로 집계한다.
+  이 renderer-only fallback은 S4 surface/aero의 canonical fail-fast 정책을 바꾸지 않는다.
+  \item [\(\square\)] 동일한 rest 2D coordinate로 \(J^0,J^t\)를 fit하고
+  \(J^t((J^0)^\top J^0)^{-1}(J^0)^\top\)인 relative tangent map만 사용한다.
+  \item [\(\square\)] Rank-valid affine shell candidate에 deterministic \(3\times3\) SVD를 적용하고
+  singular value를 내림차순으로 정렬한다.
+  \(\det(F_{\rm shell})\leq0\)이면 affine path를 invalid로 두고 singular-vector sign으로
+  reflection을 조용히 보정하지 않으며, 위 proper-rigid fallback만 시도한다.
+  \item [\(\square\)] Proper affine candidate는
+  \(\sigma_{F,3}\geq\sigma_{F,\mathrm{rank}}>0\)를 먼저 통과하고
+  \(\bar\sigma_{F,k}=\operatorname{clip}(\sigma_{F,k};\sigma_{F,\min},\sigma_{F,\max})\),
+  \(0<\sigma_{F,\min}\leq1\leq\sigma_{F,\max}\)인
+  \code{eq:minimal-affine-safe-map}만 사용한다.
+  Numerical-rank 실패를 singular-value clamp로 복구하지 않는다.
+  \item [\(\square\)] \(J^0,J^t\) rank, rest-fit condition과 ordered tangent-column normal을 검사하고,
+  normal floor/orientation/fallback ID, shared \(J/G\) threshold,
+  \(\tau_K,\tau_{K,\mathrm{ratio}},\tau_{K,\mathrm{plane}},\tau_{K,\mathrm{res}}\),
+  \(\sigma_{F,\mathrm{rank}},\sigma_{F,\min},\sigma_{F,\max}\)와
+  reflection/eigen bound를 binding package/hash에 저장한다.
+  \item [\(\square\)] identity/rigid/in-plane-affine fixture와 declared normal extension이 tolerance 내다.
+  \item [\(\square\)] covariance에 unconditional \(\varepsilon I\)를 더하지 않고,
+  renderer-safe eigenvalue bound를 벗어난 경우에만 conditional floor/ceiling clamp를 적용한다.
+  \item [\(\square\)] accepted rest covariance eigenvalue가 renderer bound 안에 있어
+  identity deformation에서는 eigen clamp가 작동하지 않는다.
+  \item [\(\square\)] identity case의 covariance가 변하지 않고 모든 accepted covariance가 finite SPD다.
+  Extreme scale은 affine singular-value bound를, reflection은 affine-invalid 뒤 proper-rigid
+  fallback 또는 method-failure 경로를, covariance outlier는 eigen clamp를 각각 재현한다.
+  \item [\(\square\)] Affine singular-value clamp, reflection-invalid, proper-rigid fallback과
+  covariance clamp event를 구분해 required Gaussian--frame attempt 대비 rate와 reason을 trace에 기록한다.
+  동결한 clamp/fallback cap을 넘으면 해당 result를 사용하지 않는다.
+  \item [\(\square\)] \code{appearance\_mode=degree0\_v0}에서 source DC color와 opacity는
+  그대로 유지한다. Higher-order SH coefficient는 rest asset에 보존하되 canonical evaluation은 끈다.
+\end{itemize}
+
+\pass{통과 산출물:} \code{s6\_transport\_report.json}, renderer-ready fixture frames.
+
+Analytic local-frame SH rotation/evaluation은 Gate A/B/C 이후의 optional ablation이다.
+Canonical V0의 대체 appearance branch나 V0-04 완료 조건으로 올리지 않는다.
+
+\subsection{S7 --- measurement integrity}
+
+\begin{itemize}
+  \item [\(\square\)] GPU synchronization, warmup, repeated runs와 fixed clocks/환경 기록이 있다.
+  \item [\(\square\)] dynamics, selector, factor/solve, transport, render와 end-to-end를 분리한다.
+  \item [\(\square\)] p50/p95/p99, memory, active/solve rank/support, activation delay와
+  Decay occupancy를 함께 저장한다.
+  \item [\(\square\)] same-anchor baseline과 동일 timestep/hardware/precision에서 비교한다.
+  \item [\(\square\)] Frame은 독립 표본이 아니라 sequence metric을 만드는 내부 time sample로만
+  사용한다. Method--baseline 차이는 동일 preregistered sequence에서 먼저 pair한 뒤,
+  source object를 outer cluster, 그 independent-GS package를 nested cluster로 보존한
+  paired bootstrap 95\% CI와
+  모든 cluster별 effect를 보고한다. Frame bootstrap으로 표본 수를 부풀리지 않는다.
+  \item [\(\square\)] 독립 source-object 최소 수 \(N_{\rm obj,min}\)을 development에서 사전 등록한다.
+  그보다 적으면 CI와 Gate 판정을 exploratory/descriptive로 표시하고 accept-ready 통계 주장을 금지한다.
+  결과를 본 뒤 asset을 소급 추가하지 않는다.
+  \item [\(\square\)] Velocity/trajectory error는 fixed common evaluation mass,
+  common evaluation anchor와 time grid에서
+  sequence-level normalized RMS로 집계한다. \(\varepsilon_v,\varepsilon_x\)는 finite positive이고
+  SI에서 각각 \(ML^2/T^2\), \(L^2\) typed field다.
+  \(\widehat\varepsilon_v=\varepsilon_vT_0^2/(M_0L_0^2)\),
+  \(\widehat\varepsilon_x=\varepsilon_x/L_0^2\)와 inverse round trip이 tolerance를 통과하며
+  unit branch/value/conversion은 test-open 전에 동결한 \code{evaluation\_hash}와 일치해야 한다.
+  PSD는 기존 typed \((L_0,T_0)\)와
+  \(\widehat f_{\rm PSD}=f_{\rm PSD}T_0\),
+  \(\widehat P(\widehat f_{\rm PSD})=P(f_{\rm PSD})T_0/L_0^2\),
+  \(\widehat\varepsilon_P=\varepsilon_PT_0/L_0^2\)를 사용한다.
+  Dev-frozen dimensionless frequency band/window와 \(\widehat\varepsilon_P>0\)에서
+  \(\log(\widehat P+\widehat\varepsilon_P)\) 차이의 L1과 RMS를 모두 보고한다.
+  Development split에서 정확히 하나를 primary로 preregister하고 다른 하나는 mandatory secondary로
+  유지하며 run 뒤 역할을 바꾸지 않는다.
+  \item [\(\square\)] 같은 signal의 length/time unit만 바꾼 PSD replay에서
+  \(\widehat f_{\rm PSD},\widehat P\)와 두 log-PSD error가 tolerance 내 일치하고,
+  zero/near-zero power bin에서도 finite다.
+  \item [\(\square\)] High-resolution reference는 사전 선언한 두 spatial/time refinement level을
+  common anchor/grid에서 비교하고 dev-frozen \(\tau_{\rm ref}\)를 통과해야 한다.
+  Reference convergence 실패는 \code{reference\_construction\_failure}로 별도 보고하며
+  method accept/success status를 바꾸지 않고 해당 accuracy pair의 eligibility만 false로 둔다.
+  \item [\(\square\)] 사전 선언 in-envelope 목록에 대해 package와 sequence의
+  attempt, accepted, successful 수를 각각 보고한다.
+  승인율, 성공률, 방법 실패율과 fallback 비율도 별도로 보고한다.
+  성공 표본의 conditional quality만으로
+  통과시키지 않고, 동결한 \(\tau_{\mathrm{fail},A}\) 또는 \(\tau_{\mathrm{fail},C}\)를 넘으면
+  각각 Gate A 또는 final deployable Gate C를 실패 처리한다.
+  \item [\(\square\)] Pareto pass는 수치상 strict non-domination만으로 선언하지 않는다.
+  Error/latency의 dev-frozen practical margin과 위 clustered paired CI를 함께 적용하고,
+  margin 밖 개선 또는 비열화가 반복되는지를 package/object별로 공개한다.
+\end{itemize}
+
+\pass{통과 산출물:} \code{s7\_profile\_report.json}, raw synchronized traces,\newline
+clustered paired-CI table와 reference-convergence report.
+
+\section{Milestone와 artifact registry}
+
+\begin{longtable}{L{0.10\linewidth}L{0.31\linewidth}L{0.20\linewidth}L{0.22\linewidth}}
+\toprule
+ID & 구현 & Required gate & 산출물\\
+\midrule
+\endfirsthead
+\toprule
+ID & 구현 & Required gate & 산출물\\
+\midrule
+\endhead
+V0-00 & Typed/unit, operating-envelope method-contract freeze와 manifest & S0 &
+{\small\nolinkurl{minimal_v0_manifest.schema.json}}, S0 report\\
+V0-01 & Oracle strip scaffold, attachment-based unoriented gauge,
+\code{corotated\_tangent\_plane\_v2} PD package, Global/Local basis & S1--S3 &
+packages; gauge, projector, constraint-map, basis reports; stability clips\\
+V0-02 & Full-anchor aero, Global rank sweep, optimized same-anchor baseline & S4, S7 & aero report, baseline profile\\
+V0-03 & Privileged-teacher-ranked/deterministic selection, Active/Decay, single coupled solve &
+S5 + Gate B + preliminary dynamics-only Gate C &
+selector/solve report, Gate-B table, preliminary dynamics-only Gate-C table\\
+V0-04 & Gaussian transport, \code{appearance\_mode=degree0\_v0}, integrated renderer,
+end-to-end profiler &
+S6--S7 + final deployable Gate C &
+clips, transport/profile report, final deployable Gate-C table\\
+V0-R1 & Strip/flag independent-GS topology distillation executable contract & S1 + Gate A &
+versioned model/data/package artifacts, MC1 replay report, Gate-A table\\
+V0-05 & Gate A/B/C decision aggregation, claim/research-route freeze & all relevant &
+final decision table, frozen config\\
+\bottomrule
+\end{longtable}
+
+V0-R1의 최소 schema/relation probe는 V0-01과 병렬로 허용한다.
+Full dataset/model sweep은 S0--S3의 Oracle fixture가 통과한 뒤 시작한다.
+Privileged-teacher-ranked Gate B와 preliminary dynamics-only Gate C는 V0-03 직후,
+transport/render를 포함한 final deployable Gate C는 V0-04 직후 실행해
+full topology sweep에 앞서 MC2를 kill test한다. V0-05는 Gate를 처음 실행하는
+단계가 아니라 Gate A/B/C 결과와 claim/research route를 최종 동결하는
+단계다. 방법·실행 계약은 V0-00에서 먼저 동결하고,
+V0-05는 그 계약을 재설계하는 단계가 아니다.
+
+Anchor/candidate/feature/symmetric decoder/source-label/loss/split의 executable MC1 contract는
+V0-R1과 Gate A 전에만 blocker다. 이 artifact가 미완료이거나 Gate A가 실패해도
+explicit Oracle scaffold의 V0-01--04, privileged-teacher-ranked Gate B와 Gate C 실행을 지연시키지 않는다.
+논문 최종 title과 target venue는 V0-05에서 Gate evidence와 살아남은 MC1/MC2/SYS claim을 본 뒤
+동결하며, 구현 중간의 working title 또는 venue 기대를 hard gate로 사용하지 않는다.
+
+\section{Gate A/B/C 실행 계약}
+
+\subsection{공통 평가 분모와 method failure}
+
+각 Gate는 canonical sketch의
+\code{eq:minimal-attempt-success-contract}에 따라 test execution 전에
+in-envelope package/sequence attempt 목록을 manifest에 고정한다.
+\(R_{\mathrm{accept}}\)는 accepted package 수를 registered package attempt 수로,
+\(R_{\mathrm{success}}\)는 successful sequence 수를 registered sequence attempt 수로 나눈다.
+Package rejection으로 실행할 수 없어진 registered sequence도 sequence attempt 분모에 남긴다.
+사전 판정한 \(W\notin\mathcal E_{\mathrm{op}}\) input은 canonical 분모 밖 OOD로 분리할 수 있지만,
+\(W\in\mathcal E_{\mathrm{op}}\)에서 발생한 package reject, rank collapse, divergence,
+invalid covariance, rigid-fallback failure 또는 fallback-rate cap 초과는 method failure다.
+
+성공 표본 위 conditional quality와 함께 accept/success/method-failure rate를 항상 보고한다.
+Conditional quality가 좋아도 \(1-R_{\mathrm{accept}}>\tau_{\mathrm{fail},A}\)이면 Gate A,
+\(1-R_{\mathrm{success}}>\tau_{\mathrm{fail},C}\)이면 final deployable Gate C를 통과하지 못한다.
+Capped-error 집계는 보조 diagnostic으로 함께 보고할 수 있으나 유일한 합격 지표로 강제하지 않는다.
+
+Accuracy reference의 spatial/time refinement pair, common evaluation anchor/grid와
+\(\tau_{\rm ref}\)는 test 전에 고정한다. Reference convergence 실패는
+\code{reference\_construction\_failure}이며 method failure와 별도 열로 보고하고
+method denominator/status를 바꾸지 않는다.
+Frame은 독립 표본으로 쓰지 않고 sequence metric 안에서만 집계한다.
+Method--baseline sequence 차이는 source object와 그 nested independent package cluster를 보존한
+paired 95\% CI와
+함께 보고한다.
+
+\subsection{Gate A --- representation feasibility}
+
+\must{Assets:} strip/flag, geometry마다 independent GS density/seed variant 2--3개.
+
+\must{Compare:} Oracle/source scaffold, predicted scaffold, simple oriented-kNN scaffold,
+최종 단계에서 explicit target-mesh extraction 한 방법.
+
+\must{Report:} accepted/rejected package 비율과 reason, area/mass consistency,
+false-layer edge, tangent rank/condition, coarse frequency/PSD, fixed-wind tip/velocity response,
+GS variant response variance와 transport failure.
+
+Predicted scaffold의 Gate A 투입 전 V0-R1 artifact가 완결되어야 한다.
+필수 항목은 anchor sampler, broad candidate recall, geometry와 setup metadata만 쓰는 feature normalization,
+exact undirected symmetry, source-label projection, positive total-normalized area,
+loss/decoder와 object-grouped split version/hash다.
+Per-asset threshold tuning이나 hidden graph repair가 있으면 Gate A evidence로 사용하지 않는다.
+이는 MC1 evidence 요건이며 privileged-teacher-ranked Gate B의 선행조건이 아니다.
+
+정확한 first-mode universal threshold를 사전에 주장하지 않는다.
+Development threshold는 pilot에서 한 번 동결하고 test asset에 재조정하지 않는다.
+
+\subsection{Gate B --- complementary Local necessity}
+
+동일 synchronized p95 dynamics latency에서 strong Global rank sweep과
+Global+privileged-teacher-ranked Local을 먼저 비교한다. Coordinate/rank match는 diagnostic일 뿐
+same-p95 공정성을 대체하지 않는다.
+
+\must{Primary:} object-scale-normalized sequence RMS velocity error 대 p95.
+\must{Required secondary:} tip trajectory, dimensionless L1/RMS log-PSD, traveling-gust response,
+activation pop. Privileged-teacher-ranked Local이 반복적인 non-dominated point를 못 만들면 MC2를 중단한다.
+
+Privileged teacher selector는 sketch의 고정 atomic units와 동일 \(K_A,K_D\), 동일 coupled solver를 사용하고,
+development에서 동결한 future-window teacher velocity/PSD error 감소량으로만 rank한다.
+Label search 비용은 제외하되 선택 뒤 actual execution cost는 p95에 포함한다.
+이는 scope-control용 privileged diagnostic이며 exact best-subset oracle 또는 formal upper bound가 아니다.
+
+Offline scoring protocol은 \code{teacher\_counterfactual\_v1}로 고정한다.
+각 scoring 시점의 full serialized \code{RuntimeState}를 candidate별로 deep-copy하며,
+Global/Local coordinate와 velocity, Active/Decay membership, dwell age, fade/release 상태와
+모든 timer/counter를 빠짐없이 복제한다. Scoring 시작 시 minimum-dwell 때문에 반드시 유지해야 하는
+Active unit 집합을 \(\mathcal A_{\rm mand}\)로 snapshot한다. 동일 initial copy에서
+base desired-set request를 \(\mathcal A_{\rm mand}\)로, candidate \(r\)의 isolated request를
+\(\mathcal A_{\rm mand}\cup\{r\}\)로 두고 \(r\)을 highest optional priority로 고정해 비교한다.
+두 branch는 동일 future horizon, wind/reference, solver, precision, seed와 동결 config를 사용하고,
+각각의 desired-set request를 horizon 동안 고정한 채 기존 admission/fade/release policy를 그대로 실행한다.
+Full-capacity를 포함한 실제 admission/replacement/delay는 기존 capacity-\(K_A\) policy가 horizon 전체에서
+결정하며 candidate를 slot에 강제 삽입하거나 별도 admission rule을 만들지 않는다.
+중간 state reset, recursive re-ranking과 subset search는 금지한다.
+Candidate가 첫 frame에 admit되지 않았다는 이유만으로 score를 0으로 두지 않으며,
+두 전체 rollout의 state/metric trace가 동일할 때만 0으로 둔다.
+Gate-B manifest와 selector report는 \code{teacher\_counterfactual\_v1}, \(H\), teacher metric,
+tie-break, serialized initial-state hash와 wind/reference/config hash를 소유한다.
+
+그 뒤 deterministic compliance selector를 동일 \(K_A\)와 actual p95에서 privileged-teacher-ranked,
+random, curvature와 비교한다. Privileged-teacher-ranked gap이 크다는 이유만으로 learned gate를 추가하지 않는다.
+Compliance score는 isolated external-load proxy이며 future-error estimator가 아니다.
+Selector report는 privileged-teacher-ranked gap과 activation delay를 함께 기록한다.
+Gate B pass에는 수치상 strict non-domination뿐 아니라 development에서 동결한 practical
+error/latency margin과 object/package-clustered paired CI를 요구한다.
+
+\subsection{Gate C --- deployable gain}
+
+\must{Compare:} 동일 constraint/timestep의 optimized full-coordinate same-anchor PD backend,
+Global rank sweep, always-on Local,
+privileged-teacher-ranked Local, deterministic Local. MPM-only speed comparison은 합격 근거가 아니다.
+
+\must{Pass evidence:} 다음 중 하나에서 same-anchor Pareto envelope 밖의 명확한 점을 요구한다.
+
+\begin{itemize}
+  \item matched-quality dynamics speed,
+  \item same-p95 quality,
+  \item matched-quality multi-object relative throughput.
+\end{itemize}
+
+통과하지 못하면 speed/actual-skip headline을 철회한다.
+\(N_G\)-scaling은 SYS 보조 증거이며 단독 Gate-C 합격 근거가 아니다.
+Gate C의 deterministic point도 Gate B와 같은 preregistered Pareto margin, clustered paired CI와
+\(R_{\rm success}\) cap을 함께 통과해야 한다.
+
+Gate A/B/C 결과가 살아남은 뒤의 paper-evidence 단계에서만, 공개 구현과
+domain comparability를 확인한 direct wind-responsive 3DGS baseline을 정확히 한 개 선택한다.
+\emph{Gaussian Swaying}은 그때 검토할 후보이지 지금 canonical baseline으로 lock하지 않는다.
+여러 3DGS adaptation을 Minimal V0의 Gate, P0 또는 초기 kill test에 동시에 추가하지 않는다.
+
+\section{최소 asset, wind와 metrics matrix}
+
+\begin{longtable}{L{0.18\linewidth}L{0.72\linewidth}}
+\toprule
+축 & Minimal sweep\\
+\midrule
+\endfirsthead
+\toprule
+축 & Minimal sweep\\
+\midrule
+\endhead
+Geometry & cantilever strip, rectangular flag\\
+GS variant & geometry당 independent seed/density 2--3개\\
+Material & soft/medium/stiff 중 curated 2--3 preset\\
+Attachment & setup-time hard edge 한 종류\\
+Wind & steady, abrupt start/stop, sinusoidal, traveling gust; predeclared max/gust range,
+clamp, internal substep \(=1\)\\
+Accuracy & sequence RMS velocity/trajectory, dimensionless L1 및 RMS log-PSD
+(dev-frozen primary 하나와 mandatory secondary 하나),
+silhouette/temporal error, preregistered reference convergence\\
+Stability & zero-wind recovery, finite 10--30초 rollout, switching pop/jerk\\
+Runtime & p50/p95/p99 dynamics/end-to-end, selector/factor/solve/transport/render,
+memory, throughput\\
+Scaling & fixed anchor에서 \(N_G\) sweep, multi-object batch\\
+Statistics & object/package-clustered paired 95\% CI, practical Pareto margin,
+method/reference failure separate report\\
+\bottomrule
+\end{longtable}
+
+Full Cartesian product를 만들지 않고 Gate의 원인을 분리하는 curated subset을 사용한다.
+Held-out pennant/curtain, view-count variation, compliant attachment와 real capture는
+Gate A/B/C 후의 non-blocking paper-evidence extension이며 Minimal V0의 P0, hard gate 또는
+Definition of Done이 아니다.
+
+\section{Deferred module promotion registry}
+
+{\small
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{L{0.19\linewidth}L{0.43\linewidth}L{0.22\linewidth}}
+\toprule
+Module & 다시 열 수 있는 증거 & 열기 전 기본 조치\\
+\midrule
+\endfirsthead
+\toprule
+Module & 다시 열 수 있는 증거 & 열기 전 기본 조치\\
+\midrule
+\endhead
+H: hyper-reduction & full-anchor aero가 p95 dynamics의 지배적 병목 & 유지\\[0.15em]
+F: missing force & 반복 가능한 visual defect와 Oracle correction 이득 & limitation\\[0.15em]
+G: learned selector & measured deterministic--privileged-teacher-ranked gap과 작은 inference cost & deterministic 유지\\[0.15em]
+KKT/Schur & F가 overlapping nodal proposal을 실제 채택 & generalized output 우선\\[0.15em]
+Same-frame corrector & visible one-frame phase artifact와 same-p95 개선 & staggered 유지\\[0.15em]
+Confidence calibrator & hard triage reject/fallback가 Gate A 병목 & threshold/hint 유지\\[0.15em]
+Teacher-FSI & wake/unsteady-aero claim을 명시적으로 추가 & prescribed aero 유지\\[0.15em]
+Advanced solver & direct active factor/solve가 profiler 병목 & direct solve 유지\\
+\bottomrule
+\end{longtable}
+}
+
+승격하려면 visible artifact 제거, claim-invalidating failure 해결,
+same-p95 quality 개선 또는 matched-quality latency 개선 중 하나를 core benchmark에서 보여야 한다.
+새 core stage를 추가하면 기존 stage 하나를 대체하고 병렬 mainline을 만들지 않는다.
+
+\section{Decision table과 완료 정의}
+
+\begin{longtable}{L{0.14\linewidth}L{0.14\linewidth}L{0.61\linewidth}}
+\toprule
+Gate A & Gate B/C & 결론\\
+\midrule
+\endfirsthead
+\toprule
+Gate A & Gate B/C & 결론\\
+\midrule
+\endhead
+Pass & Pass & MC1+MC2, SYS supporting evidence로 진행\\
+Pass & Fail & Topology-distilled Global reduced package 중심으로 축소\\
+Fail & Pass & Oracle/explicit scaffold selective ROM; MC1 철회, novelty 재검토\\
+Fail & Fail & 현재 architecture 중단 또는 다른 visual controller로 재설계\\
+\bottomrule
+\end{longtable}
+
+\subsection{Definition of Done}
+
+\begin{itemize}
+  \item [\(\square\)] Accepted Oracle/predicted package가 해당 S0--S7을 통과한다.
+  \item [\(\square\)] Gate A/B/C의 pass/fail/defer와 claim 축소가 기록된다.
+  \item [\(\square\)] Canonical runtime trace에 forbidden/deferred module이 없다.
+  \item [\(\square\)] S0에 고정한 canonical method signature와 각 replay hash가
+  manifest와 일치한다.
+  \item [\(\square\)] Attachment-based unoriented frame gauge와
+  \code{corotated\_tangent\_plane\_v2} projector version/fixture/hash가 manifest와 일치한다.
+  \item [\(\square\)] MC1을 유지할 때만 V0-R1의 anchor/candidate/feature/label/loss/decoder/split
+  artifact와 replay hash가 완결되어 있다. 이 조건은 privileged-teacher-ranked Local과
+  explicit Oracle scaffold를 쓰는 MC2/SYS 경로의 완료를 막지 않는다.
+  \item [\(\square\)] \code{appearance\_mode=degree0\_v0}, metric/Rayleigh mapping과
+  renderer fallback threshold/cap을 run hash에서 재현할 수 있다.
+  \item [\(\square\)] Pre-registered package/sequence denominator, accept/success rate,
+  first-failure reason과 conditional quality/timing을 함께 보고한다.
+  \item [\(\square\)] Strip/flag main result와 실패 case를 재생성할 command/hash가 있다.
+  \item [\(\square\)] Dynamics, transport, render와 end-to-end p50/p95/p99가 분리된다.
+  \item [\(\square\)] Sequence metric, object/package-clustered paired CI, reference convergence/failure와
+  practical Pareto margin을 preregistered rule로 재생성할 수 있다.
+  \item [\(\square\)] 새 source와 checklist의 stable-label reference test가 통과한다.
+\end{itemize}
+
+최종 title/venue freeze는 V0-05 decision artifact이며 S0--S7 또는 앞선 milestone의 완료 조건이 아니다.
+
+이 checklist는 8개 hard gate를 늘리는 문서가 아니다.
+새 리뷰 항목이 visual failure, claim validity 또는 measured Pareto를 바꾸지 않으면
+diagnostic, limitation 또는 deferred registry에 남기고 완료 조건에 추가하지 않는다.
+
+\end{document}

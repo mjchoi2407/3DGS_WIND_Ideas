@@ -11,12 +11,45 @@
 *.synctex.gz
 *.toc
 *.xdv
+.latex-build/
+
+# README.md가 가리키는 current canonical과 명시적으로 동결한 predecessor 외의
+# 생성 산출물은 제외한다. 새 임의 revision을 계속 쌓지 않는다.
+*.pdf
+*.zip
+# Frozen full-design predecessor in backup/full_design_before_minimal_v0_2026-08-15/.
+!backup/full_design_before_minimal_v0_2026-08-15/3dgs_topology_distilled_error_triggered_wind_dynamics_2026-08-13.pdf
+!backup/full_design_before_minimal_v0_2026-08-15/3dgs_topology_distilled_error_triggered_wind_dynamics_2026-08-13_bundle.zip
+!backup/full_design_before_minimal_v0_2026-08-15/implementation_checklist_topology_distilled_global_local_wind_dynamics_2026-08-13.pdf
+!backup/full_design_before_minimal_v0_2026-08-15/implementation_checklist_topology_distilled_global_local_wind_dynamics_2026-08-13_bundle.zip
+# Frozen explicit-scaffold Minimal V0 predecessor.
+!backup/minimal_v0_before_latent_anchor_response_2026-08-22/3dgs_topology_distilled_selective_global_local_wind_dynamics_2026-08-15.pdf
+!backup/minimal_v0_before_latent_anchor_response_2026-08-22/3dgs_topology_distilled_selective_global_local_wind_dynamics_2026-08-15_bundle.zip
+!backup/minimal_v0_before_latent_anchor_response_2026-08-22/implementation_checklist_topology_distilled_selective_global_local_wind_dynamics_2026-08-15.pdf
+!backup/minimal_v0_before_latent_anchor_response_2026-08-22/implementation_checklist_topology_distilled_selective_global_local_wind_dynamics_2026-08-15_bundle.zip
+!backup/minimal_v0_before_latent_anchor_response_2026-08-22/wind3dgs_minimal_v0_concept_guide_2026-08-21.pdf
+# Current response-distilled canonical deliverables.
+!3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.pdf
+!3dgs_response_distilled_global_local_wind_dynamics_2026-08-22_bundle.zip
+!implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22.pdf
+!implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22_bundle.zip
+# Frozen review provenance. These PDFs are archived inputs, not canonical deliverables.
+!backup/review_materials_through_2026-08-21/pdf_reports/*.pdf
+
+# Regenerable build intermediates and download metadata are recoverable local-only backup.
+backup/local_workspace_cleanup_2026-08-21/**
+!backup/local_workspace_cleanup_2026-08-21/README.md
 
 # Python/cache artifacts
 __pycache__/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
+
+# 로컬 secret은 제외하고 secret이 없는 예시만 허용한다.
+.env
+.env.*
+!.env.example
 
 # Local editor and OS noise
 .DS_Store

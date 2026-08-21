@@ -1,0 +1,2589 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[margin=16mm,headheight=15pt]{geometry}
+\usepackage{fontspec}
+\usepackage{kotex}
+\usepackage{xcolor}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage{amsmath,amssymb,bm}
+\usepackage[most]{tcolorbox}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{listings}
+
+\setmainfont{Noto Serif CJK KR}
+\setsansfont{Noto Sans CJK KR}
+\setmonofont{DejaVu Sans Mono}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  pdftitle={Topology-Distilled, Error-Triggered Global--Local Wind Dynamics Implementation Checklist},
+  pdfauthor={Wind3DGS}
+}
+
+\definecolor{TodoGray}{RGB}{105,105,105}
+\definecolor{ProgressBlue}{RGB}{35,90,170}
+\definecolor{DoneGreen}{RGB}{35,130,80}
+\definecolor{BlockRed}{RGB}{170,55,55}
+\definecolor{KillRed}{RGB}{125,20,25}
+\definecolor{LightBlue}{RGB}{235,243,255}
+\definecolor{LightGray}{RGB}{248,248,248}
+\definecolor{LightRed}{RGB}{255,239,239}
+\definecolor{LightGreen}{RGB}{238,250,242}
+\definecolor{LightOrange}{RGB}{255,247,233}
+
+\newcommand{\todo}{\textcolor{TodoGray}{\(\square\)}}
+\newcommand{\progress}{\textcolor{ProgressBlue}{[{\raisebox{0.1ex}{\(\sim\)}}]}}
+\newcommand{\done}{\textcolor{DoneGreen}{\(\boxtimes\)}}
+\newcommand{\blocked}{\textcolor{BlockRed}{[!]}}
+\newcommand{\killmark}{\textcolor{KillRed}{[K]}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\artifact}[1]{\textcolor{ProgressBlue}{\nolinkurl{#1}}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\setlist[itemize]{leftmargin=1.45em,itemsep=0.16em,topsep=0.28em}
+\setlist[itemize,2]{label=--,leftmargin=1.8em}
+\setlist[enumerate]{leftmargin=1.65em,itemsep=0.2em,topsep=0.3em}
+\setlength{\emergencystretch}{2.5em}
+\renewcommand{\arraystretch}{1.2}
+\sloppy
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  frame=single,
+  breaklines=true,
+  columns=fullflexible,
+  backgroundcolor=\color{LightGray},
+  rulecolor=\color{black!20},
+  xleftmargin=0.4em,
+  xrightmargin=0.4em,
+  aboveskip=0.5em,
+  belowskip=0.5em
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Topology-Distilled Error-Triggered Wind Dynamics}
+\rhead{Implementation Checklist}
+\cfoot{\thepage}
+
+\title{\vspace{-1.7em}\textbf{Topology-Distilled, Error-Triggered\\Global--Local Wind Dynamics}\\[0.4em]\Large 구현 체크리스트}
+\author{Wind3DGS}
+\date{Created: 2026-08-13 \quad Status baseline: new method reset}
+
+\begin{document}
+\maketitle
+
+\begin{tcolorbox}[
+  colback=LightBlue,
+  colframe=blue!45!black,
+  title=고정 Runtime Pipeline,
+  fonttitle=\bfseries
+]
+\begin{center}
+\code{static 3DGS + setup metadata $\rightarrow$ versioned object package}
+\(\rightarrow\)
+\code{current surface + full-anchor analytic aero}
+\(\rightarrow\)
+\code{Global predictor}
+\(\rightarrow\)
+\code{fixed-$K$ cached-compliance selector (Oracle upper bound)}
+\(\rightarrow\)
+\code{active Local physical base}
+\\[0.25em]
+\(\rightarrow\)
+\code{joint overlap/conservation/complement assembly}
+\(\rightarrow\)
+\code{single Local physical solve}
+\(\rightarrow\)
+\code{Global corrector}
+\(\rightarrow\)
+\code{Gaussian transport/render}
+\end{center}
+
+\textbf{V0 core}는 full-anchor aero, patch-local fixed-superset basis,
+fixed-cardinality selector, physics-only Local, 보존 조립/complement/corrector와 affine transport다.
+다음 세 모듈은 core dependency가 아니라 독립적인 go/no-go 후보다.
+\textbf{H}: aerodynamic hyper-reduction,
+\textbf{F}: learned missing-force expert,
+\textbf{G}: learned future-benefit gate이며, hardware cost-aware selection은 profiler가 필요성을 보일 때의 후속 확장이다.
+각 후보는 대응 profiling 또는 Oracle upper bound를 통과한 경우에만 활성화한다.
+
+``Error-triggered''는 certified posterior estimator를 뜻하지 않는다.
+Learned G의 존재가 아니라 cached-compliance가 held-out object/gust에서 Oracle benefit과의
+rank correlation, regret, activation delay/high-benefit miss와 actual-skip quality--latency를 통과하는지가
+최종 제목의 evidence gate다. 통과하지 못하면 결과에 따라
+\emph{Compliance-Guided} 또는 \emph{Selective Complementary}로 낮추며,
+every-frame score가 residual이 아니므로 \emph{Residual-Guided}라고 부르지 않는다.
+
+이 문서는 새 연구 방향의 구현 상태를 관리하는 source of truth다.
+방법 정의와 수식의 source of truth는
+\path{ideas/3dgs_topology_distilled_error_triggered_wind_dynamics_2026-08-13.tex}다.
+이전 proxy/SH-residual 체크리스트의 완료 상태는 승계하지 않는다.
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=LightRed,colframe=KillRed,title=가장 중요한 실행 순서 계약,fonttitle=\bfseries]
+논문 설명의 Module 번호는 이해를 위한 논리 번호다. 실제 구현은 다음 dependency를 따른다.
+\begin{center}
+\code{1 $\rightarrow$ 2 $\rightarrow$ 3 $\rightarrow$ 4 $\rightarrow$ 5 $\rightarrow$ 6 $\rightarrow$ 7
+$\rightarrow$ 10 $\rightarrow$ 9 $\rightarrow$ 8 $\rightarrow$ 11 $\rightarrow$ 12 $\rightarrow$ 13 $\rightarrow$ 14}
+\end{center}
+Module 7의 analytic Local base aero와, 조건부 F를 사용할 때의 missing aero/missing structural을 channel별로 유지한다.
+존재하는 channel을 Module 10에서 먼저 조립하고 conservation과
+\(\Phi^\top f=0\)를 하나의 joint KKT로 만족시킨다.
+Module 9는 contract/generalized projection만 검사하며 force를 다시 순차 projection하지 않는다.
+Module 8에서만 channel을 합쳐 단일 Local system을 한 번 적분한다.
+Patch별로 적분한 뒤 위치를 평균하는 구현은 금지한다.
+\end{tcolorbox}
+
+\tableofcontents
+\newpage
+
+\section{문서 사용 규칙}
+
+\subsection{상태 표기}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+상태 & 의미 \\
+\midrule
+\todo & 아직 시작하지 않음 \\
+\progress & 구현 또는 검증 진행 중 \\
+\done & 자동 테스트와 완료 기준을 모두 통과함 \\
+\blocked & 설계 결정, 외부 자산 또는 환경 문제로 막힘 \\
+\killmark & kill gate 발생; 원인 해결 전 후속 milestone 중단 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}
+  \item 구현 코드만 존재하는 상태는 \done이 아니다. 재현 명령, 자동 검증, 산출물까지 확인되어야 한다.
+  \item Manual inspection이 남아 있으면 최대 \progress로 둔다.
+  \item \blocked 항목에는 반드시 \textbf{현재 상태, 원인, 다음 결정}을 기록한다.
+  \item \killmark가 발생하면 성능 수치를 완화하여 통과시키지 않고 upstream 설계를 고친다.
+\end{itemize}
+
+\subsection{Canonical 수식과 section 참조 규칙}
+
+수식의 정의는 canonical idea sketch에만 둔다. 이 체크리스트와 code artifact는
+PDF에서 재배치될 수 있는 식 번호나 ``식 17--63'' 같은 숫자 범위를 복사하지 않고,
+sketch의 안정적인 LaTeX label 또는 section title을 기록한다.
+예를 들어 relation confidence는 \code{eq:relation-validity-confidence}와
+\code{eq:relation-absolute-confidence}, structural freeze는
+\code{eq:canonical-structural-force-ledger},
+\code{eq:klin-projective-hard-gate},
+\code{eq:v0-structural-freeze-signature}, support/reaction은
+\code{eq:support-restricted-global-routing},
+\code{eq:hard-total-reaction-residual},
+\code{eq:hard-reaction-rom-residual-decomposition}을 source로 삼는다.
+외부 문서의 label이라 이 PDF에서 \code{\textbackslash eqref}로 재해석하지 않고
+manifest의 \code{canonical\_source\_path}, \code{canonical\_source\_commit},
+\code{canonical\_labels[]}로 추적한다. Label이 바뀌면 checklist와 schema reference test가 함께 실패해야 한다.
+
+\subsection{자동 목표 실행 프로토콜}
+
+권장 요청 형식은 다음과 같다.
+
+\begin{lstlisting}
+[Wind3DGS | code | TD05] 목표: TD05 완료까지 구현-검증 루프 실행.
+중지 조건: 동일 error signature 3회, kill gate, 사용자 판단 필요,
+          검증 환경/데이터 부재, 승인 필요한 외부 변경.
+\end{lstlisting}
+
+\begin{enumerate}
+  \item 각 루프는 \code{구현 -> 검증 -> 수정 -> 재검증} 순서로 진행한다.
+  \item 오류는 실행 명령, 실패 check, 핵심 traceback/message를 묶은 error signature로 추적한다.
+  \item 같은 signature를 고치는 시도는 최대 3회다. 이후에는 실패 근거와 선택지를 보고한다.
+  \item Dataset 선택, 라이선스, 장시간 GPU 학습, system package 설치, 완료 기준 변경,
+  외부 서비스, destructive operation은 사용자 판단을 받는다.
+  \item 의미 있는 루프가 끝나면 해당 work folder의 \path{sessions/}에
+  목표, 변경 파일, 검증 명령, 결과, blocker, 다음 액션을 기록한다.
+\end{enumerate}
+
+\subsection{Experiment와 코드 naming convention}
+
+기존 \code{M\#\#} 실험과 충돌하지 않도록 새 방법은 \code{TD\#\#} tag를 사용한다.
+
+\begin{tcolorbox}[colback=LightGray,colframe=black!20,title=권장 경로,fonttitle=\bfseries]
+\begin{itemize}
+  \item Experiment: \path{experiments/TD##_short_name/}
+  \item Reusable code: \path{code/wind3dgs/}
+  \item Idea/checklist: \path{ideas/}
+  \item Training output/checkpoint: experiment output 또는 명시된 artifact store
+\end{itemize}
+\end{tcolorbox}
+
+Reusable code는 semantic package로 나눈다.
+
+\begin{lstlisting}
+code/wind3dgs/
+  contracts/      # schemas, frames, units, force ledger
+  teacher/        # teacher conversion and label generation
+  topology/       # anchor graph and operator distillation
+  aero/           # full-anchor current-surface law; optional H backend
+  reduced/        # Global/Local bases and integrators
+  local/          # patch proposals, assembly, complement, feedback
+  learning/       # topology; optional F missing-force and G gate models
+  runtime/        # typed 14-module engine
+  transport/      # affine anchor-to-Gaussian transport
+  evaluation/     # metrics, baselines, profiling
+\end{lstlisting}
+
+\section{Scope reset와 현재 상태}
+
+\subsection{이번 체크리스트의 runtime contract}
+
+\begin{longtable}{L{0.23\linewidth}L{0.18\linewidth}L{0.51\linewidth}}
+\toprule
+항목 & Runtime 허용 & 계약 \\
+\midrule
+\endfirsthead
+\toprule
+항목 & Runtime 허용 & 계약 \\
+\midrule
+\endhead
+Canonical static 3DGS & 허용 & Target의 기본 입력이다. \\
+Prescribed spatial wind query & 허용 & 유체 상태를 푸는 것이 아니라 control/input으로 조회한다. \\
+Sparse point/edge/local-relation scaffold & 허용 & Local tangent frame과 area weight를 가진 non-watertight graph다. Global face connectivity, manifold 또는 watertight surface를 요구하지 않는다. \\
+Versioned reduced object package & 허용 & Static GS, metric scale, user material과 user attachment layout을 받아 setup에서 만들고 frame마다 재구성하지 않는다. \\
+Explicit target triangle-mesh reconstruction & Mainline 금지 & 별도 end-to-end baseline/fallback에서만 허용하고 결과를 구분한다. \\
+Full FEM/MPM/CFD/LBM state & 금지 & Teacher와 accuracy upper bound에서만 사용한다. \\
+Frame-wise Gaussian optimization & 금지 & Final anchor state로 affine transport한 뒤 standard renderer를 사용한다. \\
+RSH coefficient cache & Mainline 제외 & TD06/E2의 representation ablation으로만 평가한다. \\
+Aerodynamic hyper-reduction (H) & 조건부 & Full-anchor profiler가 병목을 보이고 generalized-load fidelity와 wall-clock가 함께 개선될 때만 사용한다. \\
+Missing-force expert (F) & 조건부 & Physics-only Local보다 Oracle/always-on 평가에서 반복 가능한 이득이 있을 때만 사용한다. \\
+Learned future-benefit gate (G) & 조건부 & Oracle--cached-compliance gap이 존재하고, 같은 atomic grouping/\(K_A\)에서 cached-compliance보다 좋은 measured-latency Pareto를 만들며 Oracle upper bound에 접근할 때만 사용한다. Cost-aware variant는 profiler 이후다. \\
+\bottomrule
+\end{longtable}
+
+\begin{tcolorbox}[colback=LightBlue,colframe=blue!45!black,title=Setup과 frame runtime의 경계,fonttitle=\bfseries]
+Static appearance에서 metric material이나 attachment layout을 자동 식별한다고 가정하지 않는다.
+\code{SetupInput = (G0, metric scale 또는 nondimensional preset, user material metadata, user attachment layout)}이고,
+그 결과가 versioned \code{ObjectPackage}다.
+Attachment layout 또는 basis를 바꾸는 material 값을 수정하면 package/operator/basis를 다시 만들거나 refactorize한다.
+첫 논문에서 frame runtime control은 prescribed wind와, 이미 고정된 support DOF의 handle motion으로 제한한다.
+\end{tcolorbox}
+
+\subsection{기존 구현의 재사용 후보}
+
+이전 체크리스트의 \done/\progress 상태를 자동으로 옮기지 않는다.
+다음 항목은 새 schema와 E0 contract를 다시 통과하기 전까지 재사용 후보일 뿐이다.
+
+\begin{longtable}{L{0.06\linewidth}L{0.31\linewidth}L{0.55\linewidth}}
+\toprule
+상태 & 후보 & 새 방법에서 필요한 재검증 \\
+\midrule
+\endfirsthead
+\toprule
+상태 & 후보 & 새 방법에서 필요한 재검증 \\
+\midrule
+\endhead
+\progress & Static 3DGS PLY loader/camera loader & 새 \code{CanonicalGaussianAsset} schema, 좌표계, dtype, covariance convention 통과. \\
+\progress & Synthetic cloth/leaf fixtures와 debug viewer & Oracle strip/flag fixtures로 재사용하되 물리 정확도 완료로 간주하지 않음. \\
+\progress & Position/covariance transport prototype & Final total anchor state에서 단 한 번 수행하는 affine MLS, SPD, normal consistency 재검증. \\
+\progress & Procedural wind preview & Wind query fixture와 qualitative smoke test로만 사용; teacher 또는 physical solver가 아님. \\
+\blocked & \code{gsplat 1.5.3} on GTX 1080 Ti & Compute Capability 6.1 환경의 기존 JIT incompatibility. 논문 rendering은 compatible backend/GPU가 필요. \\
+\bottomrule
+\end{longtable}
+
+\subsection{현재 상태 baseline}
+
+\begin{itemize}
+  \item[\done] 새 아이디어 스케치, 전용 참고문헌, PDF와 bundle이 존재한다.
+  \item[\done] 이전 아이디어 문서와 구현 체크리스트는 backup에 보존했다.
+  \item[\done] 새 구현 체크리스트와 milestone dependency를 확정한다.
+  \item[\todo] 새 방법의 typed schema와 deterministic contract를 코드로 구현한다.
+  \item[\todo] Oracle-topology Global MVP부터 새 completion evidence를 생성한다.
+\end{itemize}
+
+\section{고정 입력, 출력, 물리량 owner 계약}
+
+\subsection{Runtime 입력과 출력}
+
+\begin{lstlisting}
+SetupInput
+  canonical_gaussians: G0
+  metric_scale_or_nondimensional_preset
+  user_material_metadata
+  user_attachment_layout
+
+SetupOutput
+  object_package: versioned scaffold/operators/patch_bases/binding
+  optional_hyper_reduction_backend
+
+FrameRuntimeInput
+  object_package
+  wind_query: W(x, t)
+  prescribed_handle_motion_on_fixed_support_dofs
+  dt
+
+FrameOutput
+  deformed_gaussians: Gt
+  global_state: q, qdot
+  local_state: z, zdot
+  patch_state: active_set, decay_set, dormant_set
+  diagnostics
+  optional_rendered_frame
+\end{lstlisting}
+
+\subsection{Force와 state owner ledger}
+
+\begin{longtable}{L{0.22\linewidth}L{0.28\linewidth}L{0.42\linewidth}}
+\toprule
+물리량 & 유일한 owner & 구현 계약 \\
+\midrule
+\endfirsthead
+\toprule
+물리량 & 유일한 owner & 구현 계약 \\
+\midrule
+\endhead
+Mass/inertia & Reduced Global/Local solver & Network가 inertia 또는 acceleration 전체를 다시 예측하지 않는다. \\
+Restoring force & \(K_{gg},K_{\ell\ell}\), 실제 nonzero cross block & Selector/G와 무관하게 항상 존재한다. \\
+Damping & \(C_{gg},C_{\ell\ell}\), 실제 nonzero cross block & Selector-off에서도 Local energy를 물리적으로 감쇠한다. \\
+Gravity & Explicit external force & Teacher residual에서 정확히 한 번 제거한다. \\
+Attachment & Constraint 또는 compliant force 중 하나 & 같은 support를 projection과 force로 이중 적용하지 않는다. \\
+Base aerodynamic force & Current-surface analytic law & Relative wind, current normal/area를 사용한다. \\
+Missing force & 조건부 F residual network & F가 채택된 경우에만 base model이 설명한 힘을 제거한 defect를 예측한다. V0에서는 0이다. \\
+Patch overlap & Constrained force assembly & Network나 displacement averaging으로 seam을 숨기지 않는다. \\
+Global complement & Complement projector/basis & Local motion/force의 Global double counting만 제거한다. \\
+Global feedback & Corrected-minus-predictor delta & Predictor가 이미 사용한 base/cross term을 다시 넣지 않는다. \\
+Gaussian deformation & Final total anchor state & Global/Local이 Gaussian을 각각 두 번 transport하지 않는다. \\
+\bottomrule
+\end{longtable}
+
+\begin{tcolorbox}[colback=LightOrange,colframe=orange!60!black,title=Selector가 끄는 것과 끄지 않는 것,fonttitle=\bfseries]
+V0 fixed-\(K\) selector와 조건부 G gate는 새 Local excitation을 제어하고, F를 채택했을 때만 expensive missing-force expert 실행도 제어한다.
+Global/Local mass, stiffness, damping, gravity, attachment, base aero는 끄지 않는다.
+Active에서 Decay로 이동할 때 \(z,\dot z\)를 freeze/reset하지 않고 physical decay solve를 유지한다.
+\end{tcolorbox}
+
+\section{P0 implementation kill gates}
+
+아래 항목은 단순 checklist가 아니라 후속 milestone 진행을 금지하는 gate다.
+
+\begin{longtable}{L{0.06\linewidth}L{0.45\linewidth}L{0.41\linewidth}}
+\toprule
+ID & 실패 조건 & 필요한 조치 \\
+\midrule
+\endfirsthead
+\toprule
+ID & 실패 조건 & 필요한 조치 \\
+\midrule
+\endhead
+K00 & 좌표계, 단위, normal/front--back, index convention이 artifact마다 다르다. & TD01 schema와 converter를 고치기 전 dataset/package 생성 금지. \\
+K01 & Patch별 \(\|\Phi^\top M\Psi_r\|\)가 tolerance를 넘거나 전역 QR/SVD가 patch identity를 섞는다. & Patch-local complement/normalization과 fixed coordinate owner를 고치기 전 Local solve 금지. \\
+K02 & Reachable active/decay block의 \(M\succ0\), typed \(K_{\mathrm{lin}}^0,C_{\mathrm{lin}}^0,K^0,C^0\succeq0\), rank/conditioning 또는 inter-patch symmetry/reciprocity가 깨진다. & Runtime solve 금지; operator/basis/group construction 수정. \\
+K03 & Gravity, attachment, aero, projective target/restoring, residual에 owner가 둘 이상이다. & Force/target ledger 수정 후 label과 rollout 재생성. \\
+K04 & Selector-off/zero-wind에서 rest 복귀가 실패하거나 Local energy가 증가한다. & Activation, damping, integrator, decay state 수정. \\
+K05 & Patch별 integrate-then-average 코드가 있다. & Force assembly 후 단일 Local solve로 구조 변경. \\
+K06 & Assembly 후 Global leakage, overlap seam, support-route/joint-Schur per-RHS feasibility,
+adjustment/reaction amplification/generalized work 또는 free/hard/compliant reaction ledger가 tolerance를 넘는다. & Joint solve, support/route 또는 basis/patch를 수정한다. Ridge, row 삭제나 sequential projection으로 통과 처리하지 않는다. \\
+K07 & Corrector가 corrected-minus-predictor delta 외 base/cross force를 재사용한다. & Consumed-force ledger와 delta 정의 수정. \\
+K08 & Inactive 전환 시 \(z,\dot z\)를 즉시 freeze/reset한다. & Active/Decay/Dormant state와 energy threshold 구현. \\
+K09 & 3\(\times\)2 tangent area-normal, 별도 3\(\times\)3 full shell map, rigid/affine reproduction 또는 covariance SPD가 실패한다. & Aero/Gaussian output 금지; surface/transport map 계약 수정. \\
+K10 & Oracle Local이 동일 p95 latency의 Global rank sweep보다 velocity/trajectory/spectrum을 개선하지 못한다. & Local branch 제거 또는 Global/Local basis 재설계. Coordinate/rank match는 보조 진단으로만 사용. \\
+K11 & 조건부 F always-on missing force가 physics-only Local을 개선하지 못한다. & F를 제거하고 pure complementary physics를 유지한다. \\
+K12 & 조건부 G learned gate가 fixed-\(K\) cached-compliance selector보다 quality--latency Pareto를 개선하지 못한다. & G/cost model을 제거하고 cached-compliance selector를 유지한다. \\
+K13 & Same-anchor sparse solver 대비 개발용 내부 기준인 dynamics-only 약 2배 이득도,
+동일 p95 latency의 velocity/trajectory/spectrum 개선도, multi-object throughput 이득도 없다.
+& SYS selective-compute/quality--latency headline을 철회한다. 이 실패만으로 K10 Local necessity나 연구-level Gate A를 기각하지 않는다. \\
+K14 & Full-anchor aero가 병목이 아니거나 조건부 H가 generalized-load fidelity와 wall-clock를 함께 개선하지 못한다. & H/cubature를 runtime과 main contribution에서 제거한다. \\
+\addlinespace
+K15 & 고정 physical budget에서 \(N_G\) 증가와 함께 structural dynamics 비용이 증가한다. & Resolution-decoupling system evidence를 철회하고 binding/runtime breakdown을 재검토한다. \\
+\addlinespace
+K16 & Selector, joint assembly/Schur, active/decay gather, factorization과 solve 때문에 adaptive p95/p99가 always-on Local보다 나쁘다. & Backend/cache/dispatcher를 재검토하고 실패하면 always-on으로 후퇴하며 actual-skip headline을 철회한다. \\
+\addlinespace
+K17 & Incremental/PCG/independent 근사 backend가 same-set exact direct 대비 linear residual, state 또는 energy tolerance를 넘는다. & 해당 근사만 제거하고 exact coupled backend를 유지한다. \\
+\addlinespace
+K18 & Stationary/slow/fast/reversing gust에서 \(\rho_{\mathcal S}\simeq1\)이 지속되거나 decay/cache churn 때문에 latency 이득이 사라진다. & Physical decay를 끄거나 state를 reset하지 않고 dispatcher/decay를 재설계한다. 실패하면 always-on으로 후퇴한다. \\
+\addlinespace
+K19 & Production trace가 full anchor-primal generic KKT, patch 수에 비례하는 duplicate overlap/velocity row, stale factor reuse, sequential fallback 또는 반복적인 support/halo cap 초과를 사용한다. & Unique-anchor support-restricted routing과 동등한 small-Schur/null-space backend로 고친다. Joint 계약을 유지해도 latency 이득이 없으면 actual-skip/SYS headline을 축소한다. \\
+\addlinespace
+K20 & \code{eq:canonical-structural-force-ledger}의 pure-rigid/strained-state objectivity,
+normal-curvature pollution, relative-rate damping, midpoint phase/PSD 또는 one-shot/two-step/converged splitting tolerance가 실패한다. & Track A0에 진입하지 않고 projective target/operator contract를 재설계한다. Asset별 backend 변경이나 backward Euler의 수치 감쇠로 숨기지 않는다. \\
+\addlinespace
+K21 & Normalized area share는 존재하지만 \code{eq:relation-absolute-confidence}의
+calibrated absolute confidence가 낮거나 candidate-count/density/valence/conditioning별 calibration 없이 learned package가 통과한다. & Step 0에서는 schema, synthetic aggregator와 fallback fixture만 검사한다. 정식 calibration acceptance는 Track B0/E1에서 판정하고, 실패하면 support 확대 후 user hint/fallback/reject한다. Confidence를 stiffness에 곱하지 않는다. \\
+\addlinespace
+K22 & \code{eq:klin-projective-hard-gate}의 energy, stiffness/damping action,
+action-tangent symmetry/PSD, modal angle 또는 common-probe closure가 실패한다. & Canonical package는 실패다. Action-validity 실패는 backend를 재설계하고, rest-linear agreement만 실패한 action-basis는 MC1 claim을 바꾼 별도 versioned pivot으로만 검토한다. Learned residual이나 raw \(K_{\mathrm{proj}}^0\) mode 비교로 우회하지 않는다. \\
+\addlinespace
+K23 & Canonical V0가 \code{eq:fixed-global-sample-jacobian}의 setup-fixed
+\(T_s,\Phi_s\) 대신 state-dependent Jacobian을 암묵적으로 만들거나 update/corrector 비용을 숨긴다. & V0를 fixed lifting으로 고치고 nonlinear sample map은 별도 versioned optional backend/profiler로 분리한다. \\
+\addlinespace
+K24 & Mandatory selector blind-spot fixture에서 cached compliance가 큰 Oracle-benefit region을 반복해서 놓치고,
+hybrid/full-counter/조건부 G 대안도 measured-p95 Pareto를 개선하지 못한다. & Error-triggered/adaptive selector claim을 축소하고 always-on Local, merged group 또는 단순 dispatcher로 후퇴한다. \\
+\bottomrule
+\end{longtable}
+
+연구-level Gate A는 별도의 5--10개 independent-GS representation preflight로
+close-layer false edge, area/mass, 초기 8--16 modes/modal subspace를 판정한다.
+Gate B는 K10, Gate C는 K13/K16/K18이다.
+이 세 gate는 K00--K09, K17/K19와 K20--K24의 구현 invariant를 대체하지 않는다.
+Gate A 실패는 MC1 representation claim만 축소하며 Gate B/C는 Oracle 또는
+명시적 fallback scaffold에서 계속 판정할 수 있다.
+Gate B 실패는 Local/selector claim을 제거하지만 MC1과 Global physics를 기각하지 않는다.
+Gate C 실패는 selective-compute/SYS performance headline만 제거하며
+Gate A와 Gate B의 accuracy 판정을 뒤집지 않는다.
+
+\section{Milestone dependency와 전체 현황}
+
+\subsection{Step 0 structural/operator-load preflight}
+
+Track A0 또는 대규모 teacher/package 학습 전에 최소 synthetic/oracle strip fixture에서
+다음 순서를 고정한다. 최소 fixture와 independent-GS representation probe는 병렬 생성할 수 있지만,
+이 순서를 통과하기 전에 full predicted-topology training이나 H/F/G 구현을 시작하지 않는다.
+
+\begin{enumerate}
+  \item \(\mathcal Q_{\mathrm{op}}\), metric MLS, area/mass/material/attachment 조립과
+  relation validity--anchor absolute-confidence schema/fallback을 typed contract로 고정한다.
+  \item Objective normal-curvature의 planar in-plane bending-pollution,
+  normal-curvature, shallow-rest와 pure-rigid/strained-state rotation fixture를 실행한다.
+  \item Rest-linear/locally refit energy, held-target stiffness/damping action,
+  action-tangent symmetry/PSD, modal subspace와 common-probe closure를 판정한다.
+  \item One-shot/two-step/converged target fit에서 torque/phase/target-band PSD를 비교하고,
+  canonical objective projective target + implicit midpoint를 동결한다.
+  Backward Euler와 rest-linear runtime은 ablation으로만 남긴다.
+  \item Setup-fixed \(T_s,\Phi_s\) Global lifting과 corrector가 같은 계약을 소비하는지 검사한다.
+  \item Singleton/overlap/boundary/hard-attachment/traveling-support에서
+  support-restricted per-RHS route/joint Schur, adjustment/reaction amplification,
+  generalized work, halo cap과 free/hard/compliant post-step \(r_{\mathrm{ROM}}\) ledger를 검증한다.
+\end{enumerate}
+
+Canonical source label은 각각
+\code{eq:relation-mls-map}, \code{eq:canonical-structural-force-ledger},
+\code{eq:klin-projective-hard-gate}, \code{eq:v0-structural-freeze-signature},
+\code{eq:fixed-global-sample-jacobian}, \code{eq:support-restricted-global-routing},
+\code{eq:hard-reaction-rom-residual-decomposition}다.
+
+\subsection{Critical path}
+
+\begin{lstlisting}
+TD00 governance
+  -> TD01 deterministic contracts/E0 + Step 0 preflight
+      |-> minimal independent-GS schema/relation probe [parallel fixture only]
+      `-> after Step-0 gate pass
+          |-> TD02 teacher + independent GS data
+          |   -> TD03 oracle object package
+          |       -> TD04 full-anchor current-surface aero
+          |       -> TD05 Global ROM + same-anchor kill test [MVP-A]
+          |       -> TD07-A patch/local operator + single-patch unit solver
+          |       -> TD11-A unique-anchor assembly + joint complement
+          |       -> TD07-B Oracle coupled Local + Gate B [MVP-B]
+          |       -> TD10-core cached-compliance selector/state machine [MVP-C]
+          |       -> TD11-B corrected-aero/structural-delta feedback
+          |       -> TD08 projection/labels
+          |           |-> TD09 optional F missing-force expert
+          |           `-> TD10-G optional learned gate
+          `-> TD12-R formal 5--10-object representation feasibility [parallel]
+              -> TD12 full predicted scaffold/package after TD12-R and
+                 Oracle downstream-sensitivity checks [MVP-D]
+  -> TD13 target runtime + GS transport
+  -> TD14 comparison experiments/paper evidence
+
+Optional branch after TD05 profiling:
+  TD06 optional H aerodynamic hyper-reduction
+\end{lstlisting}
+
+여기서 Step-0 gate는 K00--K09의 deterministic 해당 항목, K20, K22--K23과
+K21의 schema/synthetic-aggregator/fallback fixture를 뜻한다. Learned K21 calibration은
+Track B0/E1에서 별도로 판정하며, K10--K19와 K24는 각 downstream stage에서 판정한다.
+Step 0 중에는 fixture에 필요한 최소 Oracle strip/flag와 값싼 independent-GS
+schema/relation probe만 병렬 허용한다. Formal 5--10-object TD12-R,
+full teacher/data 생성과 Track A0는 Step-0 gate 통과 뒤 병렬 진행한다.
+TD06은 TD07 진입 조건이 아니며 full-anchor backend가 V0 reference이자 fallback이다.
+TD12의 full topology network는 TD12-R과 TD05/TD07/TD10-core/TD11의 Oracle-package downstream sensitivity가 확인된 뒤 본격 학습한다.
+공식 Gate B 결과는 TD11-A의 joint conservation--complement를 거친 force와 single coupled Local solve로만 만든다.
+TD11-B one-corrector는 Gate B 뒤의 SYS ablation이며 Local necessity를 gate하지 않는다.
+
+\subsection{Milestone overview}
+
+\small
+\begin{longtable}{L{0.065\linewidth}L{0.235\linewidth}L{0.47\linewidth}L{0.075\linewidth}}
+\toprule
+ID & Milestone & 핵심 완료 기준 & 상태 \\
+\midrule
+\endfirsthead
+\toprule
+ID & Milestone & 핵심 완료 기준 & 상태 \\
+\midrule
+\endhead
+TD00 & Project governance/reset & 새 method용 config, run manifest, artifact 경로와 상태 규칙이 재현된다. & \done \\
+TD01 & Deterministic contracts/E0 & Typed schema, force ledger, canonical-reference manifest와 basis/operator/transport P0 unit tests가 통과한다. & \todo \\
+TD02 & Teacher/data pipeline & Force breakdown, split, independent GS가 포함된 누수 없는 dataset이 생성된다. & \todo \\
+TD03 & Oracle object package & Oracle anchors/operators/bases/patches/binding package가 validation을 통과한다. & \todo \\
+TD04 & Current-surface full aero & Module 1--3 full-anchor evaluator가 rigid/relative-wind/normal-area tests를 통과한다. & \todo \\
+TD05 & Global ROM predictor & Start/stop/chirp에서 frequency, damping, energy와 same-anchor baseline을 검증한다. & \todo \\
+TD06 & Optional H aero reduction & Full-anchor가 병목일 때만 generalized-load fidelity와 wall-clock 이득을 검증한다. & \todo \\
+TD07 & Complementary Local physics & TD11-A joint force를 사용하는 Oracle active set에서 coupled Local solve가 same-p95 Global rank sweep보다 stable high-frequency 이득을 보인다. & \todo \\
+TD08 & Projection/label generation & Generalized-to-nodal route, positive-benefit와 feedback label의 차원/owner consistency가 확인된다. & \todo \\
+TD09 & Optional F missing-force expert & Always-on F가 physics-only Local보다 rollout/spectrum을 개선할 때만 채택한다. & \todo \\
+TD10 & Fixed-\(K\) selector / optional G & Cached-compliance/Oracle fixed-cardinality selector를 완성하고, G는 같은 grouping/\(K_A\)와 measured-latency Pareto를 넘을 때만 채택한다. & \todo \\
+TD11 & Assembly/complement/feedback & A: unique-anchor small-Schur joint assembly를 Gate B 전에 고정하고, B: Gate B 뒤 one-corrector SYS test를 통과한다. & \todo \\
+TD12 & Predicted target package & Static GS와 setup metadata에서 explicit target triangle-mesh reconstruction 없이 package를 만들고 Oracle gap을 제한한다. & \todo \\
+TD13 & Integrated runtime/transport & 정확한 14-module trace, affine GS transport, p50/p95 profile과 rendering이 재현된다. & \todo \\
+TD14 & Evaluation/paper evidence & E0--E10, baselines, OOD, statistics와 go/no-go 결과가 완결된다. & \todo \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\subsection{Runtime Module과 milestone 대응}
+
+\begin{longtable}{L{0.05\linewidth}L{0.27\linewidth}L{0.21\linewidth}L{0.29\linewidth}}
+\toprule
+M & 기능 & 주 milestone & 다음 typed 출력 \\
+\midrule
+\endfirsthead
+\toprule
+M & 기능 & 주 milestone & 다음 typed 출력 \\
+\midrule
+\endhead
+1 & 이전 state/version 읽기 & TD01, TD13 & \code{PreparedFrameState} \\
+2 & Current anchor/surface 복원 & TD04, TD13 & \code{SurfaceState} \\
+3 & Relative wind/base aero & TD04 & \code{AnchorAeroForces} \\
+4 & Full generalized-load projection / optional H & TD04, TD06 & \code{ReducedAeroLoad} \\
+5 & Always-on Global predictor & TD05 & \code{GlobalPrediction} \\
+6 & Fixed-\(K\) selector / optional G gate & TD07, TD10 & \code{SelectorDecision} \\
+7 & Active Local base + optional F proposal & TD04, TD07, TD09 & \code{PatchForceBatch} \\
+10 & Overlap-aware assembly & TD11 & \code{AssemblyResult} \\
+9 & Global force span 제거 & TD07, TD11 & \code{ComplementForce} \\
+8 & Single Local physical solve & TD07, TD11 & \code{LocalPrediction} \\
+11 & Local-to-Global corrector & TD11 & \code{CorrectedDynamicState} \\
+12 & Final anchor state & TD13 & \code{FinalAnchorState} \\
+13 & Gaussian transport/render & TD13 & \code{DeformedGaussianAsset} \\
+14 & State machine/diagnostics & TD10, TD13 & \code{RuntimeState}, \code{FrameDiagnostics} \\
+\bottomrule
+\end{longtable}
+
+\section{공통 artifact registry}
+
+모든 milestone은 code와 함께 아래 산출물을 남긴다.
+
+\begin{longtable}{L{0.075\linewidth}L{0.31\linewidth}L{0.52\linewidth}}
+\toprule
+ID & Artifact & 최소 내용 \\
+\midrule
+\endfirsthead
+\toprule
+ID & Artifact & 최소 내용 \\
+\midrule
+\endhead
+A00 & \artifact{run_manifest.json} & Git commit, config hash, seed, device, package/dataset version, command. \\
+A01 & \artifact{contract_report.json}, \artifact{v0_contract_manifest.json} & Units/frames/shapes, force ledger, PSD/symmetry/orthogonality/transport tests와 canonical source/hash/label/API/owner reference validation. \\
+A02 & \artifact{teacher_manifest.json} & Asset/material/attachment/wind/trajectory/split/force-channel inventory. \\
+A03 & \artifact{oracle_object_package/} & Anchors, graph/local relations, patch-indexed bases/cross blocks, optional H placeholder, binding, validation. \\
+A04 & \artifact{full_aero_report.json} & Relative-wind, normal/area, force component, net wrench unit tests. \\
+A05 & \artifact{global_rollout_report.md} & Frequency, amplitude, phase, damping, energy, latency와 failure cases. \\
+A06 & \artifact{aero_reduction_report.md} & Full-anchor profile과 조건부 H/random/FPS/RSH/direct accuracy--latency; generalized load를 primary로 보고. \\
+A07 & \artifact{local_physics_report.md} & Basis complement, state transfer, energy, oracle-active Local Pareto. \\
+A08 & \artifact{training_labels/} & Projected state/feedback delta와 조건부 F missing-force, 조건부 G positive-benefit label, confidence. \\
+A09 & \artifact{optional_F_missing_force_model/} & F를 채택한 경우의 config, checkpoint, normalization, validation/rollout report. \\
+A10 & \artifact{selector_report/} & Fixed-\(K\) Oracle/cached-compliance selector, K sweep, full-counter analysis, optional G checkpoint/calibration/cost extension과 dispatcher profile. \\
+A11 & \artifact{coupling_report.md} & Dense--Schur equivalence, constraint rank/condition, factor share/rebuild와 latency share, overlap seam, force/torque, leakage, corrector double-count와 stability. \\
+A12 & \artifact{predicted_object_package/} & TD12-R early representation report, Static-GS inferred package, confidence/fallback, Oracle/kNN gap. \\
+A13 & \artifact{runtime_report.md} & Exact trace, p50/p95, memory, kernel count, renders, invalid-state counts. \\
+A14 & \artifact{paper_evidence/} & E0--E10 tables, plots, videos, statistics, baseline manifests. \\
+\bottomrule
+\end{longtable}
+
+\newpage
+\section{TD00. Project governance와 method reset}
+
+\textbf{목표.} 이전 proxy/SH-residual 방향과 새 Global--Local physics 방향의 상태가 섞이지 않도록
+새 experiment namespace, source-of-truth, run manifest와 변경 기록 규칙을 고정한다.
+
+\textbf{선행 조건.} 없음.
+
+\textbf{입력.}
+현재 아이디어 스케치, 이 체크리스트, 기존 \path{code/}, \path{experiments/} 자산.
+
+\subsection*{구현 체크}
+
+\begin{itemize}
+  \item[\done] 이전 문서와 기존 implementation checklist를 backup에 원래 이름으로 보존한다.
+  \item[\done] 현재 아이디어 source/PDF/bibliography/bundle을 \path{ideas/} 최상위에 둔다.
+  \item[\done] 새 체크리스트 파일명을 현재 method title에 맞게 고정한다.
+  \item[\done] \path{experiments/TD00_contracts/README.md}를 만든다.
+  \item[\done] 공통 experiment README template에 다음 필드를 넣는다.
+    \begin{itemize}
+      \item goal과 falsification question,
+      \item exact input privilege와 runtime restrictions,
+      \item command/config/seed/device,
+      \item outputs/metrics/completion gate,
+      \item failed cases와 decision.
+    \end{itemize}
+  \item[\done] 모든 run이 \artifact{run_manifest.json}을 기록하도록 공통 utility를 만든다.
+  \item[\done] config가 dataset/package/model hash를 저장하도록 한다.
+  \item[\done] code-side, idea-side, experiment-side session 기록 책임을 README에 명시한다.
+  \item[\done] 기존 \code{M01--M03} 구현을 새 완료 상태로 승격하는 audit checklist를 만든다.
+  \item[\done] RSH/appearance SH 코드를 main runtime dependency로 import하지 않는지 dependency scan을 추가한다.
+\end{itemize}
+
+\subsection*{필수 산출물}
+
+\begin{itemize}
+  \item \artifact{experiments/TD00_contracts/README.md}
+  \item \artifact{run_manifest.schema.json} 또는 동등한 typed schema
+  \item Reuse-candidate audit report
+  \item 새 milestone tag를 사용하는 최소 smoke-test run
+\end{itemize}
+
+\textbf{완료 기준.}
+빈 smoke run 하나가 source commit, config, seed, package/dataset version, device와 output 경로를 자동 기록하고,
+이전 method code가 새 completion status에 섞이지 않는다.
+
+\textbf{완료 증거.}
+Python 3.12 unit test 38개와 clean-source reference run
+\code{td00-contracts-smoke-20260812t184509388327z-abde7ba}가 통과했다.
+Compact manifest/report/completion marker의 hash를 독립 verifier로 재검증했다.
+Python 3.10/3.11 실제 실행과 물리 E0는 TD01 이후 미검증 항목으로 유지한다.
+
+\section{TD01. Deterministic schema, 좌표계, force ledger와 E0}
+
+\textbf{목표.}
+학습을 시작하기 전에 모든 물리량의 shape, dtype, device, 단위, 좌표계, index, owner와 frame dependency를 코드로 고정한다.
+
+\textbf{선행 조건.} TD00 run/artifact convention.
+
+\textbf{입력.}
+Canonical GS fixture, 작은 oracle strip fixture, 현재 method의 state/force ownership 정의.
+
+\subsection*{필수 typed data}
+
+\begin{lstlisting}
+CanonicalGaussianAsset
+TeacherTrajectory
+AnchorScaffold
+OperatorRelationSetQop
+RelationValidityReport / AnchorAbsoluteConfidence
+RestLinearOperators             # M, K_lin^0, C_lin^0; modal/calibration reference
+ProjectiveRuntimeOperators       # K^0=K_proj^0, C^0=C_proj^0; canonical runtime
+ProjectiveTargetLedger           # frozen targets/rates, h_K, h_C, fit/timing lineage
+ReducedOperators
+PatchBasisBlock / PatchCrossBlocks
+SurfaceTangentMap3x2
+TangentAffineMapRank2_3x3
+FullShellMap3x3
+AeroCubature                    # optional H only
+GaussianBinding
+ObjectPackage
+RuntimeState
+PreparedFrameState
+SurfaceState
+AnchorAeroForces
+ReducedAeroLoad
+FixedGlobalSampleLifting         # setup-fixed T_s and Phi_s=T_s Phi
+GlobalPrediction
+SelectorDecision
+PatchForceBatch
+ConstraintOperator
+ConstraintSignature
+ConstraintSolveReport
+SupportRoutingReport
+AssemblyResult
+ComplementForce
+LocalPrediction
+CorrectedDynamicState
+SupportReactionLedger            # free/hard/compliant + post-step r_ROM
+FinalAnchorState
+DeformedGaussianAsset
+FrameDiagnostics
+FrameOutput
+CanonicalContractReference       # source path/hash, labels, API/owner/schema versions
+\end{lstlisting}
+
+\subsection*{Schema와 convention 체크}
+
+\begin{itemize}
+  \item[\todo] World, object, material anchor, local patch, camera frame의 transform 방향을 문서화한다.
+  \item[\todo] Right-handed convention, front/back, outward normal과 two-sided sheet sign을 고정한다.
+  \item[\todo] Length/time/mass/force 단위를 SI로 둘지 nondimensional preset으로 둘지 artifact마다 명시한다.
+  \item[\todo] Metric-scale asset과 normalized asset의 혼용을 validator가 거부하도록 한다.
+  \item[\todo] Tensor layout, dtype, device, batch/anchor/patch/sample index convention을 고정한다.
+  \item[\todo] Quaternion order와 covariance parameterization을 고정한다.
+  \item[\todo] Package, state, model, dataset version과 backward compatibility 규칙을 정의한다.
+  \item[\todo] TD01이 \artifact{v0_contract_manifest.json}을 생성한다. 여기에는
+  \code{canonical\_source\_path}, clean commit 또는 dirty-content hash,
+  \code{canonical\_labels[]}, typed API/owner/schema version, 동결한 V0 branch와 failure policy를 저장한다.
+  Canonical TeX를 parse해 각 required label이 정확히 한 번 존재하는지 검사하고,
+  stale label/API/owner/version/hash가 있으면 fail-fast 한다. TD00의 완료 상태는 다시 열지 않는다.
+  \item[\todo] Setup metadata와 frame runtime input을 별도 schema로 두고, frame 중 material/attachment layout 변경을 validator가 거부하도록 한다.
+  \item[\todo] Patch ID, fixed coordinate range, overlap group과 owner weight를 package에 고정한다.
+  \item[\todo] \(\mathcal Q_{\mathrm{op}}\) relation set, channel별 calibrated validity,
+  anchor absolute confidence와 support-expand/fallback/reject reason을 서로 다른 typed field로 둔다.
+  Area partition logit, reconstruction confidence, relation validity와 material coefficient를 alias하지 않는다.
+  \item[\todo] Rest-linear \((K_{\mathrm{lin}}^0,C_{\mathrm{lin}}^0)\)와 canonical runtime
+  \((K^0,C^0)=(K_{\mathrm{proj}}^0,C_{\mathrm{proj}}^0)\), frozen target ledger를 별도 type/version으로 둔다.
+  \item[\todo] Setup-fixed sample extraction \(T_s\)와
+  \(\Phi_s:=T_s\Phi\)를 package에 저장하고 frame state가 Jacobian/basis를 바꾸지 못하게 한다.
+  \item[\todo] Surface tangent 3\(\times\)2 map과 covariance용 full 3\(\times\)3 map을 서로 다른 typed field/API로 둔다.
+  \item[\todo] Save--load round trip 후 값, shape, dtype, index, units가 동일한지 검사한다.
+  \item[\todo] State와 package version/hash mismatch는 즉시 fail-fast 한다.
+  \item[\todo] \code{active\_set}, \code{decay\_set}, \code{dormant\_set}, diagnostics index가 서로 섞이지 않게 한다.
+\end{itemize}
+
+\subsection*{Force ledger 체크}
+
+\begin{itemize}
+  \item[\todo] 한 frame에 들어오는 모든 force channel의 owner, frame, sample/anchor/generalized space를 기록한다.
+  \item[\todo] Gravity, attachment, base aero, structural base, missing force, feedback delta를 enum/channel로 구분한다.
+  \item[\todo] Constraint로 소비된 force와 다음 corrector가 소비할 delta를 기록한다.
+  \item[\todo] 같은 channel이 predictor와 corrector에서 두 번 더해지면 test가 실패하도록 한다.
+  \item[\todo] Teacher residual label 생성 시 제거한 base channel 목록을 label metadata에 저장한다.
+  \item[\todo] Structural restoring은 generic \(-Ku-Cv\) 한 channel로 축약하지 않는다.
+  Canonical runtime에서 \(-K^0u+h_K\)와 \(-C^0v+h_C\)를 각각 한 번 소비하고,
+  target/target-rate, fit state, hold 시점과 source label을 \code{ProjectiveTargetLedger}에 저장한다.
+  \item[\todo] \(K_{\mathrm{lin}}^0,C_{\mathrm{lin}}^0\)은 modal/calibration 및 rest-linear ablation owner이고,
+  canonical rollout force ledger에 \(K^0,C^0\)와 동시에 더해지지 않게 한다.
+  \item[\todo] External support-routed Global component, Local remainder, joint-KKT adjustment,
+  free/hard companion, compliant object force/handle reaction과 post-step total hard reaction을 서로 다른 channel로 둔다.
+  \item[\todo] Post-step residual은 implicit-midpoint timing의 final state에서만 계산하고,
+  hard reaction이 reduced truncation residual \(r_{\mathrm{ROM}}\)을 흡수하지 않게 별도 저장한다.
+\end{itemize}
+
+\subsection*{E0 deterministic unit tests}
+
+\begin{itemize}
+  \item[\todo] \(M\) positive definite와
+  \(K_{\mathrm{lin}}^0,C_{\mathrm{lin}}^0,K^0,C^0\)의 typed symmetry/PSD test.
+  Rest-linear와 projective runtime operator를 교환하거나 이중 적용하면 실패하는 negative test.
+  \item[\todo] Reduced block dimension, symmetry와 reciprocity test.
+  \item[\todo] \(\Phi^\top M\Phi\approx I\), patch별 \(\Phi^\top M\Psi_r\approx0\), patch owner 보존 test.
+  \item[\todo] Reachable patch/group의 \(M_{rs},C_{rs},K_{rs}\) block reciprocity, rank와 condition-number test.
+  \item[\todo] Zero force/zero wind에서 rest가 invariant인지 test.
+  \item[\todo] Rigid translation/rotation에서 internal elastic energy가 불필요하게 생기지 않는지 test.
+  \item[\todo] Pure-rigid 및 strained-state superposed-rotation에서 projective energy/force equivariance,
+  relative-rate damping, planar in-plane bending pollution과 one-shot/two-step/converged target-splitting test.
+  \item[\todo] Held-target stiffness/damping action, action-tangent symmetry/PSD,
+  first 8--16 mode/subspace와 common-probe closure test.
+  \item[\todo] Canonical implicit midpoint 대 backward Euler/rest-linear ablation의 phase,
+  target-band PSD, damping envelope, energy와 timestep convergence test.
+  \item[\todo] Constant force와 impulse에 대한 analytic 작은-system response test.
+  \item[\todo] Identity/translation/rotation/affine Gaussian reproduction과 covariance SPD test.
+  \item[\todo] Rest-chart normalization, rigid rotation, in-plane scale/shear에서 3\(\times\)2 cross-product area-normal과 \(F_\parallel=J^t(J^0)^\dagger\) test.
+  \item[\todo] 3\(\times\)2 tangent map을 3\(\times\)3 covariance transform에 잘못 전달하면 실패하는 type/negative test.
+  \item[\todo] Net force/torque 계산의 center convention test.
+  \item[\todo] Current-geometry torque operator와 center translation identity test.
+  \item[\todo] Small fixture에서 dense primal KKT와 unique-anchor small-Schur의 force/objective/constraint residual equivalence test.
+  \item[\todo] Duplicate/dependent constraint row의 consistent/inconsistent RHS rank test.
+  \item[\todo] 같은 support operator에서 external/structural channel의 RHS를 각각 검사하고,
+  aggregate feasible rate만으로 infeasible RHS를 숨기지 않는 per-RHS consistency test.
+  \item[\todo] Singleton/overlap/boundary/hard-attachment/traveling-support에서
+  support expansion과 halo cap, raw-force adjustment, reaction amplification,
+  generalized-work 보존 및 post-step \(r_{\mathrm{ROM}}\) 분해 test.
+  \item[\todo] Geometry/support/row signature가 바뀐 factor를 재사용하거나 sequential projection으로 fallback하면 실패하는 negative trace test.
+  \item[\todo] CPU/GPU 또는 float32/float64 reference 차이를 기록한다.
+  \item[\todo] 고정 seed에서 같은 trace와 artifact hash가 나오는지 test.
+  \item[\todo] Canonical label 삭제/중복, API owner/version 또는 source hash mismatch를 주입하면
+  derived-contract reference test가 정확히 실패하는지 검사한다.
+\end{itemize}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+validate_object_package(package) -> ContractReport
+validate_runtime_state(state, package, handle_motion, dt) -> PreparedFrameState
+validate_force_ledger(ledger) -> ForceOwnershipReport
+run_e0_contract_suite(fixtures, tolerances) -> ContractReport
+validate_canonical_contract_reference(manifest, canonical_tex) -> ContractReport
+\end{lstlisting}
+
+\subsection*{필수 산출물}
+
+\begin{itemize}
+  \item \artifact{contract_report.json}
+  \item \artifact{v0_contract_manifest.json}
+  \item Canonical label/API/owner/schema stale-reference negative-test report
+\end{itemize}
+
+\textbf{완료 기준.}
+\artifact{contract_report.json}에 모든 Step-0-relevant P0 deterministic check가 통과하고,
+\artifact{v0_contract_manifest.json}의 canonical reference validation이 통과하며,
+schema/version/owner 오류를 의도적으로 주입한 negative test가 정확히 실패한다.
+이 milestone 전에는 teacher label이나 learned model을 production dataset으로 만들지 않는다.
+
+\section{TD02. Teacher, independent GS와 dataset split}
+
+\textbf{목표.}
+Global/Local solver와 topology distillation을 검증하고,
+채택 시 조건부 F/G도 학습할 수 있는 누수 없는 teacher dataset을 만든다.
+
+\textbf{선행 조건.} TD01 data schema, units/frames와 force ledger.
+
+\textbf{입력.}
+Source thin-shell mesh, explicit material metadata/attachment layout, prescribed wind program, render cameras와 reconstruction config.
+
+\subsection*{Teacher-S structural trajectory}
+
+\begin{itemize}
+  \item[\todo] 첫 fixture를 한쪽 고정 cantilever strip/flag로 고정한다.
+  \item[\todo] 후속 asset으로 two-point cloth, curtain strip, paper sheet, leaf를 준비한다.
+  \item[\todo] High-resolution nonlinear shell/FEM 또는 검증된 dense MPM backend를 선택한다.
+  \item[\todo] Timestep, substep, integrator, material law와 damping convention을 manifest에 기록한다.
+  \item[\todo] Position, velocity, acceleration을 저장한다.
+  \item[\todo] Strain, curvature, stretch/bending energy를 저장한다.
+  \item[\todo] Surface normal, area, deformation gradient를 저장한다.
+  \item[\todo] Internal, aerodynamic, gravity, attachment/reaction force breakdown을 가능한 한 solver에서 직접 저장한다.
+  \item[\todo] 저장된 force breakdown으로 teacher acceleration을 다시 구성하는 balance test를 추가한다.
+  \item[\todo] Optional Gaussian mean/covariance target과 multi-view render를 저장한다.
+\end{itemize}
+
+\subsection*{Wind와 setup-metadata sweep}
+
+\begin{itemize}
+  \item[\todo] Wind direction/elevation과 weak--strong magnitude sweep.
+  \item[\todo] Steady, sinusoidal gust, chirp, abrupt start/stop.
+  \item[\todo] Stationary, slow-traveling, fast-traveling, reversing와 localized/nonuniform spatial gust.
+  \item[\todo] Setup에 사용자가 지정하는 density, thickness, stretch/shear/bending stiffness, damping, anisotropy.
+  \item[\todo] Setup에 사용자가 지정하는 one edge, two points, partial/compliant support, stem attachment layout.
+  \item[\todo] Attachment layout 또는 basis를 바꾸는 material 값이 달라지면 새 package/version으로 분리한다.
+  \item[\todo] Frame 중에는 고정 support DOF의 prescribed handle motion만 바꾸고 layout edit는 수행하지 않는다.
+  \item[\todo] Rest, pre-deformed, initial-velocity condition.
+  \item[\todo] 각 factor와 random seed가 trajectory manifest에서 검색 가능하도록 한다.
+\end{itemize}
+
+\subsection*{Optional Teacher-FSI track}
+
+\begin{itemize}
+  \item[\todo] CFD/LBM 또는 계측 subset의 surface sample/force schema를 Teacher-S와 정렬한다.
+  \item[\todo] 같은 geometry에서 quasi-steady와 FSI force를 저장한다.
+  \item[\todo] \code{unsteady\_defect = FSI/measurement - quasi\_steady}를 명시적으로 만든다.
+  \item[\todo] Teacher-FSI가 없는 sample에는 wake/vortex/history label을 생성하지 않는다.
+  \item[\todo] Teacher-S-only와 Teacher-FSI sample을 dataset manifest에서 분리한다.
+\end{itemize}
+
+\begin{tcolorbox}[colback=LightOrange,colframe=orange!60!black,title=Claim 제한,fonttitle=\bfseries]
+Teacher-FSI 또는 실측 force가 없으면 learned force는 basis truncation, nonlinear structure,
+operator/topology distillation defect만 보정한다고 기술한다. Wake, vortex shedding 또는 unsteady aerodynamics를 학습했다고 주장하지 않는다.
+\end{tcolorbox}
+
+\subsection*{Independent static-GS variants}
+
+\begin{itemize}
+  \item[\todo] Source mesh에 Gaussian을 직접 붙인 oracle/debug asset을 별도 표시한다.
+  \item[\todo] Rendered views로부터 target static GS를 독립적으로 reconstruct한다.
+  \item[\todo] View count, reconstruction seed, Gaussian density variant를 만든다.
+  \item[\todo] Hole, floater, covariance noise, opacity perturbation, missing backside variant를 만든다.
+  \item[\todo] Teacher와 static GS의 coordinate/metric scale alignment를 저장한다.
+  \item[\todo] Alignment residual이 tolerance를 넘는 asset은 fail/fallback으로 표시한다.
+\end{itemize}
+
+\subsection*{Split와 leakage 방지}
+
+\begin{itemize}
+  \item[\todo] Frame-random split을 금지하고 trajectory 단위 split을 구현한다.
+  \item[\todo] Object-disjoint split을 별도로 만든다.
+  \item[\todo] Relation-validity와 anchor absolute-confidence calibrator를 fit/freeze할
+  development-calibration split도 final test object와 object-disjoint하게 만든다.
+  \item[\todo] Calibration/coverage report를 anchor density, candidate count, valence와
+  MLS condition-number bin으로 층화한다. 한 density/valence의 aggregate ECE만 보고 통과시키지 않는다.
+  \item[\todo] Unseen wind/setup-material/setup-attachment/geometry/category/reconstruction split을 만든다.
+  \item[\todo] Combined object+material+wind OOD split을 만든다.
+  \item[\todo] 같은 source trajectory의 GS variants가 train/test에 흩어져 identity leakage를 만들지 않게 group split한다.
+\end{itemize}
+
+\subsection*{필수 산출물}
+
+\begin{lstlisting}
+datasets/
+  manifests/teacher_manifest.json
+  teacher_structure/<trajectory_id>/
+  teacher_fsi/<trajectory_id>/          # optional
+  canonical_gs/<asset_id>/
+  gs_variants/<asset_id>/<variant_id>/
+  alignment/<asset_id>/<variant_id>.json
+  splits/{train,val,calibration,test,ood_*.json}
+\end{lstlisting}
+
+\textbf{완료 기준.}
+최소 flag/strip의 start/stop, sinusoidal, chirp, traveling gust trajectory가 force breakdown과 함께 재생 가능하고,
+force balance, coordinate alignment, trajectory/object split leakage test가 통과한다.
+
+\section{TD03. Oracle runtime object package와 reduced bases}
+
+\textbf{목표.}
+Predicted topology의 오차를 배제한 clean oracle case에서 runtime data structure와 Global/Local physical space를 먼저 닫는다.
+
+\textbf{선행 조건.} TD01 contracts, TD02 oracle source/trajectory.
+
+\textbf{입력.}
+Source mesh topology, user material metadata/attachment layout, canonical/independent GS, teacher snapshots.
+
+\subsection*{Oracle AnchorScaffold}
+
+\begin{itemize}
+  \item[\todo] Material-space anchor 위치, rest normal, area, mass와 reliability를 만든다.
+  \item[\todo] Oriented material edges와 bending/hinge relations를 저장한다.
+  \item[\todo] Hard/compliant attachment를 하나의 명시적 representation으로 저장한다.
+  \item[\todo] Core--halo patch와 overlap graph를 만든다.
+  \item[\todo] Partition-of-unity로 total area와 mass가 원본과 일치하는지 검사한다.
+  \item[\todo] Disconnected close layer를 일부러 포함한 negative fixture를 만든다.
+\end{itemize}
+
+\subsection*{Physical operators}
+
+\begin{itemize}
+  \item[\todo] \code{OperatorRelationSetQop}에 incidence support, rest frame,
+  metric MLS stencil, membrane/bending area share, channel별 validity와 condition metadata를 저장한다.
+  Canonical source는 \code{eq:relation-mls-map},
+  \code{eq:relation-area-partition}과 \code{eq:relation-absolute-confidence}다.
+  \item[\todo] Positive diagonal/lumped \(M\)과 modal/calibration reference인
+  \(K_{\mathrm{lin}}^0,C_{\mathrm{lin}}^0\)를 별도 조립한다.
+  \(K_{\mathrm{lin}}^0\)은 stretch/shear/bending의 rest-linear
+  \(B^\top D B\), \(C_{\mathrm{lin}}^0\)은 channel별 Kelvin--Voigt reference이며,
+  generic Rayleigh damping을 canonical internal force에 넣지 않는다.
+  \item[\todo] Runtime에는 world-vector projective relation과 objective normal-curvature target으로
+  \(K^0:=K_{\mathrm{proj}}^0\), \(C^0:=C_{\mathrm{proj}}^0\)를 조립한다.
+  Canonical source는 \code{eq:objective-vector-projective-constraints},
+  \code{eq:bending-normal-projectors}, \code{eq:canonical-structural-force-ledger}다.
+  \item[\todo] Frame별 frozen rotation/normal-curvature target과 target-rate에서
+  \(h_K,h_C\)를 만들고 \code{ProjectiveTargetLedger}에 fit state, hold time과
+  operator/package version을 저장한다. Runtime restoring은
+  \(-K^0u+h_K-C^0v+h_C\)이며 target RHS를 두 번 더하지 않는다.
+  \item[\todo] Hard attachment는 free-DOF restriction/lift로, compliant attachment는
+  명시적 object-force/handle-reaction channel로 처리한다. 같은 support를 stiffness, projection과
+  external attachment force에 중복 소유시키지 않는다.
+  \item[\todo] \(M\), rest-linear와 projective operator 각각의 PSD/symmetry,
+  attachment null-space, rigid/equivariance, normal-curvature pollution과 relative-rate damping test를 실행한다.
+  \item[\todo] Held action과 locally refit energy/force/action tangent, modal subspace와
+  common probe closure를 검사한다. Action-validity와 rest-linear-agreement를 별도 결과로 저장하되,
+  canonical package는 둘을 모두 통과해야 한다. PSD/objectivity/action 자체가 실패하면 backend를 재설계하고,
+  modal/probe agreement만 실패한 symmetric action-tangent basis는 기존 gate의 우회 통과가 아니라
+  MC1 claim과 모든 basis/complement/cache를 바꾸는 별도 versioned pivot으로만 검토한다.
+  One-shot splitting만 실패하면 two-step/converged target fit을 진단 대안으로 검토하고,
+  그래도 실패할 때만 state-dependent co-rotated tangent와 factor/latency 계약을 새로 검증한다.
+  \item[\todo] Setup material/attachment 변경 시 어떤 block, basis와 factorization을 invalidate하고 새 package version을 만드는지 기록한다.
+\end{itemize}
+
+\subsection*{Global/Local bases}
+
+\begin{itemize}
+  \item[\todo] Canonical V0는 rest-linear \(K_{\mathrm{lin}}^0\) eigenmode와
+  physics/POD hybrid 후보에서 \(\Phi\)를 만든다. Rest-linear agreement가 실패한
+  action-tangent eigenbasis는 canonical closure를 통과한 것으로 부르지 않고,
+  MC1 operator/eigenspace claim을 철회한 별도 versioned pivot에서만 허용한다.
+  Raw \(K_{\mathrm{proj}}^0\)를 thin-shell tangent로 간주해 basis를 자동 생성하지 않는다.
+  \item[\todo] \(\Phi^\top M\Phi=I\)를 검사한다.
+  \item[\todo] Patch raw basis \(B_r\)와 patch-to-global scatter를 만든다.
+  \item[\todo] \(U_r=R_r^\top W_rB_r\)로 anchor space에 lift하되 patch ID와 column owner를 유지한다.
+  \item[\todo] 각 patch에서만 \(\bar B_r=P_\perp U_r\),
+  \(P_\perp=I-\Phi(\Phi^\top M\Phi)^{-1}\Phi^\top M\)로 Global span을 제거한다.
+  \item[\todo] Patch Gram \(G_r=\bar B_r^\top M\bar B_r=V_r\Lambda_rV_r^\top\)를 고유분해하고,
+  \(\lambda_i>\tau_{\mathrm{rank}}\lambda_{\max}\)인 retained eigenspace \((V_{r,+},\Lambda_{r,+})\)에서만
+  \(\Psi_r=\bar B_rV_{r,+}\Lambda_{r,+}^{-1/2}\)로 정규화한다.
+  제거된 near-null column, threshold와 retained rank를 patch metadata에 저장한다.
+  \item[\todo] 모든 patch를 한 번에 QR/SVD하여 서로 다른 patch basis를 섞는 code path를 negative test로 금지한다.
+  \item[\todo] Patch별 \(\Phi^\top M\Psi_r=0\), \(\Psi_r^\top M\Psi_r=I\) tolerance와 fixed coordinate range를 저장한다.
+  \item[\todo] 서로 다른 patch끼리는 직교화를 강제하지 않고
+  \(M_{rs}=\Psi_r^\top M\Psi_s\), \(C_{rs}=\Psi_r^\top C\Psi_s\),
+  \(K_{rs}=\Psi_r^\top K\Psi_s\)를 저장한다.
+  \item[\todo] Strong overlap로 superset Gram이 rank deficient하면 overlap-connected patch를 하나의 gating group으로 묶거나 owner-preserving block pivoting으로 중복 column을 제거한다.
+  \item[\todo] V0는 \(\Psi_{\mathrm{sup}}=[\Psi_1,\ldots,\Psi_P]\)의 fixed slot과 persistent full state
+  \(z_{\mathrm{sup}},\dot z_{\mathrm{sup}}\)를 사용한다.
+  \(S_t=A_t\cup D_t\) selector matrix \(E_{S_t}\)로
+  \(z_{S_t}=E_{S_t}^\top z_{\mathrm{sup}}\)를 gather하고 active principal block을 한 번 푼 뒤,
+  같은 fixed slot에 scatter한다. Frame마다 basis dimension을 바꾸거나 state를 remap하지 않는다.
+  \item[\todo] Reachable active/decay group마다 reduced block rank/conditioning, symmetry와 reciprocity를 검사한다.
+  \item[\todo] \(K_{gr},C_{gr}\)가 수치적으로 0인지 nonzero인지 기록하고 corrector claim과 연결한다.
+\end{itemize}
+
+\begin{tcolorbox}[colback=LightOrange,colframe=orange!60!black,title=Patch energy와 계산 단위,fonttitle=\bfseries]
+Inter-patch cross block 때문에 전체 Local energy는 patch별 scalar의 단순 합이 아니다.
+State-machine 종료에는 owner-weighted support energy 또는 overlap-group energy를 사용하고,
+정의와 cross-term 배분을 package에 저장한다. Patch 수, 선택 단위, coordinate 수와 실제 solver cost의 관계를 함께 profile한다.
+Dynamic basis recomputation/state remapping은 V0 범위가 아니다.
+\end{tcolorbox}
+
+\subsection*{Gaussian binding}
+
+\begin{itemize}
+  \item[\todo] 각 Gaussian을 고정된 소수 anchor support와 partition weight에 bind한다.
+  \item[\todo] Rest offset와 optional local frame을 저장한다.
+  \item[\todo] Frame마다 nearest anchor를 다시 고르지 않게 한다.
+  \item[\todo] Identity/translation/rotation/affine reproduction을 TD01 suite와 연결한다.
+\end{itemize}
+
+\subsection*{권장 API와 package}
+
+\begin{lstlisting}[language=Python]
+build_oracle_object_package(
+    source_surface, canonical_gs, material, attachment, config
+) -> ObjectPackage
+
+save_object_package(package, path)
+load_object_package(path) -> ObjectPackage
+validate_object_package(package) -> ContractReport
+\end{lstlisting}
+
+\begin{lstlisting}
+oracle_object_package/
+  package_manifest.json
+  anchors.npz
+  topology.npz
+  operators.npz
+  bases.npz
+  patches.npz
+  aero_samples_placeholder.npz
+  gaussian_binding.npz
+  validation.json
+\end{lstlisting}
+
+\textbf{완료 기준.}
+Oracle strip package가 save--load 후 동일하며, operator PSD/symmetry, basis orthogonality,
+area/mass conservation, binding reproduction test를 모두 통과한다.
+
+\section{TD04. Current-surface state와 full aerodynamic reference}
+
+\textbf{목표.}
+Runtime Module 1--3을 learning/hyper-reduction 없이 구현하여 current geometry와 relative wind에서 full-anchor aerodynamic force를 얻는다.
+
+\textbf{선행 조건.} TD03 oracle package, TD01 transport/force convention.
+
+\subsection*{Module 1: state preparation}
+
+\begin{itemize}
+  \item[\todo] \(q,\dot q,z,\dot z\), active/decay state, memory와 package version을 읽는다.
+  \item[\todo] Dimension/index/device/version mismatch를 fail-fast 한다.
+  \item[\todo] Setup에서 고정된 support DOF의 prescribed handle motion을 현재 frame convention으로 변환한다.
+  \item[\todo] Wind 값 변경만으로 basis, patch, binding을 재생성하지 않는다.
+  \item[\todo] Frame runtime에서 material/attachment layout 변경 요청을 거부하고 새 setup/package version을 요구한다.
+\end{itemize}
+
+\subsection*{Module 2: current surface reconstruction}
+
+\begin{itemize}
+  \item[\todo] \(x=x^0+\Phi q+\sum_r\Psi_r z_r\), \(v=\Phi\dot q+\sum_r\Psi_r\dot z_r\)를 한 번 lift한다.
+  \item[\todo] Raw rest/current local Jacobian \(\widehat J_s^0,\widehat J_s^t\in\mathbb R^{3\times2}\)와
+  fixed rest-chart normalization
+  \(H_s=[(\widehat J_s^0)^\top\widehat J_s^0]^{-1/2}\)를 만든다.
+  \(J_s^0=\widehat J_s^0H_s\), \(J_s^t=\widehat J_s^tH_s=[a_{s,1},a_{s,2}]\)로 두어
+  \((J_s^0)^\top J_s^0\approx I_2\)를 검사한다.
+  \item[\todo] Rank-2 tangent affine map을
+  \(F_{\parallel,s}=J_s^t(J_s^0)^\dagger\in\mathbb R^{3\times3}\)로 정의하되,
+  area-normal은 이 3\(\times\)3 map의 cofactor가 아니라 \(J_s^t\)의 두 3D column을 직접 사용한다.
+  \item[\todo] Area-normal을 3\(\times\)3 cofactor가 아니라
+  \(\widetilde n_s=A_s^0(a_{s,1}\times a_{s,2})\)로 계산한다.
+  비정규화 chart를 debug backend로 쓸 때만 대응 rest cross norm으로 나눈다.
+  \item[\todo] \(A_s=\|\widetilde n_s\|\), \(n_s=\widetilde n_s/(A_s+\varepsilon)\)와
+  \(\bar n_s^0=\operatorname{normalize}((J_s^0e_1)\times(J_s^0e_2))\)의 orientation continuity를 구현한다.
+  \item[\todo] Gaussian covariance transport용 full shell map은 cross-product normal을 먼저 구한 뒤
+  \(F_{\mathrm{shell},s}=F_{\parallel,s}+\lambda_{n,s}n_s(\bar n_s^0)^\top\in\mathbb R^{3\times3}\)로 별도 계산한다.
+  \(\lambda_{n,s}\)의 default thickness/normal-extension 규칙을 package에 명시한다.
+  \item[\todo] \code{SurfaceTangentMap3x2}=\(J_s^t\), \code{TangentAffineMapRank2\_3x3}=\(F_{\parallel,s}\),
+  \code{FullShellMap3x3}=\(F_{\mathrm{shell},s}\)를 서로 다른 typed field로 두고 alias하지 않는다.
+  \item[\todo] Tangent singular value/area clamp, orientation continuity와 degeneracy flag를 구현한다.
+  \item[\todo] Rest/rigid rotation/in-plane scale/shear fixture로 normal과 area를 검증한다.
+  \item[\todo] Aero normal과 rendering transport normal은 같은 orientation convention을 쓰되 서로 다른 map type을 올바르게 소비하는지 검사한다.
+\end{itemize}
+
+\subsection*{Module 3: relative wind와 analytic surface force}
+
+\begin{itemize}
+  \item[\todo] Spatial wind를 current sample position에서 query한다.
+  \item[\todo] Relative wind를 \(W(x,t)-v\)로 정의한다.
+  \item[\todo] Two-sided thin-sheet drag, friction, optional lift term을 구현한다.
+  \item[\todo] Current normal/area와 material/aero coefficient를 사용한다.
+  \item[\todo] Zero-relative-wind에서 force가 정확히 0인지 검사한다.
+  \item[\todo] Uniform rigid translation에서 air/object velocity cancellation을 검사한다.
+  \item[\todo] Front/back flip과 normal sign에 대한 force continuity를 검사한다.
+  \item[\todo] Component별 force와 net force/torque를 debug output으로 남긴다.
+\end{itemize}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+validate_and_prepare_state(state, package, handle_motion, dt)
+    -> PreparedFrameState
+
+reconstruct_surface(prepared_state, package)
+    -> SurfaceState
+
+evaluate_quasi_steady_aero(surface, wind_query, aero_parameters, time)
+    -> AnchorAeroForces
+\end{lstlisting}
+
+\subsection*{필수 비교 backend}
+
+\begin{itemize}
+  \item Full current-surface/relative-wind reference.
+  \item Rest normal/area ablation.
+  \item Absolute wind instead of relative wind ablation.
+  \item Object-average wind instead of spatial query ablation.
+\end{itemize}
+
+\textbf{완료 기준.}
+Full-anchor evaluator가 analytic unit tests와 teacher surface snapshot의 force/net-wrench comparison을 통과하고,
+dynamics를 적분하지 않는 isolated aero report가 생성된다.
+
+\section{TD05. Always-on Global reduced physics predictor}
+
+\textbf{목표.}
+Oracle topology에서 Local을 끈 채 object-wide low-frequency wind response를 안정적으로 적분한다.
+
+\textbf{선행 조건.} TD03 reduced operators, TD04 full current-surface aero.
+
+\subsection*{구현 체크}
+
+\begin{itemize}
+  \item[\todo] Full-anchor force를 fixed \(\Phi\)로 projection하여 Global generalized load를 만든다.
+  Optional H sample path도 setup-fixed \(T_s\)와 \(\Phi_s=T_s\Phi\)만 사용한다.
+  \item[\todo] \(K_{gg}^0=\Phi^\top K^0\Phi\),
+  \(C_{gg}=\Phi^\top C^0\Phi\)와
+  \(Q_{g,\mathrm{op}}=\Phi^\top(h_K+h_C+f_{\mathrm p})\)를 분리한
+  projective Global equation을 구현한다. Canonical source는
+  \code{eq:global-operator-target-load}와 \code{eq:global-dynamics}다.
+  \item[\todo] Canonical integrator는 \code{eq:global-implicit-midpoint}의
+  implicit midpoint로 고정한다. Backward Euler는 robustness/numerical-damping,
+  rest-linear \((K_{\mathrm{lin}}^0,C_{\mathrm{lin}}^0)\)는 structural closure ablation으로만 실행하며
+  canonical result와 섞지 않는다.
+  \item[\todo] Gravity, compliant attachment/handle, base aero, projective target/lift와
+  structural cross term을 서로 다른 force-ledger channel로 기록한다.
+  \item[\done] 이전 Local state의 cross term은 predictor에서 소비하고, TD11 corrector는 updated-minus-consumed delta만 소비하도록 계약을 고정했다.
+  \item[\todo] Mainline의 optional learned Global generalized-force head는 default off로 둔다.
+  \item[\todo] Mode rank 8/16/32/64 sweep와 factorization cache를 구현한다.
+  \item[\todo] Setup material/attachment 변경이 새 package와 cache invalidation을 요구하는지 test하고, frame wind/handle motion은 basis를 invalidate하지 않는지 검사한다.
+  \item[\todo] Zero wind/zero displacement rest invariance를 검사한다.
+  \item[\todo] Wind start/stop에서 자연스러운 acceleration과 damping envelope를 검사한다.
+  \item[\todo] Sinusoidal/chirp에서 modal frequency, amplitude, phase를 teacher와 비교한다.
+  \item[\todo] Long rollout에서 energy growth/divergence를 검사한다.
+\end{itemize}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+project_full_aero_to_global(aero_forces, surface, operators)
+    -> ReducedAeroLoad
+
+solve_global_predictor(
+    previous_state, reduced_load, handle_motion, operators, dt
+) -> GlobalPrediction
+\end{lstlisting}
+
+\subsection*{필수 baseline}
+
+\begin{itemize}
+  \item High-resolution teacher.
+  \item Same-anchor sparse shell/PD/XPBD.
+  \item WPB-style rest-state/uniform-wind modal projection.
+  \item Direct MLP/GNN next-state Global.
+  \item Recurrent Global state-space network.
+  \item Physics Global + optional learned generalized-force residual.
+\end{itemize}
+
+Gate C의 K13 same-anchor sub-gate는 먼저 asset에 가장 잘 맞고
+최적화된 same-anchor solver 하나로 판정한다.
+최종 Gate C는 TD10 이후 K16/K18의 actual-skip overhead와 decay accumulation까지 함께 판정한다.
+다른 PD/XPBD/corotational variant는 distinct Pareto 또는 failure mode가 있을 때 확장한다.
+Teacher는 accuracy oracle이며 speed competitor가 아니다.
+
+\subsection*{필수 지표}
+
+Trajectory/velocity error, tip amplitude/phase, dominant frequency, damping ratio,
+modal coordinate error, energy drift/divergence, p50/p95 dynamics-only latency와 peak memory.
+Anchor 수 512/1024/2048, Gaussian 수와 multi-object batch를 독립 sweep하여
+simulation resolution과 rendering resolution의 분리를 확인한다.
+
+\textbf{완료 기준.}
+MVP-A flag/strip에서 frequency와 damping이 teacher/same-anchor baseline과 일치하고,
+4--10초 start/stop/chirp rollout이 발산하지 않는다.
+Local 구현 전 mode-count Pareto를 저장하여 Global rank 증가만으로 충분한지 확인한다.
+또한 same-anchor sparse shell/PD/XPBD 대비 개발 자원 배분용 내부 기준인
+dynamics-only 약 2배 이상의 명확한 이득을 보이거나,
+동일 p95 latency에서 velocity/trajectory/spectrum error를 유의미하게 줄이거나,
+multi-object throughput 이득을 보여야 speed contribution을 유지한다.
+세 경로가 모두 실패하면 K13에 따라 MPM 대비 속도만으로 main speed claim을 만들지 않는다.
+
+\section{TD06. 조건부 H: current-state aerodynamic hyper-reduction}
+
+\textbf{목표.}
+TD04--TD05 profiler에서 full-anchor current-surface aero가 dynamics 비용의 유의미한 비율일 때만,
+Global generalized load 정확도를 우선 유지하며 wall-clock를 줄일 수 있는지 검증한다.
+
+\textbf{선행 조건.} TD04 full evaluator, TD05 Global basis/Jacobian과 rollout reference.
+
+\begin{tcolorbox}[colback=LightOrange,colframe=orange!60!black,title=H 진입/철회 계약,fonttitle=\bfseries]
+Full-anchor analytic evaluator가 V0 default이자 항상 사용 가능한 fallback이다.
+Full-anchor가 병목이 아니면 TD06 구현을 중단해도 TD07 이후 core path는 계속 진행한다.
+Attached object의 primary target은 \(Q_g=\Phi^\top f\) fidelity이며,
+net force/torque는 auxiliary constraint/diagnostic이다.
+\end{tcolorbox}
+
+\subsection*{Offline snapshot와 cubature}
+
+\begin{itemize}
+  \item[\todo] Training deformation, velocity, spatial wind snapshot에서 full-anchor force를 계산한다.
+  \item[\todo] 각 snapshot의 Global generalized force, net force, net torque를 label로 저장한다.
+  \item[\todo] Force/torque center를 rest center, current center 중 하나로 고정하고 manifest에 기록한다.
+  \item[\todo] Candidate sample support가 orientation, boundary, attachment, high-curvature 영역을 포함하는지 검사한다.
+  \item[\todo] Nonnegative empirical cubature sample과 weight를 최적화한다.
+  \item[\todo] Global generalized force를 primary objective로, net wrench를 auxiliary objective/constraint로 사용한다.
+  \item[\todo] Held-out deformation과 traveling gust snapshot으로 overfit을 검사한다.
+  \item[\todo] Sample 수별 실제 GPU kernel/gather/project latency를 측정한다.
+  \item[\todo] H가 채택된 경우에만 estimated cubature error/confidence를 runtime diagnostic과 optional G feature로 전달한다.
+\end{itemize}
+
+\subsection*{Runtime Module 4}
+
+\begin{itemize}
+  \item[\todo] Current selected sample의 surface state와 relative wind만 평가한다.
+  \item[\todo] Setup-fixed sample extraction \(T_s\)와
+  \(\Phi_s:=T_s\Phi\)를 사용해 \(Q_g^{\mathrm{aero}}=\Phi_s^\top f_s\)를 만든다.
+  Current state는 sample position/velocity/normal/area/relative wind와 force 값만 바꾸며
+  Global lifting/Jacobian은 바꾸지 않는다. Canonical source는
+  \code{eq:fixed-global-sample-jacobian}, \code{eq:full-generalized-aero}다.
+  \item[\todo] State-dependent sample Jacobian이나 nonlinear sample map을 시험하면
+  별도 versioned optional backend로 분리하고 build/update/corrector 비용을 profiler에 전부 포함한다.
+  \item[\todo] Weighted net force와 net torque를 동시에 계산한다.
+  \item[\todo] Full-anchor debug/reference backend를 같은 API로 제공한다.
+  \item[\todo] Sample identity는 setup 후 고정하며 wind direction마다 anchor를 다시 고르지 않는다.
+  \item[\todo] Weight의 음수/폭주, invalid sample, degeneracy를 runtime에서 검사한다.
+\end{itemize}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+fit_aero_cubature(full_snapshots, operators, constraints, config)
+    -> AeroCubature
+
+reduce_aero_load(sample_forces, surface, aero_cubature)
+    -> ReducedAeroLoad
+\end{lstlisting}
+
+\subsection*{E2 비교 backend}
+
+\begin{enumerate}
+  \item Full current-surface samples.
+  \item Rest-state/uniform-wind WPB-style projection.
+  \item Random samples.
+  \item FPS samples.
+  \item Learned samples without conservation.
+  \item Canonical directional RSH/modal cache.
+  \item Low-rank state-conditioned RSH.
+  \item Direct direction-conditioned MLP/generalized-force backend.
+  \item Proposed conservative current-state cubature.
+\end{enumerate}
+
+\begin{tcolorbox}[colback=LightOrange,colframe=orange!60!black,title=RSH 결정 규칙,fonttitle=\bfseries]
+RSH는 mainline dependency가 아니다. 동일 sample/data/latency budget에서 held-out direction generalization이나
+실제 wall-clock 이득을 명확히 제공할 때만 optional backend로 유지한다. 그렇지 않으면 harmonic direction encoding 또는 direct analytic evaluator를 사용한다.
+\end{tcolorbox}
+
+\textbf{완료 기준.}
+Held-out deformation/spatial gust에서 full evaluator 대비 generalized-force와 net-wrench tolerance를 만족하고,
+random/FPS/nonconservative backend보다 quality--latency 또는 drift Pareto가 좋다.
+Full-anchor 대비 실제 wall-clock 개선이 없거나 generalized-load tolerance를 깨면 K14에 따라 H를 제거한다.
+통과해도 H는 첫 논문의 supporting module이며 core contribution으로 자동 승격하지 않는다.
+
+\section{TD07. Complementary Local physical system과 fixed-\(K\) Oracle active set}
+
+\textbf{목표.}
+Global rank가 놓치는 local flutter/fold를 network 없이 먼저 검증하고,
+Global complement에서 하나의 Local physical state가 안정적으로 적분되는지 확인한다.
+
+\textbf{선행 조건.}
+TD07-A single-patch unit solver는 TD03 \(\Psi\)/Local operators와 TD05 Global predictor를 요구한다.
+공식 TD07-B Oracle Local rollout은 TD11-A joint assembly/complement까지 통과한 force를 요구한다.
+
+\subsection*{첫 구현 범위}
+
+\begin{itemize}
+  \item[\todo] 한 개 non-overlap patch와 patch-local fixed slot \(\Psi_r\)로 가장 작은 Local solver를 만든다.
+  \item[\todo] TD11-A 통과 뒤 strongly overlapping two-patch fixture를 추가한다.
+  \item[\todo] Oracle future error-reduction score로 fixed-\(K\) patch/overlap group을 선택한다.
+  \item[\todo] Physics-only Local과 full-resolution Local upper bound를 만든다.
+  \item[\todo] Network force는 0으로 두고 analytic/base local load만 사용한다.
+\end{itemize}
+
+\subsection*{Complement와 Local base}
+
+\begin{itemize}
+  \item[\todo] Force-space complement와 state-space mass orthogonality를 별도 API로 구분한다.
+  \item[\todo] Local force proposal을 patch-indexed \(\Psi_r\) coordinate로 projection하기 전 Global leakage를 측정한다.
+  \item[\todo] \(K_{\mathcal S_t\mathcal S_t}^0\),
+  \(C_{\mathcal S_t\mathcal S_t}\)와
+  \(Q_{\mathcal S_t,\mathrm{op}}=\Psi_{\mathcal S_t}^\top(h_K+h_C+f_{\mathrm p})\)를
+  분리한 \code{eq:local-dynamics}의 projective Local equation을 구현한다.
+  \item[\todo] Global state에서 오는 base aero/external/cross load를 정확히 한 번 넣는다.
+  \item[\todo] Selector/activation 값이 \(M,C,K\)를 scale하지 않도록 한다.
+  \item[\todo] Excitation blend \(\gamma_r\)는 TD11 Module 10의 force assembly에서 proposal에 정확히 한 번만 적용한다. Module 7, complement, Local solve, corrector에서 다시 곱하지 않는다.
+  \item[\todo] \(S_t=A_t\cup D_t\)의 principal \(M_{rs},C_{rs},K_{rs}\) block을 모아 하나의 coupled Local coordinate system으로 적분한다.
+  Active patch는 analytic excitation과 채택된 optional F를 제안하고, Decay patch는 F를 끄고 남은 state의 physical decay solve를 계속한다.
+  \item[\todo] Persistent \(z_{\mathrm{sup}},\dot z_{\mathrm{sup}}\)에서 \(S_t\) fixed slots를 gather--solve--scatter하고 Dormant slot 처리와 decay 비용을 profile한다.
+  \item[\todo] Canonical Local update는 \code{eq:local-effective-system}의 implicit midpoint exact
+  active-principal-block solve로 고정한다. Backward Euler/rest-linear은 Step 0 ablation이고
+  active-set factor cache key에는 package/operator version, integrator, \(\Delta t\)와 support signature를 넣는다.
+\end{itemize}
+
+\subsection*{V0 이후 dynamic basis 연구}
+
+\begin{itemize}
+  \item V0에서는 dynamic basis recomputation을 구현하지 않는다.
+  \item 후속 최적화에서만 old/new basis state transfer, kinetic/potential energy jump와 coordinate initialization을 연구한다.
+  \item Patch owner가 사라지거나 state-remap tolerance를 넘으면 fixed-superset으로 유지한다.
+\end{itemize}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+solve_local_complement(
+    previous_local_state, complement_force, global_prediction,
+    operators, active_decay_block_indices, dt
+) -> LocalPrediction
+\end{lstlisting}
+
+\subsection*{검증 체크}
+
+\begin{itemize}
+  \item[\todo] Patch별 \(\Phi^\top M\Psi_r\), inter-patch block rank/conditioning, force leakage와 modal amplitude inflation.
+  \item[\todo] Zero-wind/selector-off energy monotonic decay.
+  \item[\todo] Wind stop 후 physical recovery와 damping envelope.
+  \item[\todo] Activation/deactivation position, velocity, acceleration, jerk continuity.
+  \item[\todo] Same-p95 Global rank sweep 대 Oracle fixed-\(K\) Local의 velocity/trajectory/spectrum Pareto.
+  Coordinate/rank-matched 비교는 보조 진단으로만 보고한다.
+  \item[\todo] Patch-local normal, curvature, strain과 high-frequency PSD.
+  \item[\todo] 4--10초 rollout과 timestep \(\times0.5,\times2\) sensitivity.
+\end{itemize}
+
+\textbf{완료 기준.}
+Oracle Local이 동일 p95 dynamics latency의 Global rank sweep보다
+velocity RMSE와 trajectory/PSD--spectrum을 반복적으로 개선하고,
+zero-wind/activation/state transfer test에서 energy injection이나 discontinuity가 없다.
+실패하면 K10에 따라 Local branch를 중단하거나 basis를 재설계한다.
+
+\section{TD08. Teacher projection, 조건부 missing-force, benefit와 feedback label}
+
+\textbf{목표.}
+조건부 F가 위치 전체나 base force를 다시 학습하지 않도록 teacher trajectory에서 state와 missing force를 일관된 공간으로 변환하고,
+fixed-\(K\) Oracle 분석과 조건부 G를 위한 future-benefit label 및 corrector label을 만든다.
+
+\textbf{선행 조건.} TD02 teacher force channels, TD03 bases/operators, TD05/TD07 deterministic rollout.
+
+\subsection*{Teacher state projection}
+
+\begin{itemize}
+  \item[\todo] Teacher surface state를 material anchors로 resample한다.
+  \item[\todo] Mass projection으로 \(q^*,\dot q^*,\ddot q^*\)를 계산한다.
+  \item[\todo] Global reconstruction을 제거한 complement에서 \(z^*,\dot z^*,\ddot z^*\)를 계산한다.
+  \item[\todo] Teacher velocity/acceleration이 있으면 position finite difference보다 우선한다.
+  \item[\todo] Position-only 데이터에는 smoothing, weak-form/integral consistency와 rollout supervision을 둔다.
+  \item[\todo] Global/Local reconstruction residual과 patch complement energy를 저장한다.
+\end{itemize}
+
+\subsection*{Missing-force inverse dynamics}
+
+\begin{itemize}
+  \item[\todo] Local inertia, \(K^0,C^0\), frozen \(h_K,h_C\), hard lift \(f_{\mathrm p}\)와
+  Global--Local cross block을 canonical runtime과 같은 timing/owner로 label 식에 포함한다.
+  Rest-linear \(K_{\mathrm{lin}}^0,C_{\mathrm{lin}}^0\)를 canonical defect에 대신 넣지 않는다.
+  \item[\todo] Gravity, base analytic aero, compliant target/operator contribution과 hard-support lift를
+  force ledger에서 정확히 한 번 제거한다. Attachment를 generic external force로 다시 빼지 않는다.
+  \item[\todo] Teacher solver가 직접 제공한 force breakdown을 우선 사용한다.
+  \item[\todo] Structural, aerodynamic, attachment/reaction channel을 분리한다.
+  \item[\todo] Teacher-FSI sample에만 unsteady aero defect를 표시한다.
+  \item[\todo] Label noise/confidence와 inverse-dynamics balance residual을 저장한다.
+  \item[\todo] Differentiable Local integrator의 multi-step rollout loss와 force label을 교차 검증한다.
+\end{itemize}
+
+\begin{tcolorbox}[colback=LightRed,colframe=BlockRed,title=조건부 F 전에 반드시 고정할 generalized-to-nodal 계약,fonttitle=\bfseries]
+문서의 inverse dynamics는 Local generalized force \(\Delta Q_\ell^*\)를 정의하지만,
+overlap/conservation pipeline은 patch nodal-force proposal \(\Delta f_r^*\)를 요구한다.
+\textbf{기본 경로는 신뢰할 수 있는 channel별 teacher nodal-force breakdown}이다.
+Canonical contract는 \code{eq:teacher-anchor-force-label}--style transfer가 아니라
+각 stable label
+\code{eq:teacher-anchor-force-label}, \code{eq:teacher-hard-free-force-split},
+\code{eq:teacher-local-force-label},
+\code{eq:teacher-hard-structural-augmented-label},
+\code{eq:patch-force-label}을 따른다.
+\begin{enumerate}
+  \item Virtual-work conservative mesh-to-anchor transfer 뒤 known/base owner를 channel별로 한 번 뺀다.
+  Hard layout에서는 free-support field와 raw teacher hard-row reaction을 먼저 분리한다.
+  Hard-row 값은 patch Local head의 target이 아니다.
+  \item External/free-object channel은 Global component를 먼저 route하고 남은 resultant와
+  \(\Phi^\top f=0\)를 하나의 joint label solve에서 만족시킨다.
+  Hard missing-structural channel은 runtime과 동일한 augmented variable
+  \((y_{\mathrm{struct}}^*,\rho_{h,\mathrm{struct}}^*)\)와 constraint를 사용한다.
+  \item F head의 supervised output은 patch별 \emph{raw free-support remainder}다.
+  Owner-weighted reassembly 이후의 free force \(y^*\)와 hard companion \(\rho_h^*\)는
+  post-assembly supervision/diagnostic이다. Head가 reaction을 직접 출력하거나
+  raw/assembled target을 같은 tensor 이름으로 alias하지 않는다.
+  \item Package-versioned \(W_f\), support-restricted \(W_{f,t}\), accepted-relation graph의 \(L_f\),
+  smoothing coefficient와 one-sided attachment/boundary stencil을 label metadata에 저장한다.
+  \(L_f\)가 hard row, attachment boundary 또는 rejected close-layer relation을 가로지르지 않게 한다.
+\end{enumerate}
+
+\textbf{Generalized-force lifting은 동등한 기본 경로가 아니다.}
+Channel별 \(\Delta Q_{\ell,c}^{*,\mathrm{input}}\)와 독립적인 measured/teacher
+conservation target \(b_{\mathrm{cons},c}^*\)가 모두 있는 free/no-hard sample에서만
+\code{eq:generalized-force-lifting}의 optional 후속 경로를 허용한다.
+\(b_{\mathrm{cons},c}^*\)가 없는 generalized-only sample은 사용하지 않는다.
+Hard missing-structural generalized fallback은 raw support reference와 teacher reaction까지 있어야
+동일 augmented objective를 복원할 수 있으므로 첫 논문에서는 no-go다.
+Channel별 generalized split consistency가 실패하거나 aerodynamic/structural source가 불명확하면
+single total-defect head로 합치지 않고 conditional F를 거부한다.
+Transfer/lift/package version, constraint rank/feasibility와 raw--assembled reconstruction residual 없이
+TD09를 학습하면 \killmark 처리한다.
+\end{tcolorbox}
+
+\subsection*{Counterfactual future-benefit label}
+
+\begin{itemize}
+  \item[\todo] 같은 initial state/wind에서 Global-only horizon rollout을 만든다.
+  \item[\todo] 각 patch 또는 strongly overlapping group에 Oracle Local을 켠 counterfactual rollout을 만든다.
+  \item[\todo] Position, velocity, normal, curvature, strain과 spectrum error 감소를 계산한다.
+  \item[\todo] V0 label은 \(b_r=[\mathcal E_H^G-\mathcal E_H^{G+L_r}]_+\)인 positive error reduction으로 만들고 cost로 나누지 않는다.
+  \item[\todo] Strongly overlapping patch는 group counterfactual label도 만들고 benefit이 patch별로 가산적이라고 가정하지 않는다.
+  \item[\todo] Measured execution cost는 label 분모가 아니라 optional G/H profiling metadata로 별도 저장한다.
+  \item[\todo] Short-horizon label과 일부 long-horizon calibration sample을 만든다.
+  \item[\todo] Oracle active set, benefit rank, patch group과 horizon을 저장한다.
+  \item[\todo] Teacher future state/force는 label에만 쓰고 runtime feature에서는 제거한다.
+\end{itemize}
+
+\subsection*{Feedback label}
+
+\begin{itemize}
+  \item[\todo] Predictor geometry의 Global aerodynamic load를 저장한다.
+  \item[\todo] Oracle/corrected Local geometry의 Global aerodynamic load를 저장한다.
+  \item[\todo] 두 load의 차이 \(\Delta Q_g^{\mathrm{aero},*}\)를 저장한다.
+  \item[\todo] 실제 nonzero cross block의 updated-vs-consumed structural delta를 저장한다.
+  \item[\todo] Same-frame, next-frame, no-feedback reference를 구분한다.
+\end{itemize}
+
+\subsection*{필수 산출물}
+
+\begin{lstlisting}
+projected_states/
+  q_star, qdot_star, qddot_star
+  z_star, zdot_star, zddot_star
+  projection_error, complement_energy
+
+optional_F_missing_force_labels/
+  raw_free_support_patch_force_channels
+  assembled_free_force_and_hard_companion
+  local_generalized_force_and_channel_split_residual
+  base_channels_removed
+  W_f_W_f_t_L_f_and_boundary_versions
+  constraint_rank_feasibility_confidence
+
+optional_G_benefit_labels/
+  positive_benefit, oracle_topk, optional_measured_cost
+  error_components, horizon, patch_group
+
+feedback_labels/
+  predictor_load, corrected_load, aero_delta
+  structural_consumed, structural_updated, structural_delta
+\end{lstlisting}
+
+\textbf{완료 기준.}
+Label에서 base force를 다시 더하면 teacher balance가 깨지는 negative test와,
+runtime-observable feature만으로 dataset을 읽는 leakage test가 통과한다.
+Nodal-breakdown 기본 경로와 허용된 optional generalized lift가 구분되고,
+raw-head 대 assembled \((y^*,\rho_h^*)\) target, hard-support no-go와
+feedback consumed-force ledger가 문서와 코드에 고정된다.
+
+\section{TD09. 조건부 F: always-on active-patch missing-force expert}
+
+\textbf{목표.}
+V0 physics-only Local을 고정한 뒤 모든 oracle-relevant patch에서 missing-force expert를 실행하여
+network 자체가 추가로 필요한지 검증한다. 실패해도 TD10의 fixed-\(K\) physics selector와 core pipeline은 유지한다.
+
+\textbf{선행 조건.} TD07 stable Local physics, TD08 force target 결정/labels.
+
+\subsection*{입력 feature}
+
+\begin{itemize}
+  \item[\todo] Global prediction \(q,\dot q\)와 local history \(z,\dot z\).
+  \item[\todo] Patch current position/frame, normal, area, strain, curvature와 deformation-rate invariant.
+  \item[\todo] Spatial/relative wind와 base aero force.
+  \item[\todo] Setup-fixed material/attachment metadata와 topology confidence.
+  \item[\todo] Basis truncation indicator, 조건부 H를 쓸 때만 cubature error, optional recurrent memory.
+  \item[\todo] 모든 vector/tensor를 canonical 또는 co-rotated patch frame으로 표현한다.
+\end{itemize}
+
+\subsection*{출력 계약}
+
+\begin{itemize}
+  \item[\todo] Stage 7은 Module 3--4가 이미 만든 owner-resolved
+  \(f_{\mathrm{cache,ext}}\)를 active/decay support에 gather한다.
+  Selector/F를 위해 wind query나 analytic aero를 다시 평가하지 않는다.
+  \item[\todo] \code{PatchForceBatch}에서 analytic base aero, missing aero, missing structural을 별도 channel/owner/record ID로 유지한다.
+  \item[\todo] Position, displacement 또는 next state가 아니라 missing force proposal을 출력한다.
+  \item[\todo] F는 active patch의 raw free-support remainder만 출력한다.
+  Hard-row reaction과 post-assembly \((y,\rho_h)\)를 head output에 넣지 않는다.
+  \item[\todo] Missing aerodynamic external과 missing structural channel을 분리한다.
+  Source가 불명확한 single total-defect head와 attachment/reaction head는 first-paper no-go다.
+  \item[\todo] External resultant와 free/hard structural reaction semantics를 metadata에 둔다.
+  \item[\todo] Confidence/uncertainty와 optional recurrent memory를 출력한다.
+  \item[\todo] TD08의 nodal-breakdown 기본 경로 또는 모든 auxiliary conservation target을 갖춘
+  optional free/no-hard lift만 사용한다. Runtime 출력은 항상 raw free-support patch nodal-force proposal로 고정한다.
+  \item[\todo] Proposal 단계에서는 적분, overlap 평균, Global projection을 수행하지 않는다.
+\end{itemize}
+
+\subsection*{Model과 학습}
+
+\begin{itemize}
+  \item[\todo] 가장 작은 MLP/patch graph model을 baseline으로 만든다.
+  \item[\todo] Temporal memory 없는 model을 먼저 학습한다.
+  \item[\todo] Gust/history subset에서만 GRU/state-space memory의 추가 이득을 평가한다.
+  \item[\todo] Force regression, direction/magnitude, channel consistency loss를 구현한다.
+  \item[\todo] Differentiable Local solve를 통과한 one-step/rollout state loss를 추가한다.
+  \item[\todo] Work/energy injection penalty와 confidence-weighted noisy-label loss를 평가한다.
+  \item[\todo] Teacher forcing뿐 아니라 closed-loop predicted-state rollout을 curriculum에 넣는다.
+  \item[\todo] Training normalization과 material/wind scale extrapolation을 기록한다.
+\end{itemize}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+predict_patch_missing_forces(
+    active_patch_batch, global_prediction, previous_local_state,
+    wind_features, setup_metadata, model
+) -> PatchForceBatch
+\end{lstlisting}
+
+\subsection*{필수 비교}
+
+\begin{enumerate}
+  \item Global-only.
+  \item Full-resolution Local physics upper bound.
+  \item Reduced Local physics-only.
+  \item Reduced Local + learned missing force.
+  \item Direct local displacement network.
+  \item Learned force without Local physical integration.
+  \item PGRD-style all-node/all-patch residual.
+\end{enumerate}
+
+\subsection*{검증}
+
+Patch position/normal/curvature, flutter amplitude/frequency, high-frequency PSD,
+wind-stop phase/decay, rollout stability, energy growth와 Local expert latency를 측정한다.
+
+\textbf{완료 기준.}
+Always-on learned missing force가 동일 Local physics-only보다 여러 seed/trajectory에서 반복적으로 개선하며,
+direct displacement보다 wind-stop recovery와 long rollout이 안정적이다.
+개선이 없으면 K11에 따라 F를 제거하고 physics-only Local을 유지한다.
+F가 통과해도 learned G는 별도 TD10 비교를 통과해야 한다.
+
+\section{TD10. V0 fixed-\(K\) selector, 조건부 G와 patch state machine}
+
+\textbf{목표.}
+먼저 학습이나 patch-cost 가산성 가정 없이 fixed cardinality에서 Local physics를 선택하고,
+조건부 G가 runtime-observable feature로 같은 atomic grouping/\(K_A\)의 selection quality와
+measured-latency Pareto를 실제로 개선하는지 별도 검증한다.
+F를 채택한 경우 inactive F expert evaluation도 실제로 건너뛰되, F가 없어도 Local physics selector는 동작해야 한다.
+
+\textbf{선행 조건.} TD11-A를 거친 TD07-B stable fixed-superset Oracle Local physics.
+조건부 G에는 TD08 future-benefit labels가 추가로 필요하며, TD09는 F를 함께 dispatch할 때만 필요하다.
+
+\subsection*{V0 selector와 고정 cardinality}
+
+Module 3--4가 이미 계산한 free-DOF/owner-resolved anchor force를 재사용한다.
+Every-frame selector를 위해 auxiliary rollout, 두 번째 geometry reconstruction 또는
+aero/internal-force evaluation을 실행하지 않는다.
+\(f_{\mathrm{cache,ext}}^t=P_{\mathrm{free}}
+  (f_{\mathrm{aero}}^{\mathrm{base},t}+f_{\mathrm{gravity}}+f_{\mathrm{other,free}}^t
+  )\),
+\(f_{\mathrm{cache,sel}}^t=f_{\mathrm{cache,ext}}^t
+  +P_{\mathrm{free}}(h_K^t+h_C^t+f_{\mathrm p}^t)\)로 둔다.
+Compliant inhomogeneous target은 canonical projective target ledger의 \(h_K,h_C\)가 소유하며
+별도 attachment RHS로 다시 더하지 않는다.
+Atomic gating group \(\mathcal G\)의 cached driving load, fixed effective operator와
+owner-mass-normalized score는 canonical
+\code{eq:cached-local-drive}, \code{eq:cheap-dynamic-compliance}를 그대로 소비한다.
+Schema assertion은 \(K^0,C^0\), implicit-midpoint 계수
+\(a_M=4\Delta t^{-2},a_C=2\Delta t^{-1}\), mass-valued \(\varepsilon_m\)과
+setup/fixed-timestep prefactorization을 검사한다. Backward-Euler 계수는 diagnostic ablation type에만
+허용한다. 이 checklist에 표시한 기호와 계수는 독립 normative equation이 아니며,
+TD01 canonical-reference test가 위 label과 schema assertion의 drift를 막는다.
+\(m_{\mathcal G}^{\mathrm{own}}\)은 partition-of-unity owner weight로 각 anchor mass를
+group 안에서 한 번만 합산한 값이다.
+Prescribed hard support는 \(f_{\mathrm p}\), compliant target은 \(h_K,h_C\)에만 들어가며
+selector가 별도 attachment force로 다시 만들지 않는다.
+V0 active set은 Oracle benefit 또는 \(\eta_{\mathcal G,\mathrm{comp}}\)의
+\(\operatorname{TopK}(K_A)\)이며 \(K_A\) sweep으로 quality--latency curve를 만든다.
+Patch score의 합이나 patch별 cost가 overlap group의 joint benefit/wall-clock와 가산적이라고 가정하지 않는다.
+Full Global-only counter-state residual은 offline 또는 \(J\)-frame low-rate analysis ceiling으로만 구현하고,
+추가 solve/geometry/aero/internal evaluation과 activation delay를 모두 비용에 포함한다.
+
+\begin{itemize}
+  \item[\todo] Never, Always, matched-\(K\) Random, curvature, strain, every-frame cached-compliance와 Oracle future-benefit selector를 동일 \(K_A\)로 구현한다.
+  \item[\todo] Full counter-state residual은 offline/low-rate analysis backend로만 구현하고 추가 solve/force evaluation과 delay를 포함한다.
+  \item[\todo] \(K_A\in\{0,\ldots,K_{\max}\}\) sweep 또는 합리적인 subset으로 quality--latency curve를 만든다.
+  \item[\todo] Strongly overlapping patch는 TD08에서 정의한 group 단위로 선택한다.
+  \item[\todo] Patch별 benefit 합과 patch별 profiler cost 합을 joint set의 benefit/wall-clock로 간주하지 않는다.
+  \item[\todo] Cross-group excitation, high-curvature/low-current-load release,
+  topology/operator-error negative control과 fast traveling/reversing gust를 mandatory blind-spot fixture로 고정한다.
+  \item[\todo] Pure compliance, dimensionless deterministic hybrid, low-rate/full counter와
+  Oracle을 같은 fixed cardinality \(K_A\)와 measured p95에서 비교한다.
+  Hybrid가 비용 포함 Pareto를 개선할 때만 runtime 후보로 승격하고, 실패하면 K24를 적용한다.
+  \item[\todo] Teacher-residual threshold는 runtime 불가능한 analysis-only upper bound로 명확히 분리한다.
+  \item[\todo] On/off threshold, hysteresis와 minimum dwell time을 구현한다.
+  \item[\todo] Smooth excitation blend \(\gamma\)를 계산하되 Module 10 assembly에만 전달하고 Local \(M,C,K\), state 또는 다른 force stage에는 곱하지 않는다.
+  \item[\todo] Inactive patch/group을 active principal-block gather와 조건부 F batch에서 제외한다.
+  \item[\todo] Small active set에서 gather/scatter, factorization/solve와 kernel launch overhead의 break-even을 측정한다.
+  \item[\todo] Always-on이 더 빠른 active ratio에서는 runtime dispatcher가 fallback할 수 있게 한다.
+\end{itemize}
+
+\subsection*{조건부 G: learned future-benefit selector}
+
+\begin{itemize}
+  \item[\todo] Pooled Global state와 cheap patch invariant만 사용하는 lightweight benefit ranker를 만든다.
+  \item[\todo] Teacher future state, teacher residual/force를 runtime feature에서 제거한다.
+  \item[\todo] G의 첫 버전 출력은 positive future-error reduction score와 uncertainty이며 predicted cost로 나누지 않는다.
+  \item[\todo] Calibration loss/temperature calibration과 uncertainty threshold를 구현한다.
+  \item[\todo] Cached-compliance와 low-rate/full-counter signal을 feature로 넣은/뺀 learned ranker ablation을 제공하고 추가 비용을 분리한다.
+  \item[\todo] Gate feature construction, model inference와 selection 비용을 별도 profile한다.
+  \item[\todo] Hardware-aware predicted-cost/TopBudget는 fixed-\(K\) 결과와 profiler가 필요성을 보인 뒤의 optional extension으로만 구현한다.
+\end{itemize}
+
+\subsection*{Active/Decay/Dormant state}
+
+\begin{longtable}{L{0.16\linewidth}L{0.34\linewidth}L{0.42\linewidth}}
+\toprule
+상태 & 실행 & 전환 계약 \\
+\midrule
+Dormant & Cheap selector만 실행 & Fixed-\(K\) selection과 on 조건을 통과하면 Active. Local state는 충분히 작아야 함. \\
+Active & Module 10에서 \(\gamma\)가 한 번 적용된 new excitation + Local physical solve; optional F & Off 조건과 dwell을 만족하면 Decay. State reset 금지. \\
+Decay & Optional F off, Module 10 excitation fade, \(S=A\cup D\) Local physical decay solve & Owner/group energy와 selector score가 충분히 작을 때만 Dormant. 재상승하면 Active. \\
+\bottomrule
+\end{longtable}
+
+Actual-skip trace는 Dormant의 Local force/solve/expert 전체 skip,
+Decay의 새 expert/새 excitation skip과 mandatory physical decay solve를 서로 분리한다.
+Decay solve를 끄거나 state를 reset해 speedup을 만드는 구현은 허용하지 않는다.
+Patch/group fixed coordinate rank를 \(r_r\), core--halo unique-anchor support를
+\(\mathcal I_r\), full superset rank를 \(r_{\mathrm{sup}}\)라 두고
+\(r_A=\sum_{r\in\mathcal A_t}r_r\),
+\(r_D=\sum_{r\in\mathcal D_t}r_r\),
+\(r_S=r_A+r_D\)와 각각의 normalized ratio를 기록한다.
+Unique support size는
+\(n_A=|\bigcup_{r\in\mathcal A_t}\mathcal I_r|\),
+\(n_D=|\bigcup_{r\in\mathcal D_t}\mathcal I_r|\),
+\(n_S=|\bigcup_{r\in\mathcal A_t\cup\mathcal D_t}\mathcal I_r|\)로 별도 보고한다.
+Patch/group cardinality \(|\mathcal A_t|,|\mathcal D_t|\), coordinate rank와
+unique-anchor support size를 서로 대체하지 않는다.
+
+\begin{itemize}
+  \item[\todo] Active에서 Decay로 갈 때 \(z,\dot z\)를 보존한다.
+  \item[\todo] Decay에서 physical energy가 비증가하는지 검사한다.
+  \item[\todo] Recurrent memory의 decay/cleanup 정책을 정한다.
+  \item[\todo] Toggle count, activation duration, acceleration/jerk를 기록한다.
+  \item[\todo] Active/decay/dormant index의 장시간 memory leak를 검사한다.
+  \item[\todo] Stationary/slow-traveling/fast-traveling/reversing gust별로
+  \(r_A,r_D,r_S,n_A,n_D,n_S\)와 normalized rank ratio,
+  decay residence distribution과 median/p95,
+  unique-signature count/churn, cache hit/miss,
+  gather/factor/solve/scatter p50/p95/p99와 always-on 대비 latency를 기록한다.
+\end{itemize}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+select_local_patches(
+    global_prediction, patch_features, previous_state,
+    fixed_k, selector, optional_gate_model=None
+) -> SelectorDecision
+
+update_patch_state_machine(
+    selector_decision, local_energy, previous_state, thresholds
+) -> PatchStateUpdate
+\end{lstlisting}
+
+\subsection*{필수 비교와 지표}
+
+Never, Always, matched-\(K\) Random, curvature, strain, cached-compliance,
+low-rate/full-counter와 teacher-residual analysis-only, Oracle benefit 및 조건부 G learned benefit를 비교한다.
+조건부 cost-aware extension은 별도 profiler ablation으로 둔다.
+High-benefit recall/precision/AUPRC, calibration, Oracle regret, activation delay/high-benefit miss,
+active/solve-set ratio,
+실제 active Local solve 수와, F를 채택한 경우 expert call 수, kernel 수, p50/p95 latency, toggle/jerk를 보고한다.
+
+\textbf{완료 기준.}
+Core 완료는 fixed-\(K\) Oracle/cached-compliance selector, state decay와 실제 active-block skip이 재현되는 것이다.
+G는 동일 \(K_A\)와 동일 p95 latency 두 조건에서 cached-compliance/heuristic보다 낮은 dynamics error를 보이고,
+Always-on 대비 실제 wall-clock를 줄일 때만 채택한다. Classification score만 높은 것은 G 완료가 아니다.
+
+\section{TD11. Conservative overlap, complement와 Local-to-Global corrector}
+
+\textbf{목표.}
+여러 active patch의 force를 하나의 물리계로 조립하고,
+Global double counting을 제거한 Local update가 corrected geometry를 통해 Global state에 실제로 feedback되게 한다.
+
+\textbf{선행 조건.}
+TD11-A assembly/complement는 TD03 basis/operator와 TD04--TD05 force contract 뒤,
+공식 TD07 Oracle Local Pareto 전에 synthetic/Oracle force fixture로 고정한다.
+TD11-B corrected-aero/structural-delta corrector는 안정적인 TD07 rollout 뒤 실행한다.
+TD10-core selector/state metadata는 adaptive trace에만 필요하다.
+조건부 F 또는 G를 채택할 때만 각각 TD09 또는 TD10-G learned artifact를 추가로 요구한다.
+
+\subsection*{실제 frame 내부 순서}
+
+\begin{enumerate}
+  \item Module 7이 active patch별 analytic Local base aero를 출력하고, 조건부 F를 채택한 경우에만 missing aero/structural proposal을 별도 channel로 출력한다.
+  \item Module 10이 \(S_t=A_t\cup D_t\)의 각 channel을 anchor force space에 scatter하고 \(\gamma_r\)를 proposal에 정확히 한 번 적용한다. Decay patch의 optional F는 실행하지 않는다.
+  \item Module 10--9가 overlap/conservation과 \(\Phi^\top f=0\)를 하나의 joint KKT에서 동시에 만족시킨다. 순차 projection은 허용하지 않는다.
+  \item Module 8이 channel별 Local generalized force를 처음 합쳐 fixed-superset의 \(S_t\) principal block 하나에서 Local state \(z,\dot z\)를 한 번 적분한다.
+  \item Module 11이 corrected aerodynamic delta와 updated-minus-consumed structural cross delta로 Global corrector를 한 번 푼다.
+\end{enumerate}
+
+\subsection*{Module 10: overlap-aware force assembly}
+
+\begin{itemize}
+  \item[\todo] Patch-to-global scatter와 core--halo partition weight를 구현한다.
+  \item[\todo] Selector의 \(\gamma_r\)를 anchor-force proposal에 정확히 한 번 적용하고 force ledger에 \code{gamma\_consumed\_at=module10}을 남긴다.
+  \item[\todo] Analytic base aero와 조건부 F의 missing aero/missing structural을 assembly 이후까지 서로 다른 owner/lineage로 유지한다.
+  \item[\todo] Active/decay core--halo가 만지는 unique anchor support \(\mathcal I_t\)를 만들고,
+  restricted force injection, Global row와 current-wrench operator를
+  \code{eq:support-restricted-operators}에 맞춰 조립한다.
+  \item[\todo] External aerodynamic residual은 같은 support 안에서 Global component를 먼저 route한 뒤
+  Local remainder의 unique resultant를 보존한다. Full-domain Global field를 만든 뒤 잘라내거나
+  support 밖 remainder를 Local KKT로 상쇄하지 않는다.
+  \item[\todo] Free object의 intrinsic structural correction만 zero net wrench를 만족시킨다.
+  Hard support에서는 free-node correction과 object-to-support companion reaction을 함께 닫고,
+  compliant attachment는 structural/internal residual이 아닌 별도 owner로 유지한다.
+  \item[\todo] Patch-copy force를 unique shared-anchor support로 먼저 condense한다.
+  Owner partition은 scatter invariant로 검사하고, shared-anchor position/velocity continuity는
+  persistent state와 single coupled solve로 보장한다. 이를 force-KKT row로 중복 추가하지 않는다.
+  \item[\todo] Setup-defined block-diagonal SPD \(W_{f,t}\), support injection \(E_t\),
+  channel별 \(B_c^t,d_c^t\)와 current-geometry force/torque operator를 구현한다.
+  \item[\todo] Dense anchor-primal reference solver와 production unique-anchor small-Schur solver를 분리한다.
+  \item[\todo] Independent constraint-row inventory, rank/condition과 channel별 per-RHS consistency를 검사한다.
+  Infeasible/rank-deficient frame은 routing/constraint를 수정하거나 fail-fast한다.
+  Aggregate feasible rate 또는 ridge/row deletion으로 특정 RHS 실패를 숨기지 않는다.
+  \item[\todo] Fixed operator block과 geometry-dependent torque Gram update를 분리하고,
+  exact signature가 같은 channel/frame에서만 factor를 공유한다.
+  \item[\todo] Force/objective/constraint residual, Schur condition/pivot,
+  raw-to-routed force adjustment, reaction amplification, generalized-work 보존,
+  factor share/rebuild와 scatter/operator-build/factor/dual-solve/backprojection timing을 기록한다.
+  Canonical diagnostics source는 \code{eq:support-routing-diagnostics},
+  \code{eq:joint-feasibility-residual}, \code{eq:structural-schur-adjustment-diagnostics}다.
+  \item[\todo] Development split에서 attachment class, support-size/rank,
+  constraint-row inventory와 conditioning으로 나눈 signature class/bin별
+  route/adjustment/reaction amplification, support expansion 횟수, 최대 halo 폭/anchor ratio와
+  factor/cache budget을 fit/freeze한다. Test의 새 exact active-set ID는 검증된 class에 속하고
+  runtime diagnostic을 통과하면 허용하되, unseen class나 frozen cap을 넘으면
+  더 넓은 full-domain solve로 조용히 후퇴하지 않고 package를 reject하거나
+  사전 선언한 always-on Local fallback과 최초 초과 시점을 기록한다.
+  \item[\todo] Patch partition/core--halo 폭 변경에 대한 accuracy, feasible rate,
+  halo-expansion frequency와 p95/p99 sensitivity를 검사한다.
+  \item[\todo] 단순 displacement/force average는 ablation backend로만 제공한다.
+\end{itemize}
+
+\subsection*{Module 9: Global force complement}
+
+\begin{itemize}
+  \item[\todo] Force-space projector와 displacement/state projector의 mass metric을 명시한다.
+  \item[\todo] Owner/overlap은 unique-anchor condensation으로 처리하고,
+  internal action--reaction은 가능한 antisymmetric edge-force parameterization으로 내재화한다.
+  남은 low-row resultant constraint와 \(\Phi^\top f_\ell^\perp=0\)만 하나의 joint Schur system에서 푼다.
+  \item[\todo] Joint solution의 generalized leakage와 각 conservation residual tolerance를 검사한다.
+  \item[\todo] First-paper method는 별도 Global defect head를 두지 않고 routed component를 diagnostic/loss로만 기록한다.
+  \item[\todo] Corrected-aero delta와 legitimate cross reaction은 complement 제거 대상이 아님을 channel로 보장한다.
+  \item[\todo] Wrench/conservation projection 뒤 complement를 순차 적용하거나 그 반대 순서로 적용하는 code path를 negative test로 금지한다.
+  \item[\todo] Runtime fallback도 conservation과 \(\Phi^\top f=0\)를 동시에 만족해야 하며,
+  torque 삭제나 sequential projection으로 후퇴하지 않는다.
+\end{itemize}
+
+\subsection*{Module 8: single Local update}
+
+\begin{itemize}
+  \item[\todo] Assembly/complement 결과를 channel별 \(Q_{\ell,c}^{\perp}\)로 변환한다.
+  \item[\todo] Active와 Decay patch의 fixed slots를 모아 \(M_{rs},C_{rs},K_{rs}\) active principal block 하나에서 적분한다.
+  \item[\todo] Base analytic Local aero와 사용 가능한 조건부 F defect channel은 여기서 처음 합치고, cross load는 별도 structural coupling 항으로 소비한다.
+  \item[\todo] Patch별 solver/integrator 호출 후 결과를 average하는 code path가 없음을 trace test로 보장한다.
+  \item[\todo] Patch self energy와 overlap-group/cross-block energy를 구분해 Local work, residual, state transition diagnostics와 함께 저장한다.
+\end{itemize}
+
+\subsection*{Free/hard/compliant reaction과 post-step residual}
+
+\begin{itemize}
+  \item[\todo] Free object는 intrinsic structural correction의 zero-wrench residual을 기록하되
+  support reaction을 생성하지 않는다.
+  \item[\todo] Hard support의 channel companion은
+  \code{eq:hard-reaction-wrench-balance}의 object-to-support 부호를 사용한다.
+  이는 support 밖의 정당한 reaction channel이며 Local excitation/complement force로 재투영하지 않는다.
+  \item[\todo] Runtime total hard support-on-object reaction은 corrector와 final \(q,z\)가 확정된 뒤,
+  \code{eq:post-step-midpoint-kinematics}의 discrete acceleration과
+  \code{eq:full-applied-external-force-ledger}를 사용해 post-step diagnostic으로만 복원한다.
+  \item[\todo] \code{eq:hard-total-reaction-residual}과
+  \code{eq:hard-reaction-rom-residual-decomposition}에 따라
+  total hard reaction, free-DOF \(r_{\mathrm{ROM}}\), Global/Local virtual-work residual을 분리한다.
+  Hard reaction 하나로 reduced truncation residual까지 닫았다고 보고하지 않는다.
+  \item[\todo] Compliant support는 \code{eq:compliant-reaction-ledger}의
+  object force와 handle reaction을 분리하고 common-motion virtual-work balance를 검사한다.
+  \item[\todo] Prescribed hard lift, compliant force, projective targets, base/corrected aero와
+  optional F field가 post-step full-force ledger에 정확히 한 번만 들어가는 negative owner test를 만든다.
+\end{itemize}
+
+\subsection*{Module 11: feedback와 corrector}
+
+\begin{itemize}
+  \item[\todo] Predictor와 Local-corrected anchor/surface state를 각각 복원한다.
+  \item[\todo] Active/halo region 또는 필요 sample에서 corrected aero를 재평가한다.
+  \item[\todo] \(\Delta Q_g^{\mathrm{aero}}=Q_g^{\mathrm{corrected}}-Q_g^{\mathrm{predictor}}\)만 corrector에 넣는다.
+  \item[\todo] Full base aero가 corrector에 다시 들어가면 실패하는 unit test를 만든다.
+  \item[\todo] Nonzero \(K_{g\ell},C_{g\ell}\)일 때만 structural feedback을 사용한다.
+  \item[\todo] One-corrector를 default로 구현한다.
+  \item[\todo] Under-relaxation, force-delta clamp와 smaller timestep option을 둔다.
+  \item[\todo] No/next-frame/same-frame one-corrector/multiple-iteration을 비교한다.
+\end{itemize}
+
+\begin{tcolorbox}[colback=LightRed,colframe=BlockRed,title=Structural feedback 소비 계약,fonttitle=\bfseries]
+Module 5는 이전 Local state의 cross coupling을 소비하고 그 값을 \code{predictor\_cross\_load}로 기록한다.
+Module 11은 updated reaction 전체가 아니라
+\code{actual-midpoint coupling - predictor-midpoint coupling}인
+\code{structural\_cross\_delta}만 더한다.
+Canonical definition은 \code{eq:structural-feedback}이며,
+actual midpoint가 predictor midpoint와 같으면 delta가 정확히 0이어야 한다.
+Corrector는 endpoint 차이에 generic \code{SolveGlobal}을 호출하지 않고
+\code{eq:global-incremental-corrector}를 사용한다.
+TD01 schema assertion은 factor $2$, velocity update $2/\Delta t$와
+implicit-midpoint operator coefficients가 canonical label과 일치하는지만 검사하며,
+이 checklist에 별도 corrector equation을 복제하지 않는다.
+Endpoint corrected-aero delta를 held midpoint-load delta로 적용하는 partitioned approximation이므로
+monolithic/iterated midpoint reference와의 차이를 별도 보고한다.
+Force ledger와 negative double-count test 없이 TD11을 완료 처리하지 않는다.
+\end{tcolorbox}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+build_joint_constraint_operator(
+    patch_force_batch, selector_decision, package, operators
+) -> ConstraintOperator
+
+solve_joint_constraints_schur(constraint_operator)
+    -> AssemblyResult, ConstraintSolveReport
+
+solve_joint_constraints_dense_reference(constraint_operator)
+    -> AssemblyResult
+
+validate_joint_constraint_equivalence(
+    assembly_result, dense_reference
+) -> ContractReport
+
+solve_local_complement(...)
+    -> LocalPrediction
+
+correct_global_state(
+    global_prediction, local_prediction, predictor_surface,
+    wind_query, operators, consumed_force_ledger, dt
+) -> CorrectedDynamicState
+
+recover_support_reaction_ledger(
+    corrected_state, previous_state, applied_force_ledger,
+    package, dt
+) -> SupportReactionLedger
+\end{lstlisting}
+
+\subsection*{필수 검증}
+
+\begin{itemize}
+  \item[\todo] Overlap boundary position/velocity/force jump.
+  \item[\todo] Free object의 intrinsic structural net wrench와 object drift/rotation;
+  hard support에서는 free-node force 단독이 아니라 companion reaction을 합친 sign-resolved wrench.
+  \item[\todo] Global force/state leakage와 modal amplitude inflation.
+  \item[\todo] Dense primal reference 대 small-Schur force/objective/constraint residual equivalence.
+  \item[\todo] External route와 structural/hard-reaction augmented route 각각의 per-RHS feasible rate,
+  adjustment/reaction amplification, generalized-work, halo expansion/cap과 final support ratio.
+  \item[\todo] Constraint row 수가 overlap patch 수에 비례하지 않고,
+  support/geometry/row signature 변경 시 factor가 정확히 invalidate되는지 검사한다.
+  \item[\todo] Unique scatter, operator update, Schur build/factor/dual solve/backprojection의 p50/p95/p99와 dynamics latency share.
+  \item[\todo] Corrector base-force/cross-force double-count negative test.
+  \item[\todo] Free/hard/compliant fixture의 reaction 부호/wrench와 post-step
+  \(r_{\mathrm{ROM}}\) 분해; synchronized reference와 one-corrector residual을 구분한다.
+  \item[\todo] Local correction 전후 Global modal state와 teacher error 차이.
+  \item[\todo] Corrected-aero delta magnitude/phase와 extra latency.
+  \item[\todo] Strong follower-force, abrupt gust와 timestep stress test.
+\end{itemize}
+
+\textbf{완료 기준.}
+TD11-A는 proposed assembly/complement가 dense reference와 일치하고 simple averaging보다 seam,
+net wrench와 drift를 줄이는 것이다. TD11-B는 one-corrector가 base force를 중복하지 않으면서
+적어도 일부 benchmark의 Global response/teacher error를 개선하는 것이다.
+Feedback 효과가 없으면 closed-loop feedback SYS claim을 제거하고 Local-only 또는 next-frame update로 단순화한다.
+
+\section{TD12. Static-GS topology/operator distillation과 predicted package}
+
+\textbf{목표.}
+Training-only source topology privilege를 이용하되, target setup에는 static 3DGS와 명시적 metric/material/attachment metadata만 받아
+explicit target triangle-mesh reconstruction 없이 sparse oriented material scaffold와 reduced object package를 생성한다.
+
+\textbf{선행 조건.}
+Step 0 중에는 coordinate/schema, relation rank/valence, area/mass와 close-layer false edge를
+보는 최소 readout-only probe만 허용한다.
+Formal TD12-R은 Step-0 gate 통과 뒤 Track A0와 병렬로 시작한다.
+Full TD12 학습은 TD03 Oracle package, TD12-R 통과와 TD05/TD07/TD10-core/TD11에서 downstream-sensitive operator/basis 요구를 확인한 뒤 시작한다.
+
+\subsection*{TD12-R: 조기 representation feasibility kill track}
+
+Adaptive dynamics 전체 구현 전에 5--10개의 simple thin-surface object와 각 object에서 독립적으로 생성한 여러 static 3DGS를 사용한다.
+
+\begin{itemize}
+  \item[\todo] Oracle surface와 independent GS마다 anchor/oriented point--edge--local-relation graph를 복원한다.
+  \item[\todo] Total/local area와 user density/thickness로 유도한 mass 보존 오차를 측정한다.
+  \item[\todo] 동일 setup material/attachment에서 첫 8--16개 eigenfrequency 오차를 비교한다.
+  \item[\todo] 대응 modal subspace의 principal angle과 downstream Global projection 오차를 측정한다.
+  \item[\todo] Modal/eigenfrequency error 대 downstream rollout error를 asset/load별 scatter로 저장하고 단순 단조관계로 과장하지 않는다.
+  \item[\todo] 접힌 면, 얇은 간격의 이중 layer와 front/back에서 false edge/hinge shortcut을 계수한다.
+  \item[\todo] Reconstruction seed, Gaussian density, hole/floater 변화에서 package validation과 실패 reason을 기록한다.
+\end{itemize}
+
+TD12-R이 반복적으로 area/mass, low modes 또는 close-layer topology를 보존하지 못하면,
+full adaptive system을 기다리지 않고 topology distillation 범위를 줄이거나
+``without explicit target triangle-mesh reconstruction'' 주장을 제거한다.
+
+\subsection*{Surface reliability와 anchor selection}
+
+\begin{itemize}
+  \item[\todo] Opacity, covariance surface-likeness, multi-view contribution과 isolation feature를 계산한다.
+  \item[\todo] Boundary/curvature/layer evidence와 reconstruction confidence를 추가한다.
+  \item[\todo] Raw Gaussian count를 mass/area/importance로 직접 사용하지 않는다.
+  \item[\todo] \(K\ll N_G\) material anchor를 coverage와 reliability 기준으로 선택한다.
+  \item[\todo] Anchor rest normal/area weight와 geometry/reconstruction reliability를 예측한다.
+  \item[\todo] User density/thickness와 area weight에서 mass를 유도하고 partition-of-unity로 total area/mass를 보존한다.
+\end{itemize}
+
+\subsection*{Oriented topology와 thin-shell relation}
+
+\begin{itemize}
+  \item[\todo] Geometry/evidence 기반 candidate edge generator를 만든다.
+  \item[\todo] Material adjacency, rest length와 tangent를 예측하되 stretch/shear/bending 계수는 user material metadata와 geometry에서 조립한다.
+  \item[\todo] Bending/hinge relation과 orientation consistency를 예측한다.
+  \item[\todo] 가까운 disconnected layer와 front/back shortcut을 거부한다.
+  \item[\todo] User attachment layout을 anchor constraint로 transfer하고 hard/compliant parameter를 그대로 보존한다.
+  \item[\todo] Core--halo patches와 overlap graph를 생성한다.
+  \item[\todo] Area-share logit과 별도로 membrane/bending relation-validity probability를 예측하고,
+  reconstruction evidence와 MLS condition을 입력으로 object-disjoint development split에서 calibrate/freeze한다.
+  Canonical source는 \code{eq:relation-validity-confidence}다.
+  \item[\todo] Candidate count/valence에 의존하는 raw score sum을 absolute confidence로 쓰지 않고,
+  count-aware anchor aggregator와 operator-constructibility target을
+  \code{eq:relation-absolute-confidence}, \code{eq:anchor-absolute-confidence-target}에 맞춰 구현한다.
+  \item[\todo] Relation validity, anchor absolute confidence, attachment-transfer residual과
+  support-expand/fallback/reject reason을 channel별로 저장한다.
+\end{itemize}
+
+\subsection*{Operator/basis/package construction}
+
+\begin{itemize}
+  \item[\todo] Arbitrary dense matrix를 network가 직접 출력하지 않는다.
+  Predicted \(\mathcal Q_{\mathrm{op}}\), calibrated validity/area share와 setup material에서
+  \(M,K_{\mathrm{lin}}^0,C_{\mathrm{lin}}^0\), canonical
+  \(K^0,C^0\)와 target descriptor ledger를 TD03과 같은 typed construction으로 조립한다.
+  \item[\todo] Predicted package에서 TD01의 PSD/symmetry/null-space뿐 아니라
+  rigid/equivariance, normal-curvature pollution, action/modal closure와 target-ledger test를 다시 실행한다.
+  \item[\todo] Global basis와 patch-local fixed-superset Local basis/cross block을 재구성하고 TD01의 per-patch orthogonality/active-block conditioning을 검사한다.
+  \item[\todo] Full-anchor aerodynamic evaluator를 predicted anchors에 구성하고, 조건부 H를 채택한 경우에만 sample/cubature를 transfer 또는 refit한다.
+  \item[\todo] Static Gaussian-to-anchor affine binding을 생성한다.
+  \item[\todo] Setup package가 explicit target triangle-mesh reconstruction, FEM/MPM particle grid를 참조하지 않는지 trace한다.
+  \item[\todo] Package checksum, version, confidence와 runtime compatibility report를 저장한다.
+\end{itemize}
+
+\subsection*{권장 API}
+
+\begin{lstlisting}[language=Python]
+infer_anchor_scaffold(
+    canonical_gs, setup_metadata: SetupMetadata, model, config
+) -> AnchorScaffold
+
+build_object_package(
+    canonical_gs, anchor_scaffold, setup_metadata, setup_models, config
+) -> ObjectPackage
+\end{lstlisting}
+
+\subsection*{Fallback와 정직한 scope}
+
+\begin{itemize}
+  \item[\todo] Low absolute confidence에서는 support 확대와 MLS rank/conditioning 재검사를 먼저 수행한다.
+  여전히 실패하면 user hint, explicit conservative fallback 또는 package rejection을 반환하며,
+  confidence를 stiffness/material scale에 곱해 실패를 숨기지 않는다.
+  \item[\todo] 추가 geometry hint/category prior를 사용한 결과를 geometry-scaffold automatic 결과와 분리한다. 필수 user material/attachment metadata는 양쪽에 동일하게 제공한다.
+  \item[\todo] Explicit target triangle-mesh reconstruction fallback은 별도 baseline/flag로 기록한다.
+  \item[\todo] Stable area-normal/bending에 watertight triangle mesh가 사실상 필수라면 ``without explicit target triangle-mesh reconstruction'' claim을 제거하거나 범위를 명시적으로 약화한다.
+\end{itemize}
+
+\subsection*{E1 비교와 지표}
+
+Oracle topology, proposed predicted topology, Euclidean kNN, FPS+kNN,
+surface reconstruction mesh, no orientation, no bending/stretch separation,
+user attachment를 oracle anchor에 직접 지정한 경우와 predicted anchor로 transfer한 경우를 비교한다.
+Edge/hinge F1, layer shortcut, normal consistency, attachment-transfer error, area/mass error,
+relation-validity Brier/ECE/AUPRC, anchor absolute-confidence coverage/false-accept rate,
+modal frequency/shape와 downstream rollout/aero/stability를 함께 보고한다.
+Calibration 지표는 object-disjoint test에서 anchor density, candidate count, valence와
+condition-number bin별로 함께 보고한다. Topology/validity confidence는 triage 근거일 뿐이며,
+area/mass, rank/condition, affine/quadratic reproduction, 초기 8--16 modes/modal angle와
+common-probe rollout/stability hard check를 대체하지 않는다.
+
+\textbf{완료 기준.}
+Independent static-GS variants에서 package validation이 통과하고,
+TD12-R의 area/mass, 첫 8--16 eigenfrequency, modal principal angle과 close-layer test가 통과하며,
+Predicted topology의 downstream dynamics error가 Oracle package 대비 개발 허용 범위 내에 있다.
+Topology F1만 높고 dynamics가 실패하면 완료가 아니다.
+
+\section{TD13. Target runtime engine, final Gaussian transport와 rendering}
+
+\textbf{목표.}
+Versioned object package와 static GS에서 정확한 14-module dependency로 한 frame을 실행하고,
+최종 total deformation을 Gaussian mean/covariance/frame에 한 번 transport한다.
+
+\textbf{선행 조건.}
+TD04, TD05, TD07, TD08, TD10-core, TD11과 TD12의 core standalone modules/contracts.
+H/F/G를 채택한 configuration에서만 각각 TD06/TD09/TD10-G optional artifact를 추가로 요구한다.
+
+\subsection*{통합 Runtime API}
+
+\begin{lstlisting}[language=Python]
+class WindDynamicsEngine:
+    def setup(
+        self,
+        gs: CanonicalGaussianAsset,
+        setup_metadata: SetupMetadata,
+    ) -> ObjectPackage: ...
+
+    def initialize_state(
+        self,
+        package: ObjectPackage,
+    ) -> RuntimeState: ...
+
+    def step(
+        self,
+        package: ObjectPackage,
+        state: RuntimeState,
+        wind: WindQuery,
+        handle_motion: HandleMotion,
+        dt: float,
+    ) -> tuple[FrameOutput, RuntimeState]: ...
+\end{lstlisting}
+
+\subsection*{Exact typed frame trace}
+
+\begin{lstlisting}
+PreparedFrameState
+ -> SurfaceState
+ -> AnchorAeroForces
+ -> ReducedAeroLoad
+ -> GlobalPrediction
+ -> SelectorDecision
+ -> PatchForceBatch
+ -> AssemblyResult
+ -> ComplementForce
+ -> LocalPrediction
+ -> CorrectedDynamicState
+ -> FinalAnchorState
+ -> DeformedGaussianAsset
+ -> RuntimeState / FrameDiagnostics / FrameOutput
+\end{lstlisting}
+
+\begin{itemize}
+  \item[\todo] Debug mode에서 위 trace와 shape/device/version을 frame별 저장한다.
+  \item[\todo] \code{AnchorAeroForces}는 V0 full-anchor analytic evaluation을 뜻하고, 조건부 H 사용 시 sample/gather 결과와 full-validation 결과를 별도 lineage로 기록한다.
+  \item[\todo] \code{SelectorDecision}은 fixed-\(K\) Oracle/cached-compliance selector를 포함하고, full-counter는 offline/low-rate analysis, G는 optional backend로만 표기한다.
+  \item[\todo] \code{PatchForceBatch}는 analytic/base channel을 항상 포함하며 F defect channel은 model이 채택된 configuration에서만 존재한다.
+  \item[\todo] Production mode에서 필요한 diagnostic만 비동기/저비용으로 기록한다.
+  \item[\todo] Target setup/runtime이 explicit target triangle-mesh reconstruction, MPM/FEM/CFD/LBM code path를 호출하지 않는지 trace test한다.
+  \item[\todo] Inactive expert가 실제 skip되는지 kernel/call counter로 검사한다.
+  \item[\todo] Factorization, sample, binding, model cache lifetime과 invalidation을 검사한다.
+  \item[\todo] NaN/Inf, invalid covariance, inverted area, excessive force/energy를 fail-safe diagnostic으로 잡는다.
+\end{itemize}
+
+\subsection*{Module 12: final anchor state}
+
+\begin{itemize}
+  \item[\todo] Corrected \(q,z\)를 rest anchor에 단 한 번 lift한다.
+  \item[\todo] Final position/velocity, \code{SurfaceTangentMap3x2}, cross-product normal/area와 별도의 \code{FullShellMap3x3}를 계산한다.
+  \item[\todo] Global map 후 Local map을 순차로 Gaussian에 적용하지 않는다.
+  \item[\todo] Hard/compliant attachment error와 seam/leakage를 기록한다.
+  \item[\todo] Rank/orientation degeneracy를 confidence/fallback에 전달한다.
+\end{itemize}
+
+\subsection*{Module 13: affine Gaussian transport와 rendering}
+
+\begin{itemize}
+  \item[\todo] 고정 anchor support의 affine MLS로 Gaussian mean을 transport한다.
+  \item[\todo] Covariance에는 명시적으로 구성한 \code{FullShellMap3x3}만 사용해 \(F_{3\times3}\Sigma^0F_{3\times3}^\top\)를 계산하고, rank-2 tangent map에 cofactor를 적용하지 않는다.
+  \item[\todo] Covariance SPD/eigenvalue/scale clamp를 구현한다.
+  \item[\todo] Co-rotational appearance/view frame을 갱신한다.
+  \item[\todo] Identity/translation/rotation/in-plane affine reproduction을 다시 검사한다.
+  \item[\todo] Center-only, rigid-only, full-affine backend를 ablation으로 제공한다.
+  \item[\todo] Invalid covariance, scale explosion, frame flip, coverage hole/overlap과 temporal popping/flicker를 기록한다.
+  \item[\todo] Compatible GPU에서 standard Gaussian renderer를 연결한다.
+\end{itemize}
+
+\subsection*{Module 14: final state와 diagnostics}
+
+\begin{itemize}
+  \item[\todo] Corrected Global/Local state와 Active/Decay/Dormant state를 저장한다.
+  \item[\todo] Hysteresis/recurrent memory의 lifetime을 갱신한다.
+  \item[\todo] Module별 p50/p95 latency, kernel/call 수와 memory를 기록한다.
+  \item[\todo] Force/torque/energy/conservation/corrector residual을 기록한다.
+  \item[\todo] Long rollout에서 state/index/memory가 누적되거나 leak되지 않는지 검사한다.
+\end{itemize}
+
+\subsection*{Runtime profiling contract}
+
+다음을 개별 timing scope로 보고한다.
+
+\begin{enumerate}
+  \item State/surface reconstruction과 wind query.
+  \item Full-anchor aero force와 generalized projection; 채택된 경우에만 조건부 H gather/reduction.
+  \item Global predictor.
+  \item Cached-compliance selector feature/selection; low-rate/full-counter와 채택된 G는 별도 비용.
+  \item Active Local gather/scatter; 채택된 경우에만 조건부 F inference.
+  \item Patch-copy condensation과 unique-anchor scatter.
+  \item Constraint operator update, Schur factor/dual solve와 primal backprojection.
+  \item Local integrator.
+  \item Global corrector.
+  \item Gaussian transport.
+  \item Rendering.
+\end{enumerate}
+
+Warm-up, GPU synchronization, batch 1/multi-object, p50/p95, peak memory와 kernel count를 모두 기록한다.
+Interactive/real-time wording은 target hardware, batch, \(N_G\), physical budget과 renderer 포함 범위의
+사전 정의한 end-to-end p95 기준을 실측으로 통과한 경우에만 사용한다.
+그 전에는 measured latency만 보고한다.
+
+\textbf{완료 기준.}
+Oracle package와 predicted package 양쪽에서 동일 API가 실행되고,
+14-module trace, no-explicit-target-triangle-reconstruction trace test, affine transport,
+long rollout, p50/p95 profile과 rendering output이 재현된다.
+
+\section{TD14. 비교 실험, generalization과 paper evidence}
+
+\textbf{목표.}
+각 method component가 실제로 필요한지 반증 중심으로 평가하고,
+solver 정확도와 ``without explicit target triangle-mesh reconstruction'' end-to-end 성능을 공정한 track으로 분리한다.
+
+\textbf{선행 조건.} 해당 component의 standalone artifact와 TD13 integrated runtime.
+
+\subsection*{평가 Track}
+
+\begin{longtable}{L{0.14\linewidth}L{0.34\linewidth}L{0.44\linewidth}}
+\toprule
+Track & 통제 & 검증 목적 \\
+\midrule
+A: Oracle-topology matched solver & 동일 anchor scaffold/full-space operator, mass/material/attachment, wind, timestep, precision와 hardware; 실제 DOF/rank 별도 보고 & Aero/Global/Local/selector/coupling과 채택된 H/F/G의 solver 차이. \\
+B: Static-3DGS end-to-end & 각 방법의 원래 preprocessing/input privilege를 명시 & Topology distillation, explicit target triangle-mesh reconstruction 요구, 전체 quality--latency. \\
+C: Real captured static GS & Static multi-view/GS와 별도 dynamic reference & 실제 transfer, trajectory/silhouette/frequency, visual plausibility와 failure. \\
+\bottomrule
+\end{longtable}
+
+\subsection*{E0--E10 실행 체크}
+
+\begin{longtable}{L{0.07\linewidth}L{0.31\linewidth}L{0.52\linewidth}}
+\toprule
+ID & 실험 & 완료 증거 \\
+\midrule
+\endfirsthead
+\toprule
+ID & 실험 & 완료 증거 \\
+\midrule
+\endhead
+E0 & Deterministic contracts & PSD/symmetry/orthogonality/force owner/transport/decay/double-count tests. \\
+E1 & Topology/operator distillation & TD12-R과 Oracle/proposed/kNN/FPS/mesh baseline의 static+downstream error. \\
+E2 & Full-anchor aero와 조건부 H & Full-anchor를 기준으로 rest/random/FPS/RSH/cubature의 generalized load, wrench, sample, latency. \\
+E3 & Global physics vs neural & Physics/hybrid/direct/recurrent의 rollout, frequency, damping, OOD, latency. \\
+E4 & Local physics와 조건부 F & None/full/reduced physics, optional missing-force hybrid, direct-displacement의 local spectrum, decay, cost. \\
+E5 & Fixed-\(K\) selector와 조건부 G & Never/Always, matched-\(K\) random/curvature/strain/cached-compliance/Oracle, low-rate/full-counter analysis와 optional learned G의 regret, actual skip, Pareto. \\
+E6 & Complement/overlap & No complement, post projection, integrate-average, no torque, proposed의 seam/wrench/leakage. \\
+E7 & Feedback/corrector & No/structural/aero/next-frame/one/multi corrector의 Global effect, error, latency. \\
+E8 & Static-3DGS end-to-end & Matched direct baselines, runtime privilege, dynamics/rendering/latency/memory. \\
+E9 & Real static-GS transfer & Marker/feature trajectory, silhouette, tip/frequency/damping, novel-view temporal quality. \\
+E10 & Quality--latency/scaling & Rank/local/active/corrector/Gaussian sweep과 채택된 H sample/F/G의 Pareto와 break-even. \\
+\bottomrule
+\end{longtable}
+
+Track A의 solver baseline 우선순위는 E1의 Oracle/proposed/kNN/FPS/explicit target-mesh
+representation baseline을 대체하거나 삭제하지 않는다.
+
+\subsection*{Generalization와 stress test}
+
+\begin{itemize}
+  \item[\todo] Unseen yaw/elevation, magnitude와 combined wind OOD.
+  \item[\todo] Unseen gust frequency/chirp와 stationary/slow/fast/reversing/localized gust.
+  \item[\todo] Unseen setup material/stiffness/damping/density, setup attachment layout과 geometry.
+  \item[\todo] Unseen category와 independent GS reconstruction/corruption.
+  \item[\todo] Zero-wind relaxation, abrupt start/stop, threshold crossing.
+  \item[\todo] Constant strong wind, resonance chirp, traveling gust.
+  \item[\todo] 30--60초 rollout과 timestep \(\times0.5,\times2\).
+  \item[\todo] Strong OOD에서 graceful failure, covariance/state validity와 fallback.
+\end{itemize}
+
+\subsection*{개발 go/no-go}
+
+\begin{itemize}
+  \item[\todo] TD12-R에서 independent GS의 area/mass, 첫 8--16 modes, modal principal angle과 close-layer false edge가 허용 범위인지 조기에 판정한다.
+  \item[\todo] Predicted topology downstream error가 Oracle보다 약 10--15\% 이상 추가 악화되지 않는지 확인한다.
+  \item[\todo] Same-anchor sparse PD/XPBD/corotational solver 대비
+  개발용 내부 기준인 dynamics-only 약 2배 이상의 same-quality speedup,
+  동일 p95 latency의 velocity/trajectory/spectrum 개선 또는
+  multi-object throughput 이득 중 하나를 요구한다.
+  \item[\todo] Fixed-\(K\) adaptive Local이 Always-on Local 대비 dynamics error 약 5\% 내외 증가에서 Local 비용 약 2배 절감을 목표로 한다.
+  \item[\todo] H는 full-anchor profile 병목과 generalized-load fidelity 개선, F는 physics-only Local 개선, G는 cached-compliance selector 대비 quality--latency 개선을 각각 보일 때만 유지한다.
+  \item[\todo] Gaussian 수 증가와 multi-object 실행에서 dynamics 비용이 rendering resolution과 거의 분리되는지 확인한다.
+  \item[\todo] MVP Global tip frequency 약 5\%, amplitude 약 10\% 이내를 개발 목표로 사용한다.
+  \item[\todo] 4--10초 rollout normalized position error가 object scale 약 5\% 내외이며 divergence가 없는지 확인한다.
+\end{itemize}
+
+위 수치는 논문 약속이 아니라 개발 중 방향을 중단하거나 단순화하기 위한 임시 기준이다.
+
+\textbf{완료 기준.}
+E0--E10 결과가 재현 가능한 manifest와 함께 생성되고,
+아래 첫 논문의 두 algorithmic main claim(MC1/MC2), 하나의 SYS/supporting claim과
+채택된 optional module마다
+적어도 하나의 direct evidence, ablation, falsification result와 failure case가 있다.
+
+\section{학습 curriculum과 loss implementation registry}
+
+학습 가능한 component를 처음부터 joint training하지 않는다.
+각 stage는 이전 deterministic/Oracle stage의 완료 증거를 요구한다.
+
+\subsection{Stage 순서}
+
+\begin{longtable}{L{0.06\linewidth}L{0.27\linewidth}L{0.49\linewidth}}
+\toprule
+Stage & 활성 component & 진입/종료 조건 \\
+\midrule
+\endfirsthead
+\toprule
+Stage & 활성 component & 진입/종료 조건 \\
+\midrule
+\endhead
+0 & Deterministic contracts/structural preflight/transport & TD01 E0와 K00--K09 중 deterministic 해당 항목,
+K20, K22--K23 및 K21 schema/synthetic fallback fixture를 통과한 뒤 Track A0에 진입한다.
+Learned K21 calibration은 Track B0/E1, K24는 selector blind-spot stage에서 판정한다. \\
+1 & Oracle topology + Global physics & TD05 Global-only start/stop/chirp/energy 완료. \\
+1R & Early representation feasibility & Step 0에서 최소 schema/relation probe를 병렬 실행하고,
+Step-0 gate 통과 뒤 5--10개 object의 formal TD12-R로 Gate A를 판정. \\
+2 & Oracle Local에서 fixed-\(K\) selector/corrector로 전환 & TD07-A unit solver
+\(\rightarrow\) TD11-A joint complement \(\rightarrow\) TD07-B same-p95 Gate B
+\(\rightarrow\) TD10 cached-compliance/active-block skip/decay
+\(\rightarrow\) TD11-B SYS ablation 순서를 재현함. \\
+3 & 조건부 F always-on missing-force expert & TD08의 admissible generalized-to-nodal route를 고정한 뒤 TD09를 실행하며, K11 실패 시 F 없이 종료. \\
+4 & 조건부 G benefit ranker/adaptive dispatch & Fixed-\(K\) cached-compliance/Oracle baseline과 positive-benefit label 뒤에만 시작; K12 실패 시 cached-compliance selector 유지. \\
+5 & Full predicted topology/operator & TD12-R 통과와 Oracle package downstream sensitivity가 확정된 뒤 distill. \\
+6 & Independent GS robustness & Reconstruction seed/density/hole/floater/object-disjoint split 평가. \\
+7 & End-to-end transport/rendering & 모든 dynamics P0 통과 후 rendering quality/temporal loss를 연결. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Loss별 구현 체크}
+
+\begin{itemize}
+  \item[\todo] \textbf{Topology loss:} geometry/material-adjacency edge, hinge, orientation과 reconstruction reliability를 분리해 logging한다. User attachment/material 값 자체는 예측 loss에 넣지 않는다.
+  \item[\todo] \textbf{Area/mass loss:} local 오차뿐 아니라 object total conservation을 포함한다.
+  \item[\todo] \textbf{Operator/modal loss:} PSD construction, eigenvalue/mode shape, downstream rollout을 함께 본다.
+  \item[\todo] \textbf{조건부 H cubature loss:} generalized load fidelity를 1차 목표로 두고 net force/torque, nonnegative/sparsity와 실제 latency를 보조 항으로 분리한다.
+  \item[\todo] \textbf{조건부 F missing-force loss:} 선택한 nodal-teacher 또는 constrained-lift label route, channel-wise force, direction/magnitude, confidence와 inverse-dynamics residual을 기록한다.
+  \item[\todo] \textbf{조건부 G gate loss:} positive-benefit regression/ranking, calibration과 fixed-\(K\) regret를 기록한다. Measured cost/budget loss는 profiler가 필요성을 보인 optional extension에서만 추가한다.
+  \item[\todo] \textbf{Rollout loss:} one-step과 multi-step position/velocity/normal/curvature/spectrum을 분리한다.
+  \item[\todo] \textbf{Energy/work loss:} unphysical positive work와 wind-stop decay violation을 penalize한다.
+  \item[\todo] \textbf{Overlap/complement loss:} seam, Global leakage,
+  free intrinsic wrench와 hard companion을 합친 sign-resolved wrench를 구분해 기록한다.
+  \item[\todo] \textbf{Feedback loss:} predictor/corrected aero delta와 Global state error를 기록한다.
+  \item[\todo] \textbf{Rendering loss:} dynamics가 통과한 뒤 PSNR/SSIM/LPIPS/temporal consistency를 추가한다.
+  \item[\todo] Total loss weight와 schedule을 config/manifest에 저장하고 stage별 active term을 검증한다.
+\end{itemize}
+
+\subsection{Training 안정성과 재현성}
+
+\begin{itemize}
+  \item[\todo] Train/validation normalization statistic과 OOD clipping 정책을 저장한다.
+  \item[\todo] Teacher-forced one-step와 closed-loop rollout batch 비율을 기록한다.
+  \item[\todo] Gradient norm, NaN/Inf, energy violation과 rollout divergence를 monitor한다.
+  \item[\todo] Learned component마다 최소 3개 seed를 실행할 수 있게 한다.
+  \item[\todo] Best checkpoint selection metric을 paper test metric과 분리한다.
+  \item[\todo] Test/OOD asset을 checkpoint selection에 사용하지 않는다.
+\end{itemize}
+
+\section{기존 방법 baseline 구현 registry}
+
+Official code를 사용할 수 없거나 input contract를 맞추기 위해 재구현하면 논문명을 그대로 method label로 쓰지 않고
+\code{-style} 또는 \code{matched reimplementation}이라고 표시한다.
+
+\subsection{직접 또는 matched 정량 비교}
+
+\small
+\begin{longtable}{L{0.20\linewidth}L{0.18\linewidth}L{0.24\linewidth}L{0.18\linewidth}}
+\toprule
+방법 & 유사점 & 핵심 차이 & 필요한 비교 \\
+\midrule
+\endfirsthead
+\toprule
+방법 & 유사점 & 핵심 차이 & 필요한 비교 \\
+\midrule
+\endhead
+High-resolution shell/MPM teacher & Wind-driven deformable surface & Privileged accuracy oracle/label source이며 runtime efficiency baseline 아님 & Accuracy upper bound, label/force balance. \\
+Same-anchor sparse PD/XPBD & 동일 scaffold/material/load의 full-space physics; 실제 DOF 별도 보고 & Reduced Global/selective Local 없음 & MPM 대비 해상도 차이만이 아니라 matched-scaffold quality--latency 검증. \\
+Wind Projection Basis-style & Directional wind를 modal load로 projection & Rest-state/uniform approximation, GS/Local 없음 & Current-state spatial aero와 Global dynamics E2/E3. \\
+Gaussian Swaying-style + matched MPM & Current Gaussian normal/area/relative wind aero & Full MPM, Global ROM/gate 없음 & 같은 aero front-end의 accuracy/latency E8. \\
+FreeForm-style mesh-free ROM & Point/GS 기반 reduced mechanics & Wind-specific topology/aero/Local gate 없음 & Oracle/predicted Global package와 ROM 비교. \\
+MeshGraphNets-style rollout & Flag-like direct learned dynamics & Mesh/all-node neural, physics base 없음 & Physics 대 direct neural OOD/long stability E3. \\
+Recurrent Global network & State/wind에서 next Global state & Restoring/damping을 data로 학습 & Memory가 있어도 physics Global보다 유리한지 E3. \\
+Hybrid Global residual & Physics + learned generalized force & Global defect까지 학습 & Global network가 정말 필요한지 E3. \\
+PGRD-style all-node residual & Physics + learned per-particle residual & All-node/all-time; spatial benefit gate/complement 없음 & Always-on residual 대 adaptive Local E4/E5. \\
+Proposed Global-only & 동일 package/Global backbone & Local off & Local 순수 기여 E4. \\
+Proposed Always-on Local physics & 동일 complementary Local system & 모든 patch active, 비용 상한 & Selector 품질 상한/비용 상한 E5. \\
+Proposed cached-compliance selector & 동일 Local system, fixed \(K_A\) & Cached force와 prefactorized group operator를 쓰는 every-frame V0 selector & Curvature/strain/random 대비 core quality--latency E5. \\
+Proposed full-counter residual & 동일 Local system, low-rate/offline & Extra Global solve와 force 재평가 비용 포함 & Teacher-free analysis ceiling E5. \\
+Proposed Oracle selector & 동일 Local system, perfect future-benefit ranking & Runtime 불가능 & Patch selection upper bound E5. \\
+Proposed optional F & Physics-only Local + missing-force expert & K11 통과 시에만 채택 & Missing force 순수 기여 E4/E8. \\
+Proposed optional G & 동일 fixed \(K_A\), learned benefit ranker & K12 통과 시에만 채택 & Cached-compliance selector 대비 incremental Pareto E5/E10. \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\subsection{조건부 subset 비교}
+
+\begin{longtable}{L{0.22\linewidth}L{0.29\linewidth}L{0.41\linewidth}}
+\toprule
+방법 & 공통화 가능한 subset & 비교 목적 \\
+\midrule
+DynamicTree & Tree/branch/leaf asset, external-force compact response & Static GS global modal-like response와 runtime mesh/Local 차이. \\
+DiffWind & Prescribed spatial wind forward-simulation subset & Grid MPM/LBM 대 reduced one-way wind dynamics. \\
+PhysSkin & 동일 external load/reduced deformation subset & Static GS의 point/edge reduced basis와 Gaussian lifting. \\
+PhysGaussian & 동일 material/external force subset & MPM 기반 Gaussian dynamics 비용/품질. \\
+GausSim & 동일 elastic object/input이 가능한 subset & Fixed hierarchy 대 error-triggered complementary Local. \\
+NGFF & 동일 object-level/global-local force setting subset & Rigid-global/local stress 대 deformable Global modes와 sparse gate. \\
+\bottomrule
+\end{longtable}
+
+공통 input/action/metric을 만들 수 없으면 정량 main table에 억지로 넣지 않고 capability/failure를 정성적으로만 비교한다.
+
+\subsection{인용/설계 경계 중심}
+
+\begin{itemize}
+  \item Subspace Condensation: selective local full-space activation과 two-way coupling의 고전 경계.
+  \item Trading Spaces: error/oracle 기반 adaptive enrichment의 경계.
+  \item Learning Contact Corrections: learned local nonlinear correction의 경계.
+  \item Fast Complementary Dynamics: Global/primary space의 complement constraint 경계.
+  \item OmniAD: object-level directional aerodynamic SH representation 경계.
+  \item Subspace/cloth two-level solvers: global low-frequency/local high-frequency 분할의 경계.
+\end{itemize}
+
+\section{Metric, profiling과 통계 계약}
+
+\subsection{Metric registry}
+
+\small
+\begin{longtable}{L{0.17\linewidth}L{0.29\linewidth}L{0.46\linewidth}}
+\toprule
+범주 & Metric & 구현/보고 계약 \\
+\midrule
+\endfirsthead
+\toprule
+범주 & Metric & 구현/보고 계약 \\
+\midrule
+\endhead
+Geometry & Object-scale normalized position/velocity RMSE & Frame와 sequence 평균을 구분하고 object scale 정의를 기록. \\
+Gate B/C primary & Velocity RMSE 대 p95 dynamics latency & Position trajectory와 PSD/spectrum 대 p95를 공동 필수 보조 curve로 보고. \\
+Surface & Normal angular, strain, curvature error & Invalid/degenerate sample 비율과 함께 보고. \\
+Dynamics & Tip amplitude/phase, frequency, damping & Start/stop/sinusoidal/chirp별 time response와 PSD 저장. \\
+Aero & Sample/generalized-force error & Full evaluator 기준 magnitude/direction/phase 분리. \\
+Conservation & Net force/torque, COM/rotation drift & Internal/external channel과 torque center를 명시. \\
+Energy & Work--energy residual, max growth, divergence & Zero wind, wind stop, activation event를 별도 보고. \\
+Complement & Patch별 \(\Phi^\top M\Psi_r\), force leakage & Basis build와 runtime assembly 둘 다 검사하고 전역 basis mixing 여부를 기록. \\
+Patch & Boundary position/velocity/force jump, active-block condition & Core--halo와 activation event에 대한 최대값/분포 및 cross-block group별 통계. \\
+Selector/G & Regret, active ratio; optional G AUPRC/calibration & 동일 fixed \(K_A\)/latency 비교와 actual Local/F skip 포함. \\
+Runtime & Module p50/p95, kernel/call, peak memory & Warm-up, GPU sync, batch/device/version 고정. \\
+Topology & Edge/hinge F1, shortcut, attachment-transfer, area/mass, modal angle & User setup metadata를 고정하고 modal error--downstream rollout scatter를 asset/load별로 보고. \\
+Gaussian & Invalid covariance, scale explosion, frame flip, coverage hole/overlap/popping & Count와 affected Gaussian/sequence 비율. \\
+Rendering & PSNR/SSIM/LPIPS, temporal warp/flicker & Physics main table과 분리하되 end-to-end 결과에 포함. \\
+Real data & Marker/feature trajectory, silhouette IoU & Ground-truth 한계를 명시하고 synthetic physics와 분리. \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+Global rank와 Local coordinate는 support/실행 비용이 다르므로 동일 coordinate count를
+공정성의 충분조건으로 사용하지 않는다. Rank/coordinate match는 진단용이며,
+same-quality speedup, same-p95 velocity/trajectory/spectrum 또는 multi-object throughput의
+Pareto non-dominated region을 primary 판정으로 사용한다.
+
+\subsection{통계와 reporting}
+
+\begin{itemize}
+  \item[\todo] Frame을 독립 표본으로 취급하지 않고 먼저 sequence별 statistic을 계산한다.
+  \item[\todo] Asset 단위 평균과 asset bootstrap 95\% confidence interval을 보고한다.
+  \item[\todo] Learned baseline과 proposed model은 가능한 최소 3개 seed를 보고한다.
+  \item[\todo] Mean, median, worst decile와 divergence/failure sequence 비율을 함께 보고한다.
+  \item[\todo] p50/p95 latency는 동일 hardware/backend, warm-up, synchronization으로 측정한다.
+  \item[\todo] Same-quality latency와 same-p95-latency quality 두 Pareto를 모두 만든다.
+  \item[\todo] Preprocessing/setup/training/runtime cost를 분리한다.
+  \item[\todo] Input privilege, explicit target triangle-mesh reconstruction/runtime grid, external model/data를 main comparison table에 명시한다.
+\end{itemize}
+
+\section{권장 artifact와 run directory layout}
+
+\begin{lstlisting}
+assets/
+  canonical_gs/
+  teacher_sources/
+
+datasets/
+  manifests/
+  teacher_structure/
+  teacher_fsi/
+  gs_variants/
+  projected_states/
+  optional_F_missing_force_labels/
+  selector_labels/
+  optional_G_benefit_labels/
+  feedback_labels/
+
+packages/
+  <asset_id>/<package_version>/
+    package_manifest.json
+    anchors.npz
+    topology.npz
+    operators.npz
+    bases.npz
+    patches.npz
+    optional_H_aero_cubature.npz
+    gaussian_binding.npz
+    validation.json
+
+models/
+  topology/
+  optional_F_missing_force/
+  optional_G_gate/
+
+runs/
+  <run_id>/
+    config.yaml
+    run_manifest.json
+    dataset_hash.txt
+    package_hash.txt
+    checkpoints/
+    diagnostics/
+    profiler/
+    renders/
+    report.md
+\end{lstlisting}
+
+\begin{itemize}
+  \item[\done] 실제 repository split에 맞는 physical path와 artifact storage를 TD00의 \path{manifests/artifact_policy.json}에서 확정했다.
+  \item[\done] Large dataset/checkpoint는 Git에 직접 넣지 않고 manifest와 retrieval rule만 version control하도록 TD00 policy를 고정했다.
+  \item[\todo] Artifact schema version migration과 old cache invalidation test를 추가한다.
+\end{itemize}
+
+\section{Open Decisions와 결정 시한}
+
+\begin{longtable}{L{0.06\linewidth}L{0.32\linewidth}L{0.23\linewidth}L{0.17\linewidth}}
+\toprule
+상태 & 결정 질문 & 권장 첫 선택 & 결정 시한 \\
+\midrule
+\endfirsthead
+\toprule
+상태 & 결정 질문 & 권장 첫 선택 & 결정 시한 \\
+\midrule
+\endhead
+\blocked & Teacher-S solver/library와 material law는 무엇인가? & 검증 가능한 nonlinear shell/FEM; dense MPM은 matched baseline & TD02 전 \\
+\blocked & Metric scale를 어떻게 제공하는가? & Known dimension/scale marker; 없으면 명시적 nondimensional preset & TD01 전 \\
+\done & Canonical runtime integrator는 무엇인가? & Objective projective frozen target + implicit midpoint; backward Euler/rest-linear은 Step 0 ablation & Structural freeze contract에서 확정 \\
+\done & Runtime material/attachment를 어디서 얻는가? & Setup에서 user metadata/layout을 고정하고 frame wind/handle만 변경 & TD00 contract에서 확정 \\
+\done & Local force network target과 label lifting은 무엇인가? & Raw free-support nodal patch force가 기본; generalized lift는 channel conservation target을 갖춘 free/no-hard optional 경로, hard structural fallback은 no-go & TD08 contract에서 확정 \\
+\done & Fixed-superset \(\Psi\)인가 dynamic active basis인가? & Patch-local fixed superset + active principal blocks; dynamic remap은 후속 & TD03/TD07 contract에서 확정 \\
+\done & Surface map 차원과 normal/covariance 정의는 무엇인가? & 3\(\times\)2 tangent cross product와 별도 3\(\times\)3 full shell map & TD01/TD04 contract에서 확정 \\
+\done & Global predictor가 cross coupling을 소비하는가? & Predictor가 소비하고 corrector는 updated-minus-consumed delta만 소비 & TD00 contract에서 확정 \\
+\blocked & 조건부 F missing-force expert backbone은 무엇인가? & K11을 시험할 때만 small co-rotated patch MLP/graph model, memory off & TD09 착수 전 \\
+\blocked & 조건부 G backbone은 무엇인가? & Fixed-\(K\) cached-compliance baseline 뒤 cheap pooled ranker; predicted cost는 profiler 이후 & TD10 optional G 착수 전 \\
+\blocked & Topology distillation backbone은 무엇인가? & Candidate-edge classifier + positive operator construction & TD12 전 \\
+\blocked & 조건부 H cubature solver/constraint tolerance는 무엇인가? & TD05에서 aero 병목 확인 후 nonnegative sparse fit; generalized load primary, wrench auxiliary & TD06 optional H 착수 전 \\
+\blocked & Teacher-FSI를 첫 논문에 넣을 것인가? & Optional small subset; Teacher-S claim과 분리 & TD02 dataset freeze 전 \\
+\blocked & 논문용 Gaussian renderer/GPU는 무엇인가? & Compatible CUDA backend, CC 6.1 blocker와 분리 & TD13 전 \\
+\bottomrule
+\end{longtable}
+
+\section{즉시 실행할 첫 작업 순서}
+
+아래 순서는 learned component를 붙이기 전에 연구 방향을 가장 싸게 반증하는 경로다.
+
+\begin{enumerate}
+  \item \textbf{TD00--TD01:} schema, force ledger, E0 fixtures와 test command를 만든다.
+  \item \textbf{Step 0 structural freeze:} 최소 Oracle strip에서 typed \(\mathcal Q_{\mathrm{op}}\),
+  rest-linear/projective operator와 target ledger, objective normal-curvature closure,
+  implicit midpoint, fixed \(T_s,\Phi_s\), support-restricted per-RHS route와
+  free/hard/compliant post-step reaction--\(r_{\mathrm{ROM}}\)을 순서대로 고정한다.
+  \item \textbf{병렬 최소 조기 kill:} Step 0 fixture에 필요한 한쪽 고정 strip teacher와
+  formal TD12-R 준비용 최소 independent-GS schema/relation probe만 병렬 생성한다.
+  대규모 data/package 학습과 H/F/G는 보류한다.
+  \item \textbf{TD02--TD03:} Step 0 통과 뒤 full teacher/data와
+  Oracle anchor/operator/\(\Phi,\Psi\)/binding package를 확장한다.
+  \item \textbf{TD04--TD05:} Full-anchor current-surface aero + Global-only ROM을
+  same-anchor sparse solver와 비교해 K13 sub-gate의 개발용 약 2배 same-quality speedup,
+  same-p95 velocity/trajectory/spectrum 또는 multi-object throughput을 먼저 판정한다.
+  \item \textbf{TD07-A:} Patch-local fixed-superset operator와 single non-overlap Local unit solver를 만든다.
+  \item \textbf{TD11-A:} Oracle/synthetic force로 unique-anchor small-Schur joint assembly와 Global complement를 고정한다.
+  \item \textbf{TD07-B:} TD11-A force를 쓰는 Oracle coupled Local이 same-p95 Global rank sweep보다 나은지 Gate B를 판정한다.
+  \item \textbf{TD10-core:} Cached-compliance selector와 Active/Decay/Dormant state, 실제 active/solve-set 비용을 학습 없이 완성한다.
+  \item \textbf{TD11-B:} Gate B 뒤 corrected-aero/structural-delta one-corrector를 SYS ablation으로 검증한다.
+  \item \textbf{TD08:} Nodal-breakdown 기본 label, auxiliary conservation target이 있는
+  free/no-hard optional lift와 positive future-benefit/feedback label을 고정한다.
+  \item \textbf{조건부 TD09/TD10-G:} F가 physics-only Local을 개선할 때만 F를, learned benefit이 cached-compliance selector를 개선할 때만 G를 채택한다.
+  \item \textbf{조건부 TD06:} TD05 profiler에서 full-anchor aero가 실제 병목일 때만 H representation probe를 실행한다.
+  \item \textbf{TD12--TD13:} TD12-R 통과 후 full predicted package를 학습하고 independent GS runtime을 연결한다.
+  \item \textbf{TD14:} 각 단계 artifact를 E0--E10 표/그림으로 승격한다.
+\end{enumerate}
+
+\begin{tcolorbox}[colback=LightGreen,colframe=DoneGreen,title=첫 논문 최소 구현선,fonttitle=\bfseries]
+Attached single-layer flag/cloth strip/paper/leaf, prescribed spatial wind, Teacher-S 중심,
+independently reconstructed static 3DGS와 fixed metric/material/attachment metadata에서
+explicit target triangle-mesh reconstruction과 runtime full-order continuum solve 없이 만드는 topology-distilled reduced physical scaffold,
+full-anchor current-state aero와 Global physics, fixed-\(K\) cached-compliance selector가 선택하는 complementary Local physics,
+conservative overlap/complement, corrected geometry-to-load feedback,
+affine Gaussian transport와 standard rendering까지다.
+첫 논문은 두 algorithmic main claim과 이를 완결하는 system axis로 정리한다.
+(1) setup-conditioned, topology-distilled reduced physical scaffold,
+(2) Global ROM 너머의 고주파 wind response를 선택적으로 복원하는 error-triggered complementary Local dynamics,
+(SYS) coherent directly renderable animation을 위한 closed-loop geometry-to-load update와 affine Gaussian transport다.
+Error-triggered의 최종 사용 여부는 learned G가 아니라 앞의 error-relevance evidence gate로 판정한다.
+H/F/G는 각각 K14/K11/K12를 통과한 경우에만 supporting contribution 또는 variant로 추가하며 최소 구현선의 필수 요소가 아니다.
+Full tree, self-contact, tearing, free flight, appearance residual과 arbitrary cross-family material generalization은 후속 범위다.
+\end{tcolorbox}
+
+\section{완료 정의와 최종 handoff}
+
+각 milestone을 \done으로 바꾸려면 다음 다섯 증거가 모두 있어야 한다.
+
+\begin{enumerate}
+  \item Reusable implementation과 versioned interface.
+  \item Reproduction command/config/seed/device가 있는 experiment README.
+  \item Positive test와 의도적으로 실패하는 negative test.
+  \item 정량 report와 최소 한 개의 visual/trace diagnostic.
+  \item P0/go-no-go 결과, 실패 사례와 다음 decision을 기록한 session note.
+\end{enumerate}
+
+다음은 완료로 보지 않는다.
+
+\begin{itemize}
+  \item 조건부 F/G network loss만 감소하고 closed-loop rollout이 검증되지 않은 경우.
+  \item 조건부 G score만 높고 Local/F kernel 또는 wall-clock가 줄지 않은 경우.
+  \item Topology F1만 높고 downstream dynamics가 실패한 경우.
+  \item Rendering이 그럴듯하지만 force, frequency, damping, energy가 맞지 않는 경우.
+  \item Patch 결과를 시각적으로 평균해 seam을 숨긴 경우.
+  \item Teacher privilege나 explicit target triangle-mesh reconstruction 사용을 manifest에서 숨긴 경우.
+  \item Baseline을 original task/input와 다르게 구현하고 차이를 보고하지 않은 경우.
+\end{itemize}
+
+\section*{Notes}
+
+\begin{itemize}
+  \item 새 체크리스트는 이전 implementation checklist의 formatting과 검증 원칙만 계승한다.
+  \item 기존 완료 상태, mesh-proxy extraction 중심 pipeline, mandatory SH residual은 계승하지 않는다.
+  \item Global과 Local 모두 최종 motion은 physical integrator가 계산한다. 조건부 dynamics network F/G는 missing force 또는 positive future benefit만 근사한다.
+  \item Fixed-\(K\) selector와 조건부 G는 새 Local excitation 및 채택된 F evaluation을 선택할 뿐 \(M,C,K\)나 structural base를 끄지 않는다.
+  \item RSH는 공력 방향 표현 ablation이며 paper headline이나 main runtime contract가 아니다.
+  \item 가장 먼저 반증할 질문은 \emph{same-anchor sparse solver보다 의미 있는 이득이 있는가},
+  \emph{independent GS에서 low-mode scaffold를 복원할 수 있는가},
+  \emph{Global rank 확대보다 Local이 필요한가}다.
+  Physics-only Local보다 F가 필요한지는 그 다음의 조건부 질문이다.
+\end{itemize}
+
+\end{document}
