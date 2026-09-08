@@ -1,0 +1,546 @@
+\documentclass[10pt]{article}
+\input{shared_preamble.tex}
+\usepackage{fvextra}
+\usepackage{xurl}
+\DefineVerbatimEnvironment{verbatim}{Verbatim}{breaklines=true,fontsize=\scriptsize}
+\hypersetup{pdftitle={Wind3DGS R1 Teacher 개발·실험 연구 기록},pdfauthor={Wind3DGS Project}}
+\pagestyle{fancy}\fancyhf{}
+\lhead{\small Wind3DGS R1 연구 기록}\rhead{\small 2026-09-09}\cfoot{\thepage}
+\title{\textbf{Teacher 개발·실험 연구 기록}\\Registry부터 개발용 데이터와 공간 수렴 보완까지}
+\author{Wind3DGS Project}\date{2026-09-06--09 작업; 2026-09-09 통합}
+\begin{document}
+\maketitle
+
+\begin{contractbox}{이 기록의 용도와 판정}
+이 채팅에서 이어 온 TeacherPhysicsRegistry, 저장·재생·probe, 사용자 GPU 검사, 구조 모델 진단,
+시간·공간 수렴, 개발용 샘플 생성 및 P3 보완을 논문 작성 시 추적하기 위한 동반 기록이다.
+최종 method authority는 상위 sketch, R1 acceptance 소유자는 \code{r1_teacher_probe_oracle.tex}다.
+구현과 수치의 원본은 \code{../../code/}, \code{../../experiments/}에 있다.
+\textbf{현재는 개발용 데이터 15개를 생성·검증한 상태이며, 본 학습 Teacher와 R1 전체는 미승인이다.}
+P3의 처방 압력 공간 진단 통과와 원래 초기 변위 속도 진단 실패를 모두 유지한다.
+\end{contractbox}
+
+\tableofcontents\newpage
+
+\section{연구 질문과 작업 범위}
+
+Static 3DGS에서 wind-driven passive response package를 학습하려면 먼저 mesh teacher의 응답이
+discretization이나 적분기 오차에 지배되지 않는지 확인해야 한다. 이 작업은 training-only reference를
+만드는 과정이다. Target-mesh-free inference, student의 positive area/mass 및 Global/Local package
+구조는 바꾸지 않았다. 고차 판 자체의 신규성을 이 작업의 논문 contribution으로 주장하지 않는다.
+
+출발점은 \code{code/sessions/2026-09-06_01_teacher_dataset_handoff.md}의 기본 mesh/GUI였다.
+후속 요청에 따라 registry, 정량 저장·비교, 실패 진단, 개발 sample까지 단계적으로 구현했다.
+GUI 이후의 주된 확장은 물리 reference를 검증하고 데이터 provenance를 보존하는 CPU/CLI 경로다.
+기존 Newton viewer가 새 P3 backend나 모든 정량 보고서를 자동으로 표시하는 것은 아니다.
+그래프는 sample response, 공간 수렴 곡선과 내부 힘/모드 비교를 별도 artifact로 보존한다.
+
+사용자는 필요한 선택에는 질문하되 샘플 생성·검증까지 연속 진행하도록 승인했다.
+공간 보완 후 첫 accepted 데이터의 입력 범위(rest-start wind/on-off 우선인지, displaced free-decay까지
+동시에 닫을지)는 질문했지만 확정 답변이 없다. 문서 정리 요청을 그 선택에 대한 승인으로 해석하지 않는다.
+
+\section{구현 계보와 provenance 읽는 법}
+
+Workspace 상대 경로 \code{code/}, \code{ideas/}, \code{experiments/}는 독립 저장소다.
+GPU checkpoint는 code \code{7010682}, experiments \code{61d972e}에 이미 보존돼 있었다.
+그 뒤 구조·수렴·샘플·보완 작업을 이번 checkpoint에서 함께 보존한다.
+최종 commit 연결은 양쪽 \code{sessions/2026-09-09_01_teacher_checkpoint.md}와
+ideas \code{sessions/2026-09-09_01_teacher_evidence_integration.md}를 따른다.
+Run 생성 시에는 dirty source의 파일별 content hash가 실제 executable provenance다.
+나중에 만든 commit ID가 당시 run의 source hash를 대신하지 않는다.
+
+연구 기록의 수치는 각 report의 단위와 분모를 따른다. 초기 GPU fine-run RMS 상대 오차와
+후속 고정 \(A,A\omega_*\) scale 오차는 다른 metric이며 직접 하나의 개선율로 합치지 않는다.
+각 단계의 ``관련 테스트 수''는 범위가 겹치므로 누적 합산하지 않는다.
+정적 fixture, 시간 오차, 공간 오차, replay, 데이터 무결성, R1 acceptance도 별도 판정이다.
+
+\section{TeacherPhysicsRegistry와 데이터 경로}
+
+\subsection{Registry의 기능과 제외 범위}
+
+Pure schema와 Newton adapter를 분리했다. Native material parameter의 SI 해석, rest mesh와
+source-object identity, material/solver/traction 설정, realized model 검사를 제공한다.
+Registry 생성 자체가 simulation이나 파일 저장을 수행하지 않는다.
+\code{validate_against_simulation()} 및 \code{require_valid()}로 실제 mass, pin,
+material, rest geometry, gravity, solver 설정과 finite 상태를 검증한다.
+Native bending의 단위 N을 연속 판 강성 N\,m로 바꿔 표기하지 않는다.
+
+Strict JSON은 unknown/missing field, duplicate key, non-finite, unit/shape/version 오류를 거부한다.
+Float 표현과 signed zero를 정규화하며 배열 hash는 little-endian C-order의 dtype/shape/unit/content를
+포함한다. Effective registry hash, Teacher/GS 공용 traction identity hash, requested/run provenance와
+실제 material array/solve 경로의 realized hash를 구분한다.
+비활성 명목 설정과 시간 변화 wind speed를 모두 material identity로 섞지 않는다.
+Source membership validator는 외부에서 검증한 split ref를 받으며 split 생성·배정·봉인을 대신하지 않는다.
+Registry는 teacher-only이고 target package serializer를 새로 만든 것이 아니다.
+
+초기 실제 model 대조는 \(\mathrm{rtol}=5\times10^{-6}\), mass/area absolute \(10^{-8}\),
+pin \(10^{-6}\) m를 썼다. 이는 물리 수렴 tolerance가 아니다.
+CPU/GPU solve branch와 환경을 기록하며 registry hash 동일성이 장치 간 bitwise trajectory 동일성을
+보장하지 않는다. Core import는 Newton/Warp 없이 가능하도록 optional dependency 경계를 검사했다.
+
+\subsection{Trajectory, sequence, 초기 상태}
+
+Trajectory는 \(T\) interval과 \(T+1\) state를 구분하고 frame zero, timestamp, position/displacement,
+velocity, held aerodynamic force와 interval work를 저장한다. Chunk inventory와 checksum으로 prefix를
+검증하고 중간 실패의 완료 prefix, 오류와 미실행 부분을 보존한다. Reader의 무결성 검증과 실제 solver
+replay는 별개다. 저장값만 다시 읽어 replay 통과로 표시하지 않는다.
+
+Wind sequence runner는 초 단위 steady/pulse/chirp 등 프로그램을 case별 독립 초기 상태로 실행하고
+성공·실패·미실행 inventory를 남긴다. Displaced free-decay 지원은 authored rest를 바꾸지 않고
+초기 변위를 적용하며 requested 변위와 float32 realized state를 구분한다. Trajectory v2로 확장하고
+v1 읽기 호환을 유지했다. Zero ambient는 상대 속도 drag가 남고, aero-off만 공력을 제거한다.
+Material damping off 여부는 또 별도 설정이다.
+
+\subsection{Common probe와 비교기}
+
+Rest surface의 fixed probe, positive area/mass quadrature와 barycentric support를 저장한다.
+Partition, constant/affine reproduction, coverage, unsupported reason 및 map hash를 검사했다.
+현재 public map은 선형 3-support/nonnegative 계약이다. \(S=T\otimes I_3\)일 때
+\[
+ u_P=Su_T,\quad v_P=Sv_T,\qquad
+ f_T=S^\top f_P,\quad f_T=S^\top W_A\tau_P,
+ \qquad f_T^\top u_T=\tau_P^\top W_ASu_T.
+\]
+Total force N과 traction N/m\(^2\)를 구분하고 area를 두 번 곱하지 않는다.
+Probe trajectory를 raw manifest에 연결하고 v1/v2 원본 재계산을 지원한다.
+비교기는 같은 object/material/rest/input/BC 등 고정 조건을 검사한 뒤 velocity/tip/work/대역 PSD를
+SI 및 무차원 값으로 보고한다. 실행 성공만으로 물리 수렴을 선언하지 않는다.
+Independent GS 두 개의 reconstruction, common-valid intersection과 network-free oracle는 미완료다.
+
+\section{사용자 GPU smoke: 실행 가능성과 수렴의 분리}
+
+사용자가 \code{bash code/scripts/check_teacher_gpu.sh}를 실행했다.
+GTX 1080 Ti 11 GiB, sm\_61, Warp 1.17.0, CUDA Toolkit 12.9/Driver 13.0에서
+wind 5개, decay 2개, compare 3개, replay 2개의 \textbf{12/12 단계}가 통과했다.
+Raw/probe 7쌍이며 pin drift와 guard activation은 0이다. Agent는 원본을 검토·재계산했고
+추가 GPU simulation을 수행한 것으로 보고하지 않았다.
+Raw: \code{experiments/artifacts/runs/teacher_gpu_check/20260907_042524_687651}.
+
+공간 velocity 상대 RMS는 mesh 2$\to$4 10.07\%, 4$\to$8 24.90\%; temporal substeps
+4$\to$8 23.99\%, 8$\to$16 11.41\%; aero-off decay mesh 4$\to$8 193.25\%였다.
+분모는 fine run의 질량·시간 RMS 속도다. 짧은 0.2 s smoke이고
+\code{convergence_status=not_assessed}다. 이는 발산률이나 변위 오차가 아니다.
+같은 초기 probe 변위인데 native bending energy가 mesh별로 다른 관찰이 다음 감사를 이끌었다.
+
+\section{Native hinge와 면적 보정 후보의 탈락 근거}
+
+\subsection{고정 native bending 계수}
+
+설치된 Newton 1.3.0의 에너지 의미를 독립 NumPy로 계산했다. Flat XY/XZ square에
+\(w=A(X/W)^2\), \(W=H=1\) m, \(A=0.01\) m, \(k_e=10\) N와
+\(n=4,8,16,32\)를 사용했다. Boundary edge는 bending 합에서 제외한다.
+\[
+ E_b=\frac12 k_e\sum_{e\text{ interior}}l_e^0\theta_e^2,
+ \qquad K_E=\frac{2E_b}{A^2}.
+\]
+\(K_E\)는 에너지 등가 scalar이지 nonlinear force/A나 tangent HVP가 아니다.
+Strip 기울기 \(s_j\)의 해석식
+\[
+ E_b=\frac12 k_eH\sum_j[\arctan(s_{j+1})-\arctan(s_j)]^2,
+ \qquad K_{\rm small}=\frac{4k_eH}{W^2}\frac{n-1}{n^2}
+\]
+과 최대 상대 차이 \(1.792\times10^{-15}\)였다.
+Energy는 \(0.000374911,0.000218695,0.000117157,0.000060531\) J,
+\(K_E\)는 약 \(7.498,4.374,2.343,1.211\) N/m로 줄었다.
+Finest/coarsest 비는 0.161454다. Native 계수를 고정하면 같은 연속 변형의 강성이 사라지는
+mesh 의존성이 있으므로 그 계수 자체를 연속 판 강성으로 채택할 수 없다.
+아주 작은 진폭의 float32 입력 문제가 있어 asymptotic fixture는 이진 정확 진폭 \(2^{-14}\)로
+분리했다. 기본 \(A=0.01\) 결과나 tolerance를 사후 완화한 것이 아니다.
+
+\subsection{Area-weighted hinge}
+
+후보 \(k_e=B_hl_e^0/(A_L+A_R)\)에서 \(B_h\)의 단위는 N\,m다.
+이는 native coefficient N과 구분되며 자동으로 isotropic plate \(D\)가 되지 않는다.
+7개 변형, 두 대각선, 두 곡률, 네 mesh의 112개 사례를 계산했다.
+작은 곡률의 \(\pm45^\circ\) 원통 bending에서 방향 에너지 비가 3으로 접근했고,
+\(n=32\)에서 2.9375001853이었다. 한 방향에 맞춘 scalar calibration으로 해소되지 않는다.
+\textbf{등방 Teacher mapping으로는 채택하지 않았다.}
+
+\section{Quadratic patch KL 기준과 nonlinear shell}
+
+\subsection{정적 선형 판}
+
+\code{flat_plate_quadratic_patch_v1}은 central triangle의 edge-neighbor BFS patch를
+1--4 ring에서 찾고 rank 6인 첫 design을 쓴다.
+\([1,s,t,\tfrac12s^2,st,\tfrac12t^2]\)를 SVD로 fit하며 relative cutoff \(10^{-12}\),
+condition limit \(10^8\)이다. Local length scale을 되돌린 curvature operator \(C\)와
+engineering curvature \(\kappa=[\kappa_{xx},\kappa_{yy},2\kappa_{xy}]^\top\)를 사용한다.
+\[
+ D=\frac{Eh^3}{12(1-\nu^2)},\quad
+ D_b=D\begin{bmatrix}1&\nu&0\\\nu&1&0\\0&0&(1-\nu)/2\end{bmatrix},\quad
+ E_b=\frac12\sum_t A_t(C_tw)^\top D_b(C_tw),\quad
+ f_b=-\sum_t C_t^\top A_tD_bC_tw.
+\]
+HVP는 이 선형 operator에서 정확하다. \(\nu=0,0.3\), 12방향 cylinder와 twist/dome/saddle,
+quartic/sine, \(n=4\ldots32\)의 408개 정적 사례가 당시 기준을 통과했다.
+Affine null 3개와 일반 변형 finest energy 오차 0.77\% 미만을 확인했다.
+후속 공간 진단은 이 정적 통과가 동적 consistency를 보장하지 않음을 보여 주었다.
+
+\subsection{3D 구조 연산자}
+
+\code{flat_shell_stvk_projected_curvature_v1}은 StVK membrane의 Green strain과
+current central normal에 투영한 bending을 합친 CPU 진단이다.
+정확한 gradient/HVP에 normal derivative와 geometric-stress 항을 포함했다.
+Finite area는 \(10^{-8}\)보다 커야 하고 proper rigid rotation을 단순 normal-flip으로 거부하지 않는다.
+Rest Hessian의 PSD와 일반 current tangent의 가능한 indefiniteness를 구분한다.
+
+\(\nu=0,0.3\), \(h=0.01,0.001\) m, 네 mesh의 1,200개 prescribed-geometry 사례에서
+objectivity, rigid motion, gradient/HVP finite difference와 선형 극한은 통과했다.
+그러나 8개 total-energy ladder는 \(n=16\to32\)에서 오차 감소에 실패했다.
+Membrane/bending 오차 상쇄와 thin coarse mesh의 artificial membrane energy를 따로 남겼다.
+대표 thin case의 ratio는 n4에서 약 185, n32에서 0.0447이었다.
+이 현상만으로 뒤의 rest-normal checkerboard 결함을 설명하지 않는다.
+
+\section{시간 적분: 정밀도 결함과 시간 해상도의 분리}
+
+\subsection{초기 dynamics와 독립 reference}
+
+Triangle-lumped total mass, position-only pin, Newmark/GMRES/line search를 갖는 CPU shell solver를
+만들고 reaction, EOM residual, energy/work 및 모든 성공 state를 기록했다.
+19 rollout, 2,105 step과 독립 재실행은 수치 계약을 통과했지만 nonlinear velocity의
+160$\to$320 시간 대조는 11.394\%로 실패했다.
+독립 DOP853 reference는 자체 대조를 통과했다.
+추가 refinement에서 full N2560 velocity 11.7491\%, short N5120 5.50795\%였고,
+short N10240은 5번째 step line search에서 실패했다. XY 고주파 시간 오차와
+가까운 위치값을 빼서 가속도를 얻는 precision cancellation을 구분했다.
+
+\subsection{Acceleration-form Newmark}
+
+\(\beta=1/4,\gamma=1/2\)인 같은 Newmark 식을 acceleration unknown으로 다시 풀었다.
+\[
+ x_{n+1}=x_{\rm pred}+\beta\Delta t^2a_{n+1},\quad
+ v_{n+1}=v_{\rm pred}+\gamma\Delta t a_{n+1},\quad
+ R=Ma_{n+1}+\nabla E(x_{n+1})-f_{n+1}.
+\]
+Undamped tangent는 \(M+\beta\Delta t^2H\)다. 가까운 두 position을
+\(\Delta t^2\)로 나누는 잔차 평가를 피했다. 물리 stiffness/damping, tolerance를 바꾸거나
+고주파 필터·숨은 viscosity를 넣지 않았다. 기존 실패를 재현하고 새 3,457 step을 완료했다.
+Short 차이는 2.20620\%로 개선됐지만 full N2560 11.7491\%는 남아 시간 해상도 문제임을 확인했다.
+
+\begin{longtable}{L{0.20\linewidth}L{0.30\linewidth}L{0.40\linewidth}}
+\toprule 구간 & refinement & velocity 차이와 판정\\\midrule
+Short \(T_*/20\) & N10240/20480/40960 & 2.20620\% $\to$ 0.612308\% $\to$ 0.154044\%; 통과\\
+Full \(T_*\) & N20480/40960/81920 & 6.059758\% $\to$ 2.974723\% $\to$ 0.868281\%; 통과\\
+\bottomrule\end{longtable}
+
+Full fixture의 \(T_*=1.0719083180935054\) s,
+\(\omega_*=5.861681639298341\) rad/s는 n4 forward의 첫 positive normal mode 기준이다.
+초기 amplitude는 0.001 m다. Short run은 full 기준 N의 분할 구간이며 새 계산 3,072 step/run이다.
+Full은 143,360 step/run, 두 독립 run을 수행했다. 각 143,363 state, 560 chunk,
+1,576,960 iteration/trial vector를 보존하고 state chain, force/reaction, EOM, Newmark update,
+correction/Armijo/HVP와 비교 보고서를 재검산했다. Finest energy drift 기준은 \(10^{-3}\)이다.
+각 run 약 45.7--45.8분, inventory 약 2.183 GB, 두 run 합 약 4.37 GB였다.
+CPU/I/O 경합을 포함하므로 순수 solver 성능 benchmark가 아니다.
+\textbf{이 통과는 해당 기존 shell과 초기 상태의 시간 진단이며 P3 teacher의 시간 통과가 아니다.}
+
+\section{선형 공간 응답 실패를 확정한 실험}
+
+\subsection{입력·경계·측정 고정}
+
+1 m XY square, \(E=10^6\) Pa, \(\nu=0.3\), \(h=0.01\) m,
+\(M_{\rm ref}=0.1\) kg, \(n=4,8,16\), forward/backward/checkerboard 세 diagonal이다.
+\(x=0\)의 position만 고정하고 slope는 자유여서 normal rigid rotation null 하나가 남는다.
+Clamped cantilever와 다른 경계다. \(u_z^0=10^{-3}x^2\), \(v^0=0\),
+gravity/aerodynamics/damping 모두 off이며 동일 physical time \(T_*\), 10,241개 시각을 쓴다.
+
+기존 shell의 rest-normal HVP에서 \(K\)를 조립하고 lumped \(M\)를 사용했다.
+Mass-whitened generalized modal basis 전체를 써서 cos/sin exact response를 계산했다.
+초기 상태를 mesh별 모드에 맞춰 다시 고르거나 high mode를 버리지 않았다.
+Eigenvalue 원본을 보존하고 \(10^{-9}\max|\lambda|\) cutoff의 rigid null 하나를 별도 처리했다.
+Time integration error를 제거한 상태에서도 공간 실패가 남는지 보는 진단이다.
+
+Overlay16의 각 square를 네 triangle로 나누고 degree-2 3점 quadrature를 써 3,072개 probe를 만들었다.
+이 규칙은 squared P1 difference에 정확하며 P3/spline 비교에는 충분하지 않다.
+XY에서 기존 XZ mapper로 보낼 때 \((x,y,z)\mapsto(x,-z,y)\) proper rotation을 사용하고
+dyadic rest position의 float32 표현을 확인했다. 평가 후 field를 원래 frame으로 되돌렸다.
+Velocity는 \(A\omega_*\), displacement는 \(A=0.001\) m로 normalize하고 finest 1\%와
+오차 감소를 사전 기준으로 썼다. Numerical floor는 별도 \(10^{-10}\)이다.
+
+\begin{longtable}{L{0.27\linewidth}L{0.28\linewidth}L{0.35\linewidth}}
+\toprule 비교 & displacement [\%] & velocity [\%]\\\midrule
+Forward/backward 4$\to$8 & 5.956244 & 22.169172\\
+Forward/backward 8$\to$16 & 2.927207 & 23.209961\\
+Checkerboard 4$\to$8 & 3.857861 & 21.043244\\
+Checkerboard 8$\to$16 & 1.395752 & 22.685509\\
+n16 forward/backward & 0.570938 & 8.558328\\
+n16 forward(or backward)/checker & 21.203509 & 51.546194\\
+\bottomrule\end{longtable}
+
+Maximum energy drift \(6.0021\times10^{-12}\), EOM \(1.4526\times10^{-12}\)로
+수치 계산은 통과했지만 공간/방향 기준은 실패했다. 각 run 92,169 frame, 720 chunk,
+1,509 inventory 약 266 MB다. 독립 두 run에서 runtime 외 1,508개 파일이 동일했다.
+이 실패 뒤 dataset을 확대해 물리 결함을 덮지 않고 개발 sample만 분리 생성했다.
+
+\section{개발용 학습 sample 15개의 실제 생성과 검증}
+
+기존 Newton native backend에서 CPU로 새 source 세 개를 만들었다.
+1 m XZ square n8, \(M=0.1\) kg, fps60, substeps16, iterations10, 1 s/61 state,
+5$\times$5 trapezoid probe 25개다. Native stretch/area stiffness \(10^3\), material damping 0.1,
+bending 10 N, bending damping 0, gravity 0을 사용했다.
+\begin{itemize}
+ \item Wind pulse: 0.5 m/s, 0.2 s half-sine 뒤 0.8 s zero ambient.
+ \item Step on/off: 0.5 m/s의 켜짐/꺼짐. Off에도 air drag가 남는다.
+ \item Aero-off decay: \(\Delta Y=0.01x^2\), 공력 off, material damping 유지.
+\end{itemize}
+각 source의 60 interval을 12 interval/13 state window 5개로 나눠 총 15개를 만들었다.
+Target array는 \([13,25,3]\), batch 크기는 \([4,4,4,3]\)이다.
+Single development source-object group이며 train/dev/test 독립 객체 분할이나 GS pairing을 완료한 것이 아니다.
+
+Raw/probe inventory와 label/input/work를 모두 대조하고 각 CPU source를 독립 재실행했다.
+세 replay의 position/velocity/aerodynamic force/work 최대 차이는 모두 0,
+pin drift와 guard count도 0이었다. 각각 maximum nodal speed는
+0.202946126/0.471042246/0.133365527 m/s,
+interval work 절댓값 합은 0.000789484374/0.006596602165/0 J다.
+마지막 값은 순 외력 일이나 구조 energy drift가 아니다.
+생성·대조·replay·batch 검증은 48.370 s가 걸렸다.
+
+Dataset에는 static probe/weight/attachment, registry, split, per-window NPZ와 checksum manifest를 둔다.
+\code{TeacherSampleDataset.open(..., allow_development=True)}로만 개발 데이터를 열 수 있고,
+default는 \code{training_eligible=false} 데이터를 거부한다.
+\code{verify_sources}는 manifest뿐 아니라 raw/probe에서 label을 재구성해 대조한다.
+Tamper, incomplete output, rehashed corruption과 static geometry 오류를 검사했다.
+저장된 NumPy batch 읽기는 Torch/Newton/Warp 없이 가능하다.
+
+Raw source는 \code{experiments/artifacts/runs/teacher_sample_dataset/20260908_sample_v1},
+dataset은 \code{experiments/artifacts/datasets/teacher_samples/20260908_sample_v1}다.
+Source inventory 93개/1,150,138 byte, dataset manifest 포함 20개/125,293 byte다.
+Compact evidence와 response PNG를 Git에 보존하고 NPZ 원본은 ignored artifact에 둔다.
+\textbf{이 데이터는 P3 데이터가 아니며 후속 P3 통과로 eligibility를 올리지 않는다.}
+
+\section{공간 수렴 보완: 원인과 대안 분리}
+
+\subsection{Quadratic patch의 내부 weak-force 결함}
+
+상수 quadratic curvature를 넣어도 checkerboard mesh의 안전한 내부 vertex에 약
+\(9.5238095238\times10^{-4}\) N의 force가 n8/16/32에서 남았다.
+경계에 닿는 patch의 영향을 받는 모든 vertex를 제외해 safe interior 9/121/729개를 검사했다.
+Forward/backward는 약 \(10^{-17}\)--\(10^{-15}\) N의 roundoff 수준이었다.
+Polynomial curvature/energy 재현과 그 adjoint가 만드는 약형 내부 힘의 consistency는 다른 조건이다.
+
+Safe interior에만 \(O(h_{\rm mesh}^2)\) parity perturbation을 가해 에너지를 최소화하면
+8.1794\%, 21.6639\%, 31.0786\% 감소했다. Amplitude는
+\(3.495\times10^{-6},6.886\times10^{-7},1.640\times10^{-7}\) m였다.
+작아지는 요철로도 mesh-dependent energy를 낮출 수 있는 반례다.
+Ring을 2--4로 늘려도 잔류 force가 각각 약
+\(2.97\times10^{-5},8.64\times10^{-5},6.11\times10^{-5}\) N로 남았다.
+Patch ring 확대나 mass 교체만으로 해결됐다고 판단하지 않았다.
+
+Lumped mass를 consistent mass로 바꾼 checker n16의 두 번째 positive frequency는
+11.13933에서 11.239343 rad/s로 바뀌지만 독립 기준 14.259993과의 차이가 남는다.
+Old n16의 첫 5개 positive frequency는 다음과 같다 (rad/s).
+\[
+\begin{aligned}
+\text{forward}:&\quad[6.33265,14.18110,24.15372,24.60083,45.84505],\\
+\text{checker}:&\quad[6.20080,11.13933,20.19455,21.38170,36.04130].
+\end{aligned}
+\]
+Stiffness consistency와 mass approximation을 구분한 근거다.
+
+\subsection{독립 spline와 C0 interior-penalty P2/P3}
+
+독립 기준은 unit square의 tensor-product \(C^2\) cubic B-spline, 4/8/16/32 spans,
+Gauss4 tensor quadrature의 \(H^2\)-conforming KL 판이다. Consistent \(M,K\)를 조립하고
+x0 첫 coefficient만 제거해 slope-free 경계를 유지한다. Quadratic 초기 상태는 Greville collocation으로
+정확히 표현하고 generalized eigenbasis 전체를 사용한다.
+Simply-supported analytic frequency를 별도 구현 검증으로 사용했으며 주 비교의 경계를 바꾸지 않았다.
+
+P2는 triangle당 6 DOF, P3는 10 DOF의 Lagrange shape다. P3는 local Vandermonde로 shape/gradient/Hessian을
+계산한다. Volume KL energy에 interior edge moment consistency와 slope-jump penalty를 더한다.
+\[
+ E=\frac12\sum_t\int_t\kappa^\top D_b\kappa\,dA
+ -\sum_e\int_e[\partial_n w]\langle M_{nn}\rangle\,ds
+ +\frac12\sum_e\int_e\frac{\alpha}{h_{\rm avg}}[\partial_n w]^2\,ds.
+\]
+Normal orientation과 jump/average는 source에 고정돼 있다.
+\(h_{\rm avg}\)는 이웃 cell diameter의 평균이며 물리 두께와 다른 길이다.
+P2는 \(\alpha=Eh^3\), P3는 \(\alpha=Eh^3(p/2)^2\), \(p=3\)의 고정 factor 2.25다.
+P3 결과를 본 뒤 penalty를 sweep하거나 유리한 값을 골라낸 것이 아니다.
+P2의 volume/edge는 Duffy3/Gauss2, P3는 Duffy4/Gauss3를 사용한다.
+Exterior rotation penalty는 추가하지 않았다.
+
+식의 reference는 선행 구현 기록에 연결한 공식 FEniCS-Shells Kirchhoff--Love demo다.
+해당 demo의 clamped 경계를 이번 position-only 경계로 복사하지 않았다.
+Reference URL은 \code{experiments/R1_teacher_spatial_remediation/README.md}, 당시 적용 판단은
+\code{code/sessions/2026-09-08_07_teacher_spatial_remediation.md}에 보존돼 있다.
+이번 문서 통합에서는 외부 문헌을 새로 조회하지 않았으며 신규성 조사를 수행한 것으로 표시하지 않는다.
+
+P2/P3는 constant-curvature interior force가 각각 약 \(10^{-15}/10^{-14}\) N,
+unconstrained affine null 3개/left-pin null 1개, proper rotation, gradient, area/mass,
+patch polynomial force/energy를 검사했다.
+Independent oscillator matrix exponential에는 zero mode와 resonance도 포함했다.
+P3 n16 forward frequencies는
+\([6.35772073,14.26003426,24.28380007,24.88148287,46.36581911]\),
+spline32는 \([6.35770535,14.25999311,24.28325170,24.88117461,46.36373132]\) rad/s다.
+
+\section{두 입력군, 정확한 공간 norm과 연속 시간 상계}
+
+원래 \(w^0=10^{-3}x^2,v^0=0\)를 유지하고, 별도 진단으로 rest-start uniform pressure
+\(p(t)=0.01\sin(\pi t/0.2)\) Pa를 \(0\le t\le0.2\) s에 가했다.
+그 뒤 pressure는 0이다. 이 prescribed pressure는 relative wind quadratic traction도,
+canonical frame-start held aerodynamic force도 아니다. 새 wind dataset로 소개하지 않는다.
+
+모든 finite modal equation \(q''+\omega^2q=g\sin(at)\), \(a=\pi/0.2\)를 정확히 계산하고,
+zero/resonant mode에는 안정적인 sinc/극한식, off 구간에는 homogeneous solution을 썼다.
+기존 10,241개 시각과 \(A=0.001\) m, \(A\omega_*\) scale을 그대로 사용했다.
+P3--P3 difference는 overlay16 Duffy4로 degree-6 squared field를 적분한다.
+P3--tensor cubic spline은 overlay32 Duffy6로 total degree 최대 9의 곱을 적분한다.
+P1 전용 3,072 probe 규칙을 그대로 재사용하지 않았다.
+
+Mass-normalized continuous surface RMS를 \(\|\cdot\|\)라 하면 sampled maximum만 보고
+시각 사이 peak를 놓치지 않도록 다음 finite-modal continuous-time 상계를 추가했다.
+\[
+ \max_{0\le t\le T_*}\|e(t)\|
+ \le \max_j\|e(t_j)\|+L_e\frac{\Delta t}{2},\qquad
+ L_u\ge\max_t\|\dot e_u(t)\|,\quad L_v\ge\max_t\|\dot e_v(t)\|.
+\]
+Pair의 각 model velocity/acceleration bound를 합하고 consistent-mass orthonormal basis와
+\(\sqrt{M_{\rm ref}}\) normalization을 썼다. Coarse sampled lower와 fine continuous upper로
+refinement 감소도 검사한다. 이는 주어진 finite modal 모델의 시간 sample 사이 상계이며
+미해결 continuum error나 floating-point uncertainty 전체의 수학적 인증은 아니다.
+
+Pressure mode의 \(|v|\)에는 \(2|g|/a\), on-interval \(|q|\)에는
+\(\min(|g|\tau^2/2, |g|(1+a/\omega)/|\omega^2-a^2|)\) 형태의 유효 bound를 쓰고,
+zero/resonance에서는 특수 fallback을 사용한다. Acceleration은 on에서
+\(|g|+\omega^2|q|\), off에서 \(\operatorname{hypot}(\omega^2q_\tau,\omega v_\tau)\)다.
+고주파를 제거하거나 입력별로 norm 분모를 재조정하지 않았다.
+
+\begin{longtable}{L{0.39\linewidth}L{0.20\linewidth}L{0.29\linewidth}}
+\toprule Pressure 비교 & displacement [\%] & velocity [\%]\\\midrule
+Spline 8$\to$16 sampled & 0.0176344 & 0.191323\\
+Spline 16$\to$32 sampled & 0.00105483 & 0.0234081\\
+P2 8$\to$16 sampled 최대 & 2.245875 & 6.079196 (실패)\\
+P3 8$\to$16 sampled 최대 & 0.016764 & 0.136376\\
+P3 8$\to$16 continuous upper 최대 & 0.149654 & 0.526612 (통과)\\
+P3 n16 direction continuous upper 최대 & 0.133208 & 0.398941 (통과)\\
+P3 n16/spline32 continuous upper 최대 & 0.134202 & 0.408232 (통과)\\
+\bottomrule\end{longtable}
+
+P2 direction velocity도 1.106636\%로 실패했다. P3의 pressure 공간/방향/기준 비교는 고정 1\%를
+통과했다. P3 free-energy drift 최대는 \(1.0684320\times10^{-8}\), pressure의 trapezoid
+work/energy maximum defect는 \(1.5848926\times10^{-7}\)이다.
+Work 수치는 정확 연속 시간 work 적분을 계산한 값으로 표기하지 않는다.
+
+반면 원래 \(x^2\) 초기 상태의 P3 8$\to$16 velocity sampled error는
+17.5895--17.9281\%, continuous upper는 약 24.27--24.80\%로 실패한다.
+Displacement sampled error는 0.3017--0.3042\%다.
+Spline의 같은 입력 velocity는 4$\to$8 27.3165\%, 8$\to$16 19.1290\%,
+16$\to$32 14.9829\%로 감소하지만 아직 1\%에 못 미친다.
+Spline32 초기 에너지의 16.8013\%가 100 rad/s 위, 8.4490\%가 500 rad/s 위에 있다.
+이 초기 상태는 유효한 finite-energy 상태이며 ``불법 초기 조건''으로 제외하지 않는다.
+정상 pressure 응답과 broad-band initial velocity의 수렴 난이도 차이로 해석하고 추가 검증 대상으로 둔다.
+
+\clearpage
+\section{스케치에 직접 반영한 계약 보정과 보류}
+
+\begin{longtable}{L{0.23\linewidth}L{0.33\linewidth}L{0.34\linewidth}}
+\toprule 항목 & 반영한 판단 & 아직 완료하지 않은 것\\\midrule
+Teacher sample/DOF & 고차 DOF와 positive quadrature를 구분. \(M=(M_{\rm ref}/A_{\rm ref})\Psi^\top W_A\Psi\) 허용 & 최종 registry의 고차 law 및 actual model validator\\
+Map sign & GS/기존 P1은 nonnegative 유지. 고차 Teacher에만 signed shape와 별도 version 허용 & P3 10-shape public map, coverage/noise/adjoint와 trajectory 연결\\
+Convergence identity & 같은 backend/mass/BC/load에서 spatial/time acceptance 요구 & P3 nonlinear wind의 temporal+spatial+FRF/tip/work 검증\\
+학습 적격성 & Development sample을 명시적 opt-in으로 격리 & Accepted Teacher와 source split, independent GS 및 oracle\\
+첫 input family & Rest-start pressure 진단은 별도 scope & Wind/on-off 우선 여부의 사용자 선택; 기존 decay 요구 유지\\
+Claim & P3는 training-only reference 후보, target method 변경 없음 & Learned held-out 개선이나 full Teacher 적격성 주장 불가\\
+\bottomrule\end{longtable}
+
+Full shell 연결에는 objective membrane+bending, finite rotation, consistent mass,
+attachment/reaction, nonlinear tangent/solve, damping, canonical two-sided relative wind,
+guard-before-area, frame-start hold와 work quadrature가 필요하다.
+선형 P3 pressure 모듈을 기존 3-node/lumped-mass nonlinear solver에 이름만 바꿔 넣지 않는다.
+같은 새 backend에서 해상도/시간 검증을 다시 수행한 뒤 producer를 연결해야 한다.
+Independent GS 두 개, common mask, spectrum convergence와 network-free oracle/base transport는 그 후에도
+별도 R1 종료 조건이다. Student 학습이나 대규모 dataset 생성은 아직 수행하지 않았다.
+
+\section{재현 command, hash와 원본 보존}
+
+명령은 workspace root에서 실행한다. Launcher가 \code{code/}로 이동하므로 launcher 인자 경로는
+code 기준이다. 모든 새 run은 사용하지 않은 output 이름을 요구한다. 기존 artifact를 덮어쓰거나
+자동 재개하지 않는다. 전체 물리 재실행과 inventory/source/gate 검산을 구분한다.
+
+\begin{verbatim}
+bash code/scripts/check_teacher_gpu.sh
+bash code/scripts/generate_teacher_sample_dataset.sh \
+  --output ../experiments/artifacts/runs/teacher_sample_dataset/my_run \
+  --dataset ../experiments/artifacts/datasets/teacher_samples/my_dataset
+bash code/scripts/audit_teacher_plate_spatial_remediation.sh \
+  --source-run ../experiments/artifacts/runs/teacher_shell_linear_spatial/20260908_reference_v1 \
+  --output ../experiments/artifacts/runs/teacher_spatial_remediation/my_reference
+bash code/scripts/audit_teacher_plate_cubic_refinement.sh \
+  --source-run ../experiments/artifacts/runs/teacher_spatial_remediation/20260908_reference_v1 \
+  --output ../experiments/artifacts/runs/teacher_spatial_remediation/my_cubic
+bash code/scripts/audit_teacher_plate_cubic_refinement.sh \
+  --verify ../experiments/artifacts/runs/teacher_spatial_remediation/my_cubic
+\end{verbatim}
+
+전체 시간 refinement는 네 선행 run이 필요하다. 정확한 인자 및 재검산 명령은
+\code{experiments/R1_teacher_shell_full_refinement/README.md}에 있다.
+다른 단계의 launcher/인자도 아래 evidence index의 README가 소유한다.
+P3의 \code{--verify}는 inventory/current source/판정 검산이며 전체 modal 물리 재계산은
+별도 fresh run으로 실행했다.
+
+\begin{longtable}{L{0.27\linewidth}L{0.65\linewidth}}
+\toprule Artifact & SHA-256 (전체 값)\\\midrule
+Full temporal report & \code{14700c5346b3f9502f724abd32febcc7a7a6266771ab08fbb750dae531e985f5}\\
+Linear spatial report & \code{3a0d8e7ee5be505b190008d387c67a113a027ce0651595cb43b0812c8c33ba1a}\\
+Dataset manifest & \code{1ab229207fa8ec60c282aa433c49d7a5f8a288deb1575688794b72b2afdae8f5}\\
+Remediation reference report & \code{b5c3929f2e65160f9f8127fe4ea9612e41a0871a5554c4efd5bcec0e77249fd7}\\
+P3 report & \code{799a48aa00e9eb40085ad030298d90a409959332092fbfdc784b312bc2cb46ac}\\
+\bottomrule\end{longtable}
+
+Remediation raw root는 \code{experiments/artifacts/runs/teacher_spatial_remediation/}다.
+Reference는 \code{20260908_reference_v1}와 \code{20260908_reference_v1_replay},
+P3는 \code{20260908_cubic_v1}와 \code{20260908_cubic_v1_replay}다.
+Reference run은 각각 45.784/41.826 s, inventory 55개/약 45.16 MB;
+P3 run은 104.291/106.025 s, inventory 16개/146,317,681 byte다.
+각 pair는 runtime 외 각각 54/15개 inventory가 byte-identical이다.
+모델 배열과 전체 comparison curve는 독립 계산으로 재생성했다.
+모든 native nodal trajectory를 따로 저장한 것은 아니며 보존한 modal model과 계수로 재구성한다.
+Preceding spatial source 30개와 새 source snapshot, config/environment 및 모든 inventory hash를 연결한다.
+
+Git에는 compact report/config/environment/provenance/verification과 선택한 PNG를 보존한다.
+Ignored raw의 모든 state/trace/vector, modal arrays 및 dataset NPZ는 Git clone만으로 복구되지 않는다.
+Raw artifact를 별도 보존하거나 기록된 source/config로 재생성해야 한다. Compact evidence만으로
+NPZ가 복원된다고 주장하지 않는다. 개인 절대 경로·secret은 기록에서 제외한다.
+
+\section{전체 상세 기록 index와 논문 작성 시 사용법}
+
+Code 기능별 설계·승인·수정·검증 과정은 아래 session에 남아 있다. 날짜의 각 번호는 해당 repository
+내 순서다. 2026-09-01 viewer 기록은 인수한 선행 맥락이며 이후 작업과 구분한다.
+\begin{longtable}{L{0.20\linewidth}L{0.70\linewidth}}
+\toprule Code session 날짜/번호 & 소유 내용\\\midrule
+09-06 01, 02 & Dataset handoff; TeacherPhysicsRegistry native SI/schema/실제 model 검사\\
+09-07 01, 02, 03 & Trajectory writer/reader/replay; wind sequence; authored-rest 초기 변위\\
+09-07 04, 05, 06, 07 & Common probe/adjoint; convergence comparator; GPU launcher; GPU checkpoint\\
+09-07 08, 09, 10 & Native bending 감사; area-weighted hinge; quadratic patch plate 대안\\
+09-07 11, 12 & 3D shell structure; CPU nonlinear dynamics\\
+09-08 01, 02, 03, 04 & Temporal reference/실패; acceleration precision; short 및 full refinement\\
+09-08 05, 06, 07 & Linear spatial 실패; sample 생성·검증; stencil/P2/P3 보완\\
+09-09 01 & 누적 코드 회귀·Git checkpoint와 현재 다음 작업\\
+\bottomrule\end{longtable}
+
+\code{experiments/} 아래 다음 각 폴더의 \code{README.md}에는 해당 입력, 결과 표, raw 경로,
+명령, source/config hash와 재검산 근거가 있다. 별도의 experiment session은 실행 과정과 실패를 보존한다.
+\begin{longtable}{L{0.47\linewidth}L{0.43\linewidth}}
+\toprule Evidence folder & 논문에서 참고할 근거\\\midrule
+\code{R1_teacher_smoke} & 사용자 GPU 실행과 물리 수렴 미판정\\
+\code{R1_teacher_bending_audit} & Native coefficient의 mesh scaling 반례\\
+\code{R1_teacher_bending_mapping} & Area hinge의 방향 비등방성\\
+\code{R1_teacher_plate_reference} & Static KL polynomial/방향 검증의 범위\\
+\code{R1_teacher_shell_structure} & Objectivity/미분, 오차 상쇄와 thin locking 진단\\
+\code{R1_teacher_shell_dynamics} & 수치 계약 통과와 초기 시간 실패\\
+\code{R1_teacher_shell_temporal} & 독립 DOP853, 고주파와 line-search 실패\\
+\code{R1_teacher_shell_precision} & Acceleration unknown의 정밀도 보정 근거\\
+\code{R1_teacher_shell_refinement} & Short 시간 해상도 ladder\\
+\code{R1_teacher_shell_full_refinement} & Full 시간 수렴·전체 trace 검산\\
+\code{R1_teacher_shell_linear_spatial} & Exact temporal response에서도 남는 공간/방향 실패\\
+\code{R1_teacher_sample_dataset} & 실제 15 window, source/replay/loader 검증\\
+\code{R1_teacher_spatial_remediation} & 내부 force 반례, 독립 spline, P2/P3와 입력별 차이\\
+\bottomrule\end{longtable}
+
+논문 method에는 mass/shape/quadrature, attachment와 force sampling을 정확히 옮기고,
+appendix에는 실패한 native/area-hinge/patch와 보완 근거를 선택해 인용할 수 있다.
+Results에서는 실행 성공, numerical convergence와 accepted Teacher를 분리하고 normalized error의
+분모와 측정 시각/연속 상계 여부를 함께 쓴다. Limitations에는 broad-band displaced response,
+미완성 nonlinear wind 연결, 독립 GS/oracle 및 R1 전체 미완료를 남긴다.
+이 기록 자체는 아직 수행하지 않은 learner 실험이나 physics validation의 대체 증거가 아니다.
+
+\end{document}

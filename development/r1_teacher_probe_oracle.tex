@@ -1,0 +1,437 @@
+\documentclass[10pt]{article}
+
+\input{shared_preamble.tex}
+
+\hypersetup{
+  pdftitle={R1 Teacher, Probe, and Oracle --- Wind3DGS Development Specification},
+  pdfauthor={Wind3DGS Project}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Wind3DGS Development --- R1}
+\rhead{\small Teacher, Probe, and Oracle}
+\cfoot{\thepage}
+
+\title{\textbf{R1 --- Teacher, Probe, and Oracle}\\
+Reference·mapping·network-free preflight 명세}
+\author{Wind3DGS Project}
+\date{2026-08-22; Teacher 개발 근거 갱신 2026-09-09}
+
+\begin{document}
+\maketitle
+
+\begin{contractbox}{문서 권위와 선행 조건}
+이 문서는 canonical sketch의 R1 구현 파생 문서다. 최종 방법 권위는 sketch에 있으며,
+\code{eq:rd-common-probe-map}, \code{eq:rd-common-probe-adjoint},
+\code{eq:rd-area-mass}, \code{eq:rd-attachment-whitening},
+\code{eq:rd-global-response}, \code{eq:rd-exact-zoh},
+\code{eq:rd-wind-pullback}, \code{eq:rd-mean-transport},
+\code{eq:rd-teacher-period-spectrum}을 텍스트 기준으로 참조한다.
+R0 contract/schema와 그 fixture가 통과하기 전에는 이 문서의 실행 상태를 완료로 바꾸지 않는다.
+\end{contractbox}
+
+\tableofcontents
+\newpage
+
+\section{목적과 소유권}
+
+R1은 network를 학습하기 전에 \textbf{reference가 믿을 수 있는지}, teacher와 GS가 같은 물리량을
+비교하는지, 그리고 현재 response-package class가 적어도 network 없이 teacher response를 표현할 수 있는지를
+확인한다. 여기서 실패하면 R2의 optimizer나 architecture를 조정하지 않는다.
+
+\begin{longtable}{L{0.24\linewidth}L{0.31\linewidth}L{0.35\linewidth}}
+\toprule
+소유자 & R1가 소유하는 것 & 소유하지 않는 것\\
+\midrule
+\endfirsthead
+\toprule
+소유자 & R1가 소유하는 것 & 소유하지 않는 것\\
+\midrule
+\endhead
+Teacher physics & 구조 model/constitutive/material/damping/solver registry, quadrature, spatial/time convergence & student architecture와 learned result\\
+Common probe & canonical probe, teacher/GS map, common-valid mask, mapping-noise floor와 payload별 adjoint & target runtime force path\\
+Method identity & teacher와 GS에 동일한 traction law/effective scale/guard/sign convention, reduced evaluator exact-ZOH fixture & teacher 구조 solver를 exact ZOH로 제한하는 것\\
+% [논문 작성 참고 -- 수정 이유]
+% coefficient를 rho/C_n/C_parallel tuple로 해석하지 않고 식별 가능한 kappa_aero 하나로 축소했다.
+Oracle & attachment/mass-constrained network-free Global response preflight & learned held-out evidence 또는 MC1 claim\\
+Base transport & teacher surface motion의 independent GS mean/covariance transport, attachment/rest/SPD fixture & optional SH appearance와 perceptual loss\\
+Spectrum status & teacher spectrum convergence와 stable-peak availability status & curriculum 채택 여부와 학습 이득 판정\\
+\bottomrule
+\end{longtable}
+
+\must{R1 성공의 의미:} 두 independent GS variant가 하나의 frozen common-probe denominator에서
+converged teacher와 비교 가능하고, corrected oracle package가 unit/map/measure/evaluator error floor 안에서
+response를 재현하며, base mean/covariance transport가 physics와 renderer 양쪽 fixture를 통과한다.
+
+\section{진입 입력}
+
+\subsection{R0에서 받아야 하는 artifact}
+
+\begin{itemize}
+  \item Frozen \code{DomainContract}, \code{CoordinateContract}와 \code{PhysicalValidPolicy}.
+  \item Frozen \code{TensorSchemaRegistry}, \code{SerializationContract}와 method identity.
+  \item \code{TeacherStudentVisibility}, source-object group rule, sealed-test hash와 failure denominator registry.
+  \item \code{MetricRegistry}/\code{ThresholdRegistry} schema 및 R1에서 채울 threshold owner.
+  \item Normal/covariance branch, rank-failure policy, stable Gaussian ID와 package round-trip fixture.
+\end{itemize}
+
+\subsection{K0 최소 입력 세트}
+
+\begin{itemize}
+  \item Flat-rest strip 1개와 rectangular flag 1개, 우선 material preset 1개.
+  \item Object마다 camera/seed/densification이 독립적인 static GS variant 2개. Primitive split/duplicate는 독립 variant가 아니다.
+  \item Short impulse, step-on/off, zero-ambient rest/recovery와 aerodynamic-off \(Q=0\) displaced free decay.
+  \item Spatial mesh refinement 최소 2단계와 temporal timestep refinement 최소 2단계.
+  가능한 한 three-level convergence를 사용하되 실제 level 수와 ratio는 Open Design Decision에 기록한다.
+  \item Same rest surface의 metric/material/attachment/wind program과 replay seed/hash.
+\end{itemize}
+
+\subsection{Teacher 입력 payload}
+
+Teacher는 mesh vertex/element connectivity, surface quadrature, material, attachment와 prescribed wind를 소유한다.
+Reference export는 canonical surface sample의 rest/current position, displacement, velocity, optional normal,
+applied traction/total force, external work와 timestamp를 포함한다. Topology와 correspondence는 training/evaluation
+artifact에만 남고 target package로 serialize하지 않는다.
+
+\section{이미 동결된 계약}
+
+\subsection{Privilege와 convergence separation}
+
+\begin{itemize}
+  \item Teacher mesh는 privileged simulation/evaluation data다. Vertex 하나를 latent anchor 하나로 대응시키지 않는다.
+  \item Accepted fine timestep을 고정한 spatial mesh refinement와 accepted fine mesh를 고정한 temporal timestep
+  refinement를 별도로 측정한다. 둘을 동시에 바꾼 diagonal difference로 cancellation을 허용하지 않는다.
+  두 축은 같은 element/mass/structure/damping/attachment/load identity를 공유해야 한다.
+  기존 quadratic patch shell의 temporal pass와 P3 plate의 spatial pass를 합쳐 승인하지 않는다.
+  \item 두 convergence는 같은 canonical probe와 physical-time grid에서 velocity, tip trajectory, work 및
+  band-integrated spectrum/FRF discrepancy를 측정한다.
+  \item Dominant peak의 존재는 teacher convergence 조건이 아니다. Spectrum이 수렴했지만 clear peak가 없으면
+  \code{T_dom=unavailable} status이며 teacher failure가 아니다. Spectrum 자체가 수렴하지 않으면 R1 failure다.
+\end{itemize}
+
+\subsection{Mandatory common-probe map}
+
+Source object마다 test open 전에
+\[
+  \mathcal X_P^0=\{(p_j^0,w_{A,j}^P,w_{M,j}^P)\}_{j=1}^{N_P}
+\]
+를 동결한다. Sketch의 \code{eq:rd-common-probe-map}에 따라
+teacher discretization \(X=T\)와 GS variant \(X=r\) 각각에 대해
+\[
+  T_X\in\mathbb R^{N_P\times N_X},\quad
+  \sum_i(T_X)_{ji}=1,\quad S_X=T_X\otimes I_3
+\]
+를 만든다. Ordered support/weight, coverage, kernel/version와 hash를 저장한다.
+GS convex map과 기존 선형 barycentric teacher에는 \((T_X)_{ji}\ge0\)를 요구한다.
+고차 teacher의 signed shape weight는 별도 map-law/version으로 구분한다.
+해당 차수의 polynomial reproduction, conditioning/noise amplification과 virtual-work adjoint를
+검증하며 양의 surface quadrature weight와 혼동하지 않는다. 현재 public teacher map v1은
+선형/nonnegative 계약만 구현했다. P3 진단 내부의 shape evaluation은 그 API의 완료 근거가 아니다.
+
+\begin{itemize}
+  \item 모든 accepted map은 row partition, arbitrary constant vector reproduction과 predeclared
+  rest-coordinate affine/smooth analytic field reproduction tolerance를 통과한다.
+  \item Teacher와 source-object group의 모든 declared GS variant가 함께 support하는 probe intersection으로
+  pre-test frozen common-valid mask 하나를 만든다. Variant별 사후 probe 삭제는 금지한다.
+  \item Coverage distance/rate, unsupported reason과 measured mapping-noise floor를 denominator와 함께 저장한다.
+  \item 이 map은 training/evaluation-only다. Target runtime GS force는 Gaussian에서 직접 계산한다.
+\end{itemize}
+
+\subsection{Payload별 adjoint}
+
+Sketch \code{eq:rd-common-probe-adjoint}에 따라 payload 의미를 구분한다.
+\[
+  F_X=S_X^\top F_P \quad\text{(probe별 total force)},
+  \qquad
+  F_X=S_X^\top W_{A,P}\tau_P \quad\text{(probe traction)},
+\]
+\[
+  W_{A,P}=\operatorname{diag}(w_{A,j}^PI_3),\qquad
+  \tau_P^\top W_{A,P}S_Xu_X=F_X^\top u_X.
+\]
+Traction에 \(S_X^\top\)만 적용하거나 area를 두 번 곱하는 구현은 금지한다.
+Runtime의 \(F_i=a_i\tau_i\)에는 probe adjoint를 재적용하지 않는다.
+
+\subsection{동일 traction identity와 reduced evaluator}
+
+Teacher quadrature와 GS는 representation만 다르고 다음 traction identity는 같다.
+\begin{itemize}
+  \item \code{traction_law_id=two_sided_normal_quadratic_v1}: 같은
+  domain-wide \(\kappa_{\mathrm{aero}}\), relative-velocity/sign convention과 two-sided normal-only law.
+  % [논문 작성 참고 -- 수정 이유]
+  % kappa_aero=0.5*rho_air*C_n으로 합쳐 동일 공기 조건에서 구분 불가능한 scalar를 제거했다.
+  % 별도 C_parallel/lift는 response distillation이 핵심인 V0의 공력 자유도를 불필요하게 늘리므로 제외한다.
+  \item \code{traction_guard_id=vector_norm_before_area_v1}: 같은 vector-norm
+  \(\tau_{\mathrm{guard}}\)를 먼저 적용한 뒤 각 discretization의 area quadrature를 곱한다.
+  Core quantitative run에서는 두 representation 모두 activation count가 0이어야 한다.
+  % [논문 작성 참고 -- 수정 이유]
+  % guard threshold는 registry/hash에 남기되 물리계수로 소개하지 않는다. activation은 clipping 성공이 아니라
+  % supported envelope 이탈 또는 안정성 실패의 증거다.
+  \item Zero ambient와 aero-off를 서로 다른 flag로 기록한다. 전자는 drag를 허용하고 후자만 strict free response다.
+  \item 학생 reduced evaluator는 \code{integrator_id=exact_zoh_augexp_v1},
+  \code{force_sample_time=frame_start_v1}로 고정한다. Teacher 구조 solver는 별도 converged reference이며
+  같은 structural integrator일 필요는 없다. 그러나 exported frame의 aerodynamic traction은 학생과 같은
+  frame-start sample을 해당 frame 동안 hold한다. Teacher 내부 structural substep과 work quadrature만 별도
+  convention으로 기록할 수 있으며 force sample identity 자체를 바꾸지 않는다.
+\end{itemize}
+
+\subsection{Corrected oracle invariant}
+
+Oracle은 attached row가 exact zero인 raw Global field를 common-probe teacher impulse/step/FRF response에 fit하고,
+R0 physical-valid policy와 R1에서 동결한 \textbf{oracle-only positive area source}로 만든 mass를 사용해
+whitening한다. Network-free 단계이므로 이 area는 student head 출력이 아니며, teacher quadrature에 대한
+training-only fit 또는 deterministic GS footprint rule 중 하나를 Open Design Decision으로 동결한다.
+어느 경로든 accepted row에서 \(a_i\ge0\), \(\sum_i a_i=A_{\mathrm{ref}}\)와
+\(m_i=(M_{\mathrm{ref}}/A_{\mathrm{ref}})a_i\)를 만족해야 한다.
+이 oracle measure는 evaluator preflight 전용이며 R3의 learned-measure evidence로 승계하지 않는다.
+
+\(B_c\)를 \(B=B_cR\)로 바꾸면 generalized coordinate도 바뀌므로
+teacher의 기존 diagonal \(\Omega,Z\)를 그대로 붙이지 않는다. 다음 두 mathematically consistent 경로 중
+\textbf{하나만} canonical로 선택할 수 있으나, 어느 경로인지는 아직 Open Design Decision이다.
+\begin{enumerate}
+  \item Whitened \(B\)를 고정하고 common-probe time/FRF response로 positive diagonal \(\Omega,Z\)를 다시 fit한다.
+  \item Raw full reduced \(M_c,C_c,K_c\)를 whitening congruence-transform한 뒤 일관되게 re-diagonalize한다.
+\end{enumerate}
+두 경로 모두 student와 같은 positive-diagonal response-package class와 exact-ZOH evaluator로 귀착해야 한다.
+Oracle paired 결과는 contract preflight이며 learned held-out evidence가 아니다.
+
+\subsection{Base mean/covariance transport}
+
+Mean은 response field를 통해 transport하고, R0에서 선택한 angular-field 또는 local-affine branch로 current normal과
+covariance orientation을 갱신한다. Attachment displacement/angular row는 exact zero다.
+Rest state identity, proper rotation, covariance eigenvalue/SPD/finite 보존과 velocity consistency를 만족해야 한다.
+Optional higher-order SH, scale/shear, deformation-gradient와 appearance residual은 R1 범위 밖이다.
+
+\section{구현 체크리스트}
+
+\subsection{현재 개발 상태와 acceptance 구분 (2026-09-09)}
+
+아래 체크박스는 canonical R1 acceptance를 뜻한다. 구현이 존재해도 전체 계약을 아직 통과하지
+않았으면 미체크로 둔다. 개발 구현과 국소 fixture의 완료는 다음 표로 별도 기록한다.
+전체 과정, 수식, 실패와 재현 명령은 동반 연구 기록
+\code{r1_teacher_implementation_record.tex}/PDF에 보존한다.
+
+\begin{longtable}{L{0.23\linewidth}L{0.20\linewidth}L{0.47\linewidth}}
+\toprule
+항목 & 개발 상태 & 실제 근거와 남은 경계\\
+\midrule
+\endfirsthead
+\toprule 항목 & 개발 상태 & 실제 근거와 남은 경계\\ \midrule
+\endhead
+Registry / trajectory / sequence & 구현·개발 검증 완료 & Native SI/hash, force/work와 실패 prefix, CPU replay 및 사용자 GPU 12/12. 전체 R0 동결을 뜻하지 않음.\\
+선형 teacher probe & 구현·개발 검증 완료 & Nonnegative barycentric forward/adjoint와 원본 대조. Independent-GS intersection과 고차 public map은 미완료.\\
+Native/area hinge & 채택 근거 실패 & Mesh 의존성 및 방향 편향. 결과를 유지하고 isotropic material mapping으로 승격하지 않음.\\
+Quadratic patch shell & 제한된 수치 검증 통과 & Objectivity/미분 및 가속도 Newmark 시간 진단 통과. Checkerboard interior force와 공간 속도 실패.\\
+P3/독립 spline & 압력 fixture 통과 & 1\% 공간/방향/기준의 연속 시간 상계 통과. 원래 \(x^2\) 초기 속도 실패, nonlinear wind teacher 미연결.\\
+Development samples & 생성·검증 완료 & Newton 3개 source/15 window, 원본·replay·loader 검증. Training eligibility false.\\
+Canonical R1/Oracle & 미완료 & 동일 backend의 최종 수렴, 고차 map/traction, spectrum/tip/work, 독립 GS 2개와 oracle/transport 필요.\\
+\bottomrule
+\end{longtable}
+
+\subsection{TeacherPhysicsRegistry와 reference 생성}
+
+Teacher quadrature도 canonical \(A_{\mathrm{ref}},M_{\mathrm{ref}}\)를 사용한다.
+Shell thickness/density를 별도 SI parameter로 저장하더라도 \(h\rho=M_{\mathrm{ref}}/A_{\mathrm{ref}}\)를
+만족하도록 한쪽을 derive하거나 equality-constrain한다. Constitutive preset이 독립 total mass owner가 되어서는 안 된다.
+고차 teacher의 scalar mass는 sketch \code{eq:rd-teacher-consistent-mass}에 따라
+\(M_T^{\mathrm{scalar}}=(M_{\mathrm{ref}}/A_{\mathrm{ref}})\Psi^\top W_{A,T}\Psi\)로
+조립할 수 있다. 이 경우 \(\mathbf1^\top M_T^{\mathrm{scalar}}\mathbf1=M_{\mathrm{ref}}\)와
+허용 DOF의 양정성을 검사하며, 모든 고차 DOF에 positive lumped mass를 강요하지 않는다.
+
+\begin{itemize}
+  \item[$\square$] \code{TeacherPhysicsRegistry}에 structure/element/constitutive law, equality-constrained thickness/density,
+  elastic parameter, damping, attachment enforcement, nonlinear tolerance와 unit을 등록한다.
+  \item[$\square$] Solver/integrator, timestep, nonlinear iteration, linear solver/tolerance, precision, contact-off flag,
+  quadrature와 output sampling rule을 version/hash한다.
+  \item[$\square$] Material preset 이름을 실제 SI parameter tuple로 해석하는 versioned mapping을 저장한다.
+  \item[$\square$] Teacher와 GS의 traction law/effective-scale/guard/sign/sample identity와
+  zero guard-activation을 비교하는 validator를 만든다.
+  % [논문 작성 참고 -- 수정 이유]
+  % 서로 다른 rho/C 값을 맞추는 검사가 아니라 실제 힘을 결정하는 단일 scale과 guard 비활성 상태를 검증한다.
+  \item[$\square$] Mesh surface quadrature가 \(\sum a_T=A_{\mathrm{ref}}\),
+  \(\sum m_T=M_{\mathrm{ref}}\)를 만족하고 force integral, sign과 external work analytic fixture를 통과한다.
+  여기서 \(m_T\)는 quadrature mass이며, consistent mass의 DOF row sum을 양의 point mass로 해석하지 않는다.
+  \item[$\square$] Finest fixed timestep의 spatial series와 finest accepted mesh의 temporal series를 별도 command/report로 실행한다.
+  \item[$\square$] Accepted mesh/timestep은 결과, tolerance, convergence order diagnostic와 hash로 고정한다.
+\end{itemize}
+
+\subsection{Canonical probe와 mapping}
+
+\begin{itemize}
+  \item[$\square$] Probe ID/rest position/area--mass weight와 source-object scope를 serialize한다.
+  \item[$\square$] Teacher 및 각 independent GS map의 ordered support와 law별 weight를 deterministic하게 생성한다.
+  GS/선형 teacher는 nonnegative, 고차 teacher는 별도 version의 signed shape evaluation과 conditioning 검사를 요구한다.
+  \item[$\square$] Partition, constant, coordinate-linear/smooth-field reproduction, coverage와 unsupported rate를 측정한다.
+  \item[$\square$] 모든 declared variant의 common-valid intersection을 test open 전에 한 번 동결하고 hash한다.
+  \item[$\square$] Displacement/velocity forward map과 total-force/traction adjoint의 shape/unit/work identity를 property test한다.
+  \item[$\square$] Spatial convergence, temporal convergence와 GS mapping noise를 별도 error component로 보고한다.
+\end{itemize}
+
+\subsection{Traction/exact-ZOH fixture}
+
+Frame 시작의 \((\mu_i^{t-1},v_i^{t-1},n_i^{t-1})\)에서
+\[
+  v_{{\rm rel},i}=W_t^{\rm eff}(\mu_i)-v_i,\quad
+  v_{n,i}=v_{{\rm rel},i}^\top n_i
+\]
+를 만들고 sketch \code{eq:rd-wind-pullback}의 two-sided normal-only traction, numerical guard, area force와
+\(Q=B^\top F\) 순서를 그대로 사용한다.
+% [논문 작성 참고 -- 수정 이유]
+% V0 fixture에서 v_parallel을 제거해 접선항이 구현에 조용히 남지 않도록 한다. 필요 시 optional law/version에서
+% 별도 fixture와 ablation으로 다시 추가해야 한다.
+
+\begin{itemize}
+  \item[$\square$] \(n\mapsto-n\)에서 traction/rollout identity를 통과한다.
+  \item[$\square$] \(v_{\rm rel}\mapsto-v_{\rm rel}\)에서 traction sign이 반전된다.
+  \item[$\square$] Zero ambient에서 drag work \(\sum_iF_i^\top v_i\le0\) analytic fixture를 통과한다.
+  \item[$\square$] Random state와 piecewise-constant load의 exact-ZOH 결과를 very-fine reference와 비교한다.
+  \item[$\square$] Aero-off \(Q=0\)에서 positive pole/damping의 energy decay와 deterministic replay를 통과한다.
+  \item[$\square$] Hidden corrector/substep, implicit alternative, force-level clamp와 second update가 trace에 없고
+  quantitative core의 \(\tau_{\mathrm{guard}}\) activation count가 0임을 검사한다.
+  % [논문 작성 참고 -- 수정 이유]
+  % guard가 활성인 rollout을 정상 표본으로 받아들이면 solver instability를 공력 saturation으로 숨길 수 있다.
+\end{itemize}
+
+\subsection{Network-free oracle preflight}
+
+\begin{itemize}
+  \item[$\square$] Independent GS마다 attached/invalid policy를 적용한 raw Global field와 fit provenance를 저장한다.
+  \item[$\square$] R0 valid policy와 frozen oracle-measure ID로 mass Gram, eigenvalue/rank floor 및 whitening transform을 기록한다.
+  \item[$\square$] Open decision에서 선택한 canonical oracle path 하나만 실행하고 path/config/hash를 기록한다.
+  \item[$\square$] Arbitrary whitening+unchanged diagonal pole, mapped teacher mode-only와 post-hoc asset pole tuning을 validator가 거부한다.
+  \item[$\square$] Attachment zero, \(B^\top M_xB=I\), positive rad/s pole/damping, impulse/step/FRF/work와
+  exact-ZOH free-decay fixture를 통과한다.
+  \item[$\square$] 두 GS의 oracle response를 같은 probe/mask에 올리고 teacher convergence와 mapping-noise floor에 대조한다.
+\end{itemize}
+
+\subsection{Base mean/covariance transport}
+
+\begin{itemize}
+  \item[$\square$] Teacher surface displacement/velocity/normal을 training/evaluation correspondence로 각 GS에 transport한다.
+  \item[$\square$] Rest/zero-state mean과 covariance가 bitwise 또는 declared tolerance 안에서 input identity다.
+  \item[$\square$] Known proper rigid rotation에서 normal/rotation 방향, covariance eigenvalue와 SPD를 보존한다.
+  \item[$\square$] Attached Gaussian mean/angular response가 numerical zero이고 invalid covariance가 stable failure reason으로 집계된다.
+  \item[$\square$] Transported position finite difference와 reported kinematic velocity가 tolerance 안에서 일치한다.
+  \item[$\square$] Appearance/SH loss 없이 base renderer가 finite image를 만들고 실패 frame을 denominator에 유지한다.
+\end{itemize}
+
+\section{Open Design Decisions}
+
+\begin{decisionbox}{해석 규칙}
+이 표는 결정을 대신하지 않는다. 권장 기본값은 K0 구현을 단순화하기 위한 제안이며,
+선택한 option은 registry/version, 근거 fixture와 동결 시점을 기록한 뒤에만 canonical R1 실행에 사용한다.
+\end{decisionbox}
+
+\begin{longtable}{L{0.18\linewidth}L{0.27\linewidth}L{0.29\linewidth}L{0.16\linewidth}}
+\toprule
+결정 항목 & 허용 선택지 & 권장 기본값(미동결) & 동결 시점\\
+\midrule
+\endfirsthead
+\toprule
+결정 항목 & 허용 선택지 & 권장 기본값(미동결) & 동결 시점\\
+\midrule
+\endhead
+Teacher 구조 model & linear thin shell / corotational shell / 검증된 nonlinear cloth-shell & P3 consistent-mass 판은 구조 진단 후보. 최종 membrane+bending 및 moderate rotation teacher는 미선택; 기존 quadratic patch는 공간 실패 & 최종 backend acceptance 전\\
+Constitutive preset & \((E,\nu,h,\rho)\) 계열 / 동등한 명시 SI shell parameter & opaque class ID 대신 실제 SI tuple를 저장하되 \(h\rho=M_{\mathrm{ref}}/A_{\mathrm{ref}}\)를 derive/equality-constrain & teacher dataset 생성 전\\
+Damping & Rayleigh \(\alpha M+\beta K\) / verified material damping / mode-target calibration & 좁은 target band에 calibration한 Rayleigh damping과 measured modal ratio report & convergence config freeze 전\\
+Teacher integrator & implicit Newmark/generalized-\(\alpha\) / 충분히 작은 explicit reference & 기존 shell에서 acceleration-form Newmark 정밀도·시간 진단 통과. 새 P3 backend에는 재검증 필요 & backend별 temporal series 전\\
+Refinement ladder & 2-level / 3-level 이상, uniform / structured refinement & 가능한 경우 3-level과 일정 refinement ratio; 최소 2-level은 smoke only로 표시 & K0 run 전\\
+Probe construction & canonical UV grid / rest-surface samples / geometry landmarks+grid & fixed rest-surface probe grid와 area/mass weights, tip landmark를 보조로 포함 & map 생성 전\\
+Map kernel/support & 선형 barycentric / 고차 shape teacher, local weighted GS support & GS convex map 유지. P3는 signed 10-shape map의 별도 schema, polynomial reproduction과 work 검사 필요 & mapping-noise threshold freeze 전\\
+첫 데이터 입력 범위 & rest-start wind/on-off 우선 / displaced free-decay까지 동시 수렴 & 미결정. Pressure 진단 통과로 wind 또는 임의 초기 상태를 승인하지 않음; canonical free-decay 요구는 유지 & 최종 데이터 scope freeze 전\\
+Effective traction scale & domain-wide fixed \(\kappa_{\mathrm{aero}}>0\) 후보 범위 & material/object와 독립인 scalar 하나를 dev에서 전체 domain에 동결하고 runtime에는 \(g_W\)만 노출 & teacher final run 전\\
+% [논문 작성 참고 -- 수정 이유]
+% F가 kappa_aero*g_W^2에 비례하므로 둘을 함께 tune하지 않는다. kappa_aero는 teacher/student identity,
+% g_W는 prescribed wind strength control이라는 서로 다른 owner를 갖는다.
+Numerical traction guard & fixed high \(\tau_{\mathrm{guard}}\) / guard 없이 hard reject & supported envelope 위의 fixed global guard와 core activation zero; activation은 OOD/failure로 유지 & 첫 stress fixture 전\\
+% [논문 작성 참고 -- 수정 이유]
+% tau_guard를 coefficient tuple에서 분리하면 논문에서 물리 가정과 수치 안전장치를 명확히 구분할 수 있다.
+Oracle area source & teacher-quadrature 기반 oracle-only positive fit / deterministic GS covariance-footprint rule & 가장 단순한 positive normalized rule을 두 GS에 동일 적용하고 source/hash 공개; student measure claim으로 승계 금지 & oracle field fit 전\\
+Oracle canonical path & whitened-field pole refit / full \(M,C,K\) congruence+re-diagonalization & reliable full reduced operators가 있으면 후자, 아니면 response-fit; 두 결과를 asset별 혼용하지 않음 & oracle acceptance run 전\\
+Oracle rank/fit band & fixed rank와 impulse/time/FRF weight 후보 & R2와 같은 intended Global rank, converged teacher band 안에서 fit & oracle config freeze 전\\
+Convergence metric/threshold & absolute SI / dimensionless reference-scale / 둘 다 & dimensionless primary+SI diagnostic, velocity/FRF/work를 함께 사용 & finest result를 보기 전 dev freeze\\
+Peak analysis status & area/mass aggregate, band/window/prominence 후보 & R1은 convergence와 availability status만 출력; curriculum 채택은 R2b 소유 & spectral report 전\\
+\bottomrule
+\end{longtable}
+
+\section{산출물}
+
+\begin{itemize}
+  \item Versioned \code{TeacherPhysicsRegistry}와 material/traction/solver/refinement config.
+  \item Converged \code{TeacherPackage}: topology hash, quadrature, trajectory, applied traction/force/work,
+  spatial/temporal convergence report와 replay command.
+  \item Independent \code{StaticGSPackage} 두 개 이상과 source-object group/provenance.
+  \item \code{CanonicalProbeMap}: probe payload, \(S_T,S_r\), common-valid mask, mapping report/noise floor와 hash.
+  \item Traction/exact-ZOH analytic fixture report와 method-identity equality report.
+  \item GS별 corrected \code{OracleGlobalPackage}와 oracle-measure ID/hash.
+  \item Oracle chosen path, fit/re-diagonalization report와 paired probe error.
+  \item \code{BaseTransportReport}: base mean/covariance transport fixture, rendered smoke output와 failure denominator report.
+  \item \code{TeacherSpectrumStatus}: converged 여부, stable peak available/unavailable reason와 extraction-config hash.
+  \item \code{R1PreflightReport}: 모든 threshold ID, command/source/config/artifact hash와 R2 진입 판정.
+\end{itemize}
+
+Teacher raw topology/correspondence와 oracle fitting payload는 training-side artifact다.
+이를 target \code{ResponsePackage}에 복사한 산출물은 유효한 R1 결과가 아니다.
+
+\section{필수 fixture와 metric}
+
+\begin{longtable}{L{0.22\linewidth}L{0.46\linewidth}L{0.22\linewidth}}
+\toprule
+Fixture & 합격 조건 & 실패 owner\\
+\midrule
+\endfirsthead
+\toprule
+Fixture & 합격 조건 & 실패 owner\\
+\midrule
+\endhead
+Teacher units/quadrature & analytic patch의 area/mass/force/work와 SI sign이 일치 & physics registry/quadrature\\
+Spatial convergence & fixed accepted timestep에서 probe velocity/tip/work/FRF가 threshold 통과 & mesh/model\\
+Temporal convergence & fixed accepted mesh에서 같은 metric이 threshold 통과 & integrator 또는 timestep\\
+Map reproduction & partition, constant/affine field, coverage와 common-valid mask가 threshold 통과 & probe map\\
+Adjoint work & total force와 traction 두 payload 각각의 virtual work identity 통과 & map/payload type\\
+Traction identity & teacher/GS law/effective-scale/guard/sign hash 일치, zero guard-activation과 normal/sign/drag fixture 통과 & traction registry\\
+% [논문 작성 참고 -- 수정 이유]
+% 이 fixture는 여러 empirical coefficient의 개별 정확도가 아니라 동일 effective load와 비활성 safety guard를 검증한다.
+Exact ZOH & random held-load reference, one-update trace와 aero-off passive decay 통과 & reduced evaluator\\
+Oracle invariants & attachment, mass Gram, positive pole/damping, fit response와 free decay 통과 & oracle, measure 또는 evaluator\\
+Independent-GS paired oracle & 같은 common mask에서 teacher 및 두 GS 차이가 declared reference+mapping floor 안 & map/oracle\\
+Base transport & rest identity, proper rotation, SPD/finite covariance, attachment zero와 velocity consistency 통과 & transport branch\\
+Leakage/replay & target artifact에 topology가 없고 동일 command/seed에서 semantic hash 재현 & artifact boundary\\
+\bottomrule
+\end{longtable}
+
+각 fixture는 teacher spatial error, teacher temporal error, mapping error, oracle fit error와 transport error를
+한 숫자로 합치지 않고 component별로 기록한다.
+
+\section{종료 조건과 실패 경로}
+
+\subsection{R1 종료 조건}
+
+다음이 모두 참일 때만 R2가 소유하는 T1 measure/token initialization prephase를 시작한다.
+T1 산출물이 동결된 뒤에만 R2a fixed-seconds overfit으로 진행한다.
+\begin{itemize}
+  \item[$\square$] Teacher physics/material/solver/traction registry와 replay가 닫혔고
+  teacher quadrature의 total area/mass가 \(A_{\mathrm{ref}},M_{\mathrm{ref}}\)와 일치한다.
+  \item[$\square$] Spatial과 temporal convergence가 독립적으로 frozen threshold를 통과했다.
+  \item[$\square$] 모든 declared GS variant가 하나의 common-valid probe denominator와 mapping fixture를 통과했다.
+  \item[$\square$] Teacher/GS traction identity, reduced exact-ZOH와 aero-off free-decay fixture가 통과했다.
+  \item[$\square$] Oracle canonical path 하나가 동결됐고 corrected oracle의 attachment/mass/response/paired fixture가 통과했다.
+  \item[$\square$] Base mean/covariance transport가 rest/proper-rigid/SPD/attachment/velocity fixture를 통과했다.
+  \item[$\square$] Spectrum convergence와 peak availability status를 분리해 기록했다.
+\end{itemize}
+
+\begin{stopbox}{R1 kill과 owner별 routing}
+Teacher spatial/temporal reference가 수렴하지 않으면 physics model/mesh/timestep owner로 돌아간다.
+Map reproduction/coverage가 실패하면 probe/map 또는 해당 GS package를 predeclared rule로 reject한다.
+Traction/work/exact-ZOH가 실패하면 law/unit/evaluator owner를 고친다.
+Corrected oracle가 mapping-noise floor 밖에서 실패하면 measure, rank, field fit, pole identification과 evaluator를
+분리 진단한다. Base transport가 실패하면 normal/covariance branch를 고친다.
+어느 경우에도 network, dataset 규모, Local 또는 renderer appearance를 추가하지 않는다.
+\end{stopbox}
+
+Converged spectrum에 stable peak가 없다는 사실만으로 R1을 실패시키지 않는다.
+그 경우 \code{T_dom=unavailable}과 reason을 R2로 넘기며, R2b는 fixed-seconds fallback과
+curriculum 비주장 경로를 사용한다.
+
+\end{document}

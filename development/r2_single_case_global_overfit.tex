@@ -1,0 +1,384 @@
+\documentclass[10pt]{article}
+
+\input{shared_preamble.tex}
+
+\hypersetup{
+  pdftitle={R2 Single-Case Global Overfit --- Wind3DGS Development Specification},
+  pdfauthor={Wind3DGS Project}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Wind3DGS Development --- R2}
+\rhead{\small Single-Case Global Overfit}
+\cfoot{\thepage}
+
+\title{\textbf{R2 --- Single-Case Global Overfit}\\
+R2a fixed-seconds feasibility와 R2b curriculum/baseline}
+\author{Wind3DGS Project}
+\date{2026-08-22}
+
+\begin{document}
+\maketitle
+
+\begin{contractbox}{문서 권위와 두 단계 원칙}
+이 문서는 canonical sketch의 single-case Global 학습을 구현 단위로 분리한 파생 문서다.
+\code{eq:rd-gaussian-token}, \code{eq:rd-latent-anchor},
+\code{eq:rd-response-package}, \code{eq:rd-area-mass},
+\code{eq:rd-attachment-whitening}, \code{eq:rd-global-response},
+\code{eq:rd-exact-zoh}, \code{eq:rd-wind-pullback},
+\code{eq:rd-mean-transport}, \code{eq:rd-response-loss},
+\code{eq:rd-total-loss}, \code{eq:rd-teacher-period-spectrum}을 텍스트 기준으로 참조한다.
+먼저 T1 measure/token initialization을 마친 뒤 curriculum이나 baseline 없이
+\textbf{R2a fixed-seconds 최소 overfit}을 통과하고,
+그 뒤에만 \textbf{R2b curriculum/baseline}을 실행한다.
+\end{contractbox}
+
+\tableofcontents
+\newpage
+
+\section{목적과 소유권}
+
+R2의 핵심 질문은 ``현재 setup network와 response package가 믿을 수 있는 한 개의 teacher fixture를
+실제로 외울 수 있는가''다. Generalization, multi-resplat consistency와 Local 필요성은 여기서 주장하지 않는다.
+
+\begin{longtable}{L{0.20\linewidth}L{0.34\linewidth}L{0.36\linewidth}}
+\toprule
+단계 & 소유하는 질문 & 소유하지 않는 질문\\
+\midrule
+\endfirsthead
+\toprule
+단계 & 소유하는 질문 & 소유하지 않는 질문\\
+\midrule
+\endhead
+R2a & 한 object/GS/material의 impulse/step을 fixed physical seconds에서 overfit하고 긴 free decay까지 안정한가 & curriculum 이득, baseline 우위, held-out generalization\\
+R2b & R2a를 유지한 채 optional period curriculum이 equal-compute 이득을 내는가; 최소 baseline과 failure owner가 무엇인가 & Gate B의 object-disjoint claim\\
+공통 & Global package prediction, exact construction, deterministic rollout, loss/metric contract와 trace & Local, selector, appearance/perceptual loss, broad dataset\\
+\bottomrule
+\end{longtable}
+
+R2a는 학습 가능성을 가장 작은 폐쇄계에서 확인한다. R2b는 방법상의 선택과 비교를 정리하지만,
+single-case baseline 승리는 논문 claim의 증거가 아니다. Learned Global held-out claim은 R4/Gate B가 소유한다.
+
+\section{진입 입력}
+
+\subsection{R0/R1 필수 artifact}
+
+\begin{itemize}
+  \item R0의 frozen setup/frame/package/state/tensor/coordinate/valid-set/serialization contract.
+  \item R0의 \code{MetricRegistry}, \code{ThresholdRegistry}와 failure denominator.
+  \item R1의 converged \code{TeacherPackage}, accepted teacher mesh/timestep, \code{CanonicalProbeMap},
+  common-valid mask, mapping-noise floor와 base transport fixture.
+  \item 동일 object/GS의 corrected \code{OracleGlobalPackage}, oracle response error와 exact-ZOH replay.
+  \item Teacher/GS traction identity, SI unit, rank/normal branch와 source/config/artifact hash.
+  \item \code{TeacherSpectrumStatus}: converged, 그리고 stable peak available/unavailable reason.
+\end{itemize}
+
+R1 종료 조건 중 하나라도 미충족이면 R2 training command를 실행하지 않는다.
+
+\subsection{R2 최소 데이터 slice}
+
+\begin{itemize}
+  \item 한 source object, 한 accepted independent GS, 한 material preset, 한 attachment.
+  \item Impulse와 step-on/off response. Aero-off displaced free decay를 별도 sequence로 둔다.
+  \item Prescribed wind/domain-wide \(\kappa_{\mathrm{aero}}\), zero-activation \(\tau_{\mathrm{guard}}\)와
+  fixed \(\Delta t\), common probe/time grid.
+  % [논문 작성 참고 -- 수정 이유]
+  % R2 overfit에서 rho/C_n/C_parallel을 sample별로 조정하지 않고, R1이 동결한 단일 effective scale을 그대로 소비한다.
+  \item Train-only overfit slice이지만 sample ID, sequence, initial state와 horizon을 manifest에서 고정한다.
+  \item R2a는 \(T_{\rm dom}\)을 사용하지 않는 fixed-seconds \(H_{\rm smoke}\),
+  \(H_{\rm long}\)과 stress horizon을 먼저 사용한다. 값은 Open Design Decision이다.
+\end{itemize}
+
+\subsection{Model 진입 상태}
+
+초기 target model은 patch encoder, fixed/capped latent token, token global context,
+token-to-Gaussian equivariant query readout, positive area head와 area-derived mass,
+Global response field와 positive pole/damping head로 제한한다. Setup에서 package를 한 번 cache하고
+frame 동안 network를 다시 호출하지 않는다.
+
+\section{이미 동결된 계약}
+
+\subsection{범위와 exact construction}
+
+\begin{itemize}
+  \item R2에는 Global package와 deterministic exact-ZOH evaluator만 있다. Local field/selector/state,
+  image/perceptual loss, optional SH residual과 test fine-tuning은 없다.
+  \item Area는 positive이고 V0 mass는 \(m_i=(M_{\mathrm{ref}}/A_{\mathrm{ref}})a_i\)로 파생한다
+  (sketch \code{eq:rd-area-mass}). Valid-set normalization은 frozen R0 policy를 그대로 쓴다.
+  \item Attachment zero와 mass whitening은 penalty가 아니라 package construction으로 보장한다
+  (sketch \code{eq:rd-attachment-whitening}).
+  \item Rank/condition 검사, positive angular frequency와 modal damping ratio도 validator/construction이 소유한다.
+  \item Learned \(\Omega_G,Z_G\)는 attachment projection과 mass whitening을 마친 최종 generalized
+  coordinate의 pole이다. Raw-field coordinate의 pole을 basis construction 뒤 그대로 연결하지 않는다.
+  \item Global은 sketch \code{eq:rd-global-response}의 independent damped response이고,
+  frame-start load의 single exact ZOH만 사용한다 (sketch \code{eq:rd-exact-zoh}).
+  \item Runtime wind는 GS에서 직접 \(F_i=a_i\tau_i\), \(Q_G=B_G^\top F\)로 계산한다.
+  Common-probe map은 loss/evaluation에만 쓴다.
+\end{itemize}
+
+\subsection{Response objective의 고정 부분과 미결정 부분}
+
+Teacher mode column은 sign/order/subspace gauge가 비유일하므로 primary label로 사용하지 않는다.
+Sketch \code{eq:rd-response-loss}의 displacement, velocity, FRF amplitude/phase와 rollout response family를
+frozen common-valid probe에서 학습한다. Position보다 velocity를 primary로 둔다.
+
+그러나 \textbf{합/평균, reference-scale normalization, sequence reduction, FRF phase mask,
+각 \(\lambda\)와 numeric threshold는 아직 동결되지 않았다}. 이 항목은 Open Design Decisions에서 선택하고
+R2a acceptance run 전에 version/hash해야 한다. 단위가 다른 raw loss를 normalization 없이 더하지 않는다.
+
+R2에서 sketch \code{eq:rd-total-loss}를 사용할 때 Local/pair/switch 항은 활성화하지 않는다.
+T1 initialization에서는 local area/measure supervision을 활성화하고 patch-to-token path를 실제로
+학습한다. Total-sum sanity만 loss로 쓰지 않는다. Relation auxiliary의 사용 여부와 T2에서 measure loss를
+freeze/continue하는 선택은 development config지만, T1 phase 자체를 생략하지 않는다.
+Total area/mass, positivity, attachment와 whitening처럼 construction으로 만족하는 조건을 중복 penalty로
+성능 증거로 포장하지 않는다.
+
+\subsection{Causal rollout와 physical time}
+
+\begin{itemize}
+  \item Network는 setup에서 한 번 package를 출력한다. Recurrent teacher forcing, scheduled sampling,
+  target state injection과 opaque hidden-state correction을 사용하지 않는다.
+  \item 각 rollout은 같은 explicit initial physical state에서 시작하고 evaluator의 \(q,\dot q\)만 전개한다.
+  \item Horizon 비교는 frame count가 아니라 seconds다. \(\Delta t\)가 달라도 같은 physical time을 비교한다.
+  \item R2a fixed-seconds overfit을 먼저 통과하지 못하면 period curriculum을 열지 않는다.
+  \item 학습 horizon보다 긴 in-envelope rollout의 NaN/divergence와 declared damping/control decay-order 붕괴는
+  짧은 결과로 가리지 않는다.
+\end{itemize}
+
+\subsection{R2b curriculum truth table}
+
+R1의 teacher spectrum 자체가 수렴하지 않았다면 R2 진입 실패다. Spectrum이 수렴한 뒤에는
+sketch \code{eq:rd-teacher-period-spectrum}의 status에 따라 다음 경로만 허용한다.
+\begin{itemize}
+  \item Stable clear peak가 있으면 \(T_{\rm dom}=2\pi/\omega_{\rm dom}\)과
+  \(H_s=\rho_sT_{\rm dom}\)인 period-normalized schedule을 R2b ablation 후보로 둔다.
+  \item Broad/flat/multi-peak이거나 stable peak가 없으면 \(T_{\rm dom}=\mathrm{unavailable}\)이다.
+  Domain-wide frozen fixed-seconds direct-long schedule을 사용하고 curriculum claim/ablation을 삭제한다.
+  \item Peak가 있어도 equal-compute 이득이 없으면 curriculum contribution을 삭제하고 더 단순한 direct-long을 채택한다.
+  \item 어느 경로든 final supported seconds에서 발산하면 Gate A\(_T\) prerequisite failure다.
+\end{itemize}
+
+\subsection{R2b 최소 baseline family}
+
+R2a가 통과한 뒤 동일 data/probe/horizon/method identity에서 다음을 비교한다.
+\begin{enumerate}
+  \item zero/mean response,
+  \item linear static-GS response regressor,
+  \item capacity-matched direct set encoder without latent relation auxiliary,
+  \item direct next-deformation predictor.
+\end{enumerate}
+Capacity/FLOPs/parameter matching rule은 test 결과 전 development config로 동결한다.
+
+\section{구현 체크리스트}
+
+\subsection{공통 data/model/evaluator 준비}
+
+\begin{itemize}
+  \item[$\square$] R2 slice의 object/GS/material/attachment/sequence/time grid와 R0--R1 artifact hash를 manifest에 고정한다.
+  \item[$\square$] Student forward signature에 target-forbidden field가 없고 setup call count가 package당 정확히 1임을 검사한다.
+  \item[$\square$] Patch-first/local evidence와 token global context, equivariant Gaussian query readout을 구현한다.
+  \item[$\square$] Area head와 R0에서 동결한 predicted-or-derived validity/normal owner path를 frozen schema axis로 구현한다.
+  \item[$\square$] Global field를 project/whiten한 최종 coordinate에서 pole/damping을 식별하도록 head/construction 순서를 고정한다.
+  \item[$\square$] Physical-valid policy, area-derived mass, attachment projection, whitening/rank policy와 positive pole/damping을 적용한다.
+  \item[$\square$] Package serialize/reload 후 같은 frame trace와 probe response를 재현한다.
+  \item[$\square$] Frame-start traction, \(B_G^\top F\), one exact-ZOH update와 base mean/covariance transport만 실행한다.
+\end{itemize}
+
+\subsection{Loss/metric 구현}
+
+\begin{itemize}
+  \item[$\square$] Common-valid mask와 \(W_{A,P},W_{M,P}\)를 teacher/student 양쪽에 동일하게 적용한다.
+  \item[$\square$] Displacement, velocity, FRF amplitude/phase와 rollout term마다 numerator, denominator,
+  physical unit/reference scale, epsilon과 reduction axis를 \code{MetricRegistry}에 등록한다.
+  \item[$\square$] Near-zero teacher amplitude에서 phase가 정의되지 않는 bin의 mask 규칙을 동결한다.
+  \item[$\square$] Time sample 수, probe 수 또는 sequence 길이가 loss scale을 몰래 바꾸지 않는지 analytic duplication test를 통과한다.
+  \item[$\square$] Loss weight search space, dev selection metric, final weight와 freeze 시점을 config/hash로 저장한다.
+  \item[$\square$] Training loss와 acceptance metric을 구분하고 SI diagnostic과 dimensionless primary를 함께 기록한다.
+\end{itemize}
+
+\subsection{T1 --- measure/token initialization}
+
+\begin{itemize}
+  \item[$\square$] Training-only teacher quadrature/common-probe supervision으로 spatial area/measure error를 학습한다.
+  \item[$\square$] Positive area와 area-derived mass, physical-valid policy 및 permutation-equivariant readout을 함께 검사한다.
+  \item[$\square$] Patch-first aggregation과 global token context가 실제 gradient를 받고 nondegenerate token을 만드는지 기록한다.
+  \item[$\square$] Total area/mass 합뿐 아니라 held-out training probes의 spatial measure와 analytic force/work를 fixture로 사용한다.
+  \item[$\square$] T1 checkpoint/config와 T2 hand-off 시 freeze/unfreeze policy를 hash한다.
+\end{itemize}
+
+\subsection{R2a --- fixed-seconds 최소 overfit}
+
+R2a에서는 curriculum과 baseline run을 시작하지 않는다.
+\begin{enumerate}
+  \item \textbf{A0 package smoke:} one-frame analytic load/update, rest identity, attachment/Gram/pole validator를 통과한다.
+  \item \textbf{A1 short fixed-seconds:} impulse와 step의 \(H_{\rm smoke}\)[s] velocity/displacement/phase를 overfit한다.
+  \item \textbf{A2 direct long:} 처음부터 고정한 \(H_{\rm long}\)[s]의 forced/recovery rollout과
+  aero-off displaced free decay를 overfit한다.
+  \item \textbf{A3 stress:} 학습보다 긴 predeclared seconds와 in-envelope force/control sweep에서 finite response와 decay ordering을 검사한다.
+\end{enumerate}
+
+\begin{itemize}
+  \item[$\square$] One-step loss만 낮추고 multi-step/phase가 틀린 checkpoint를 합격시키지 않는다.
+  \item[$\square$] Zero ambient rest response와 aero-off displaced free decay를 별도 initial state/flag로 평가한다.
+  \item[$\square$] Force 방향 반전과 magnitude sweep에 response sign/amplitude가 일관되게 변한다.
+  \item[$\square$] R1 oracle와 student를 같은 probe/mask/horizon/metric으로 비교하고 error gap을 component별로 기록한다.
+  \item[$\square$] Network capacity, map/measure, response package, loss와 evaluator mismatch를 별도 failure tag로 분류한다.
+\end{itemize}
+
+\subsection{R2b --- curriculum과 baseline}
+
+\begin{itemize}
+  \item[$\square$] R2a best config/data/probe/package class를 freeze한 뒤 schedule 또는 baseline에 필요한 부분만 바꾼다.
+  \item[$\square$] \(T_{\rm dom}\) available일 때 R1의 extraction site/aggregate,
+  band/window/resolution/prominence와 status hash를 read-only로 검증한다.
+  R2는 \(\rho_s\), transition과 final horizon만 동결해 period schedule을 실행한다.
+  \item[$\square$] Period curriculum, direct-long과 fixed-frame control의 total evaluator unroll step/FLOPs를
+  primary equal-compute budget으로 맞춘다. Optimizer update와 batch는 이 budget을 맞추도록 조정할 수 있다.
+  \item[$\square$] Actual GPU wall time, peak memory, optimizer update, batch composition과 evaluator steps를 함께 보고한다.
+  \item[$\square$] \(T_{\rm dom}\) unavailable이면 fixed-seconds fallback ID/reason을 남기고 period result를 만들지 않는다.
+  \item[$\square$] Curriculum 이득이 없으면 claim과 period-specific code path를 core에서 제거하거나 optional experiment로 명시한다.
+  \item[$\square$] 네 baseline을 동일 common probe, physical seconds, traction/evaluator identity와 frozen metric으로 실행한다.
+  \item[$\square$] Capacity matching table에 parameter, setup FLOPs, evaluator FLOPs/steps, memory와 예외를 기록한다.
+\end{itemize}
+
+\section{Open Design Decisions}
+
+\begin{decisionbox}{해석 규칙}
+R2는 실제 loss와 optimizer를 시험하는 단계이므로 선택지가 많다. 아래 권장 기본값은 시작점일 뿐이다.
+R2a acceptance run 전에 loss/metric/horizon/package-capacity를 동결하고, R2b 전에 schedule/baseline matching을
+추가 동결한다. Test나 downstream Gate 결과를 본 뒤 R2 version을 소급 변경하지 않는다.
+\end{decisionbox}
+
+\begin{longtable}{L{0.18\linewidth}L{0.26\linewidth}L{0.30\linewidth}L{0.16\linewidth}}
+\toprule
+결정 항목 & 허용 선택지 & 권장 기본값(미동결) & 동결 시점\\
+\midrule
+\endfirsthead
+\toprule
+결정 항목 & 허용 선택지 & 권장 기본값(미동결) & 동결 시점\\
+\midrule
+\endhead
+R2a horizons & \(H_{\rm smoke},H_{\rm long},H_{\rm stress}\) seconds 후보 & teacher period와 무관한 domain-wide fixed seconds; short+recovery+long stress를 모두 포함 & R2a 첫 acceptance run 전\\
+Global/token capacity & \(K,r_G\), patch size, attention depth/width 후보 & oracle rank와 K0 규모에 맞춘 가장 작은 nondegenerate capacity & optimizer sweep 전\\
+Pole parameterization & softplus+floor / bounded log-frequency와 damping interval & domain frequency envelope를 반영한 bounded log-parameter와 positive floor & R2a config freeze 전\\
+Displacement scale & raw SI / \(L_0\) / teacher per-sequence RMS & \(L_0\) 기반 domain-frozen dimensionless scale; per-sequence difficulty를 지우는 RMS는 diagnostic만 & loss search 전\\
+Velocity scale & raw SI / declared \(V_{\rm ref}\) / teacher RMS & wind/time domain에서 정한 하나의 \(V_{\rm ref}\); object별 사후 scale 금지 & loss search 전\\
+FRF amplitude & linear complex error / log-amplitude+phase / normalized transfer error & stabilized log-amplitude와 wrapped phase를 함께 사용하고 SI transfer diagnostic 병기 & R2a acceptance 전\\
+Phase mask & fixed amplitude floor / relative SNR threshold / phase term 제외 & dev-frozen amplitude/SNR floor 아래 bin만 제외하고 mask/hash 보고 & FRF metric freeze 전\\
+Probe/time reduction & sum / weighted mean / sequence-balanced nested mean & common mask의 weighted mean, sequence를 동일 outer weight로 두고 sample count duplication에 불변 & R2a acceptance 전\\
+Loss weights & manual dev grid / constrained optimizer search & 좁은 log-grid와 velocity-primary dev metric; search range와 전 결과 보존 & R2a final run 전\\
+Measure/relation terms & measure only / measure+relation auxiliary & exact total area/mass penalty는 빼고 spatial measure를 사용하며 relation은 diagnostic부터 시작 & R2a ablation freeze 전\\
+Optimizer와 schedule & AdamW 계열 / 다른 deterministic optimizer, LR/warmup 후보 & 작은 deterministic AdamW config와 gradient/NaN trace; 성능보다 overfit 진단 우선 & R2a sweep 전\\
+Period schedule & \(\rho_s\), transition, final multiple 후보 & sub-period에서 multi-period로 단조 증가, direct-long과 equal-compute & R2b run 전\\
+Baseline matching & parameter / setup FLOPs / total evaluator compute 중심 & parameter와 setup compute를 함께 표기하고 rollout evaluator identity/steps는 동일 & baseline training 전\\
+Acceptance threshold & oracle-relative / absolute dimensionless / 둘의 conjunction & absolute frozen metric+oracle gap diagnostic; 숫자는 dev fixture로 결정 & R2a acceptance 전\\
+\bottomrule
+\end{longtable}
+
+\section{산출물}
+
+\subsection{T1 prephase 산출물}
+
+\begin{itemize}
+  \item \code{T1InitCheckpoint}: area-measure head와 patch-to-token initialization weights,
+  schema/config 및 R2a freeze/unfreeze hand-off hash.
+  \item \code{T1InitReport}: spatial measure, analytic force/work, token coverage/duplicate와
+  nondegenerate-gradient fixture 결과.
+\end{itemize}
+
+\subsection{R2a 산출물}
+
+\begin{itemize}
+  \item Frozen single-case dataset slice와 \code{r2a_fixed_seconds_config}, loss/metric/threshold registry revision.
+  \item \code{R2aOverfitCheckpoint}: setup network checkpoint, serialized \code{ResponsePackage},
+  package validation/rank/condition report와 T1 dependency hash.
+  \item A0--A3 train/eval curves, common-probe trajectory/FRF, frame trace와 component failure report.
+  \item Oracle--student paired comparison, fixed-seconds/free-decay/stress report와 deterministic replay command.
+  \item R2a decision: pass, retry with owner-specific change, 또는 stop. Retry마다 config/version을 새로 남긴다.
+\end{itemize}
+
+\subsection{R2b 산출물}
+
+\begin{itemize}
+  \item \code{TeacherSpectrumStatus} 소비 기록과 period available/fallback branch ID.
+  \item Period curriculum/direct-long/fixed-frame의 equal-compute manifest와 quality/drift/cost table.
+  \item 네 baseline의 capacity/method-identity matching table, checkpoint/package와 paired result.
+  \item \code{R2bHandoff}: 채택한 가장 단순한 Global training schedule/fallback branch,
+  response loss, horizon, equal-compute 규칙과 frozen configuration.
+  \item \code{R2GlobalCheckpoint}: R2b 종료 시 채택한 single-case Global weights/package class와
+  T1/R2a/R2b dependency hash. 이는 held-out evidence가 아니라 R3 initialization artifact다.
+  \item Curriculum의 유지/비주장 결정과 Gate A\(_L\)에 넘길 latent/direct-set single-case diagnostic.
+  Latent-relation contribution의 최종 유지/삭제는 R3가 소유한다.
+  \item \code{GateATPrerequisiteReport}: R1 teacher/map/oracle prerequisite와 R2 Global
+  package/long-rollout fixture의 Boolean 결과 및 exact input hash.
+  \item R2 completion report와 R3 진입 허용 여부. Single-case 결과를 held-out evidence로 표시하지 않는다.
+\end{itemize}
+
+\section{필수 fixture와 metric}
+
+\begin{longtable}{L{0.25\linewidth}L{0.49\linewidth}L{0.16\linewidth}}
+\toprule
+Fixture & 합격 조건 & 단계\\
+\midrule
+\endfirsthead
+\toprule
+Fixture & 합격 조건 & 단계\\
+\midrule
+\endhead
+Package invariant & valid-set/area/mass, attachment zero, Gram/rank, positive pole/damping과 round trip 통과 & R2a A0\\
+Final-coordinate pole & projection/whitening 뒤의 field와 pole이 같은 generalized coordinate를 소유하고 raw pole 재사용이 없음 & T1/R2a A0\\
+One-frame analytic & known \(F,Q\)와 exact-ZOH state/mean/covariance가 reference와 일치 & R2a A0\\
+Loss duplication & 동일 probe/time sample 복제나 padding이 normalized loss를 바꾸지 않음 & R2a 전\\
+Short fixed-seconds overfit & impulse/step velocity/displacement/phase가 frozen train threshold 통과 & R2a A1\\
+Direct-long/recovery & \(H_{\rm long}\) forced/recovery와 aero-off free decay가 finite이고 threshold 통과 & R2a A2\\
+Stress/ordering & 더 긴 seconds, force/control sweep에서 finite, sign/amplitude와 damping ordering 유지 & R2a A3\\
+Oracle gap & 동일 probe/mask에서 oracle 대비 student gap과 mapping/reference floor를 component별 보고 & R2a\\
+Permutation/reload & input permutation과 package reload 후 stable-ID rollout/metric이 동일 & R2a\\
+Curriculum compute & available일 때 period/direct/fixed-frame의 evaluator step/FLOPs matching과 actual cost 보고 & R2b\\
+Fallback identity & unavailable일 때 period result가 없고 fixed-seconds ID/reason이 manifest/table에 일치 & R2b\\
+Baseline fairness & data/probe/horizon/traction/evaluator가 같고 capacity 차이가 명시됨 & R2b\\
+No hidden recurrence & setup call 1회, teacher state/forcing/opaque hidden correction이 frame input에 없음 & 공통\\
+\bottomrule
+\end{longtable}
+
+Primary motion metric은 velocity, displacement/tip, amplitude/phase와 target-band response다.
+Renderer image quality는 이 단계의 pass condition이 아니며 base transport의 finite/rest/SPD fixture만 요구한다.
+
+\section{종료 조건과 실패 경로}
+
+\subsection{R2a 종료 조건}
+
+\begin{itemize}
+  \item[$\square$] Fixed loss normalization/metric/threshold와 package-capacity config가 hash됐다.
+  \item[$\square$] A0 package/evaluator/transport, A1 short, A2 direct-long/free-decay와 A3 stress fixture가 통과했다.
+  \item[$\square$] Attached row zero, positive pole/damping, mass Gram/rank와 deterministic replay가 통과했다.
+  \item[$\square$] Oracle--student gap과 failure owner가 mapping/measure/package/loss/network/evaluator로 분리됐다.
+\end{itemize}
+
+R2a가 통과해야 R2b로 갈 수 있다. R2b는 mandatory baseline과 schedule resolution을 정리한 뒤
+R3 hand-off를 발행한다. Stable peak가 없으면 period-curriculum branch만 생략하고 fixed-seconds
+fallback record와 baseline은 완료한다.
+
+\subsection{R2b 종료 조건}
+
+\begin{itemize}
+  \item[$\square$] Peak available이면 equal-compute curriculum ablation을 완료하고 유지/삭제 결정을 기록했다.
+  \item[$\square$] Peak unavailable이면 fixed-seconds fallback만 실행했고 curriculum 비주장을 기록했다.
+  \item[$\square$] 최소 baseline을 동일 물리/evaluator/metric 조건에서 실행하고 capacity 차이를 공개했다.
+  \item[$\square$] R3가 소비할 frozen Global training config, package schema와 metric registry revision을 발행했다.
+\end{itemize}
+
+\begin{stopbox}{R2 failure와 routing}
+Oracle은 통과하지만 R2a가 overfit되지 않으면 network capacity, tensor/permutation, loss normalization,
+optimization과 package head를 분리 진단한다. Oracle도 같은 fixture에서 실패하면 R1의 map/measure/pole/evaluator로
+돌아간다. Final supported seconds에서 NaN/divergence 또는 decay-order 붕괴가 반복되면 Gate A\(_T\) 실패다.
+Dataset, Local, selector, renderer/perceptual loss를 추가해 R2 실패를 가리지 않는다.
+\end{stopbox}
+
+Curriculum이 direct-long보다 낫지 않은 것은 learned-response 가설의 실패가 아니다.
+이 경우 curriculum contribution만 삭제하고 가장 단순한 fixed-seconds direct-long schedule로 진행한다.
+Direct-set baseline이 latent model과 같거나 더 좋으면 R3/R4의 Gate A\(_L\) 판정에 필요한 evidence로 넘기며,
+latent-anchor contribution을 자동으로 유지하지 않는다.
+
+\end{document}

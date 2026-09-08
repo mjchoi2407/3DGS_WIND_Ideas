@@ -1,0 +1,244 @@
+\documentclass[10pt]{article}
+
+\input{shared_preamble.tex}
+
+\hypersetup{
+  pdftitle={R7 Development Plan: Renderer and Paper Evidence},
+  pdfauthor={Wind3DGS Project}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Wind3DGS Development Plan}
+\rhead{\small R7 --- Renderer and Paper Evidence}
+\cfoot{\thepage}
+
+\title{\textbf{R7 Development Plan}\\
+Renderer and Paper Evidence}
+\author{Wind3DGS Project}
+\date{2026-08-22}
+
+\begin{document}
+\maketitle
+
+\begin{contractbox}{Authority and stage identity}
+이 문서는 canonical idea sketch의 R7 실행 계획이다. Method equation과 claim의 authority는
+\code{3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.tex}이며,
+본 문서는 구현 진행 상태, fixture와 paper evidence link만 소유한다.
+
+Base Gaussian mean/covariance transport와 attachment/identity/proper-rigid/SPD fixture는
+\textbf{R1/R2에서 이미 통과한 필수 전제}다. R7은 실패한 base motion을 다시 설계하거나 구제하는 단계가 아니다.
+R7은 predeclared optional angular/SH appearance branch와 paper hardening만 소유한다.
+\end{contractbox}
+
+\tableofcontents
+\newpage
+
+\section{목적과 소유권}
+
+R7의 목적은 frozen response motion을 renderer-ready evidence로 닫고, 허용된 optional appearance branch를
+motion과 분리해 평가하며, 논문의 claim/baseline/metric/failure package를 재현 가능하게 만드는 것이다.
+
+\begin{itemize}
+  \item R1/R2 base mean/covariance transport evidence의 identity와 재현성 확인
+  \item R0에서 predeclared한 경우에 한한 angular/covariance transport hardening과 ablation
+  \item Gate B/C 후 analytic SH rotation prior 및 bounded exact-zero appearance residual 검토
+  \item champion/failure scene registry, baseline/ablation, timing과 quantitative table 동결
+  \item Gate 결과에 따른 최종 claim 축소와 venue evidence package 작성
+\end{itemize}
+
+R7은 response network, package field/pole, wind load, deterministic evaluator, Global/Local state와 selector를
+수정하지 않는다. Appearance gradient나 output이 motion path로 feedback되는 구현은 R7 산출물이 아니다.
+
+\section{진입 입력}
+
+\begin{longtable}{L{0.29\linewidth}L{0.61\linewidth}}
+\toprule
+입력 & 진입 조건\\
+\midrule
+\endfirsthead
+\toprule
+입력 & 진입 조건\\
+\midrule
+\endhead
+\code{RendererBranchContract}\newline\code{BaseTransportReport} & R0 branch 허용 flag와 R1/R2 base/Global transport fixture가 동결됨; SH degree는 R7 optional ODD가 소유\\
+\code{BestGlobalCheckpoint}\newline\code{GlobalResponsePackageSet}\newline\code{GateBReport} & Global model과 per-asset package가 분리된 hash로 Gate B를 통과함\\
+\code{AlwaysOnLocalCheckpoint}\newline\code{AlwaysOnLocalPackageSet}\newline\code{GateCReport} & Local claim을 사용할 때 R5 Local model/package와 branch-specific angular/normal fixture가 통과함\\
+\code{ConditionalRuntimeConfig}\newline\code{ConditionalRuntimeTrace}\newline\code{GateDReport} & Conditional claim을 사용할 때 R6 fade/current-normal/actual-p95 evidence가 통과함\\
+\code{DataSplitManifest}\newline\code{MetricRegistry}\newline\code{ThresholdRegistry} & source-object split, fixed denominator, camera/wind와 metric protocol이 sealed됨\\
+\code{MethodIdentityRegistry} & Teacher, explicit scaffold, direct predictor, direct-set response, rank sweep와 public adapted baseline identity\\
+\bottomrule
+\end{longtable}
+
+R7의 모든 renderer/appearance 비교는 동일한 frozen generalized trajectory, mean/covariance base transport와
+camera sequence를 사용한다. Motion checkpoint나 package를 appearance 결과에 맞춰 재선택하지 않는다.
+
+\section{동결 계약}
+
+\subsection{Base transport는 upstream 필수 계약이다}
+
+Canonical \code{eq:rd-mean-transport}의 mean과 exact kinematic velocity, hard attachment,
+proper covariance rotation과 SPD/finite output은 R1/R2에서 통과해야 한다. R7은 해당 artifact hash를
+입력으로 받아 report와 video에 연결할 뿐, base transport 실패를 optional angular 또는 SH residual로 숨기지 않는다.
+
+\begin{itemize}
+  \item Degree-0 appearance가 primary physics/rendering evaluation이다.
+  \item In-envelope invalid covariance와 transport failure는 fixed method denominator에 남긴다.
+  \item Motion metric은 common canonical probe와 frozen response trajectory에서 계산한다.
+  \item Renderer-only quality가 Gate A--D의 motion response metric을 대체하지 않는다.
+\end{itemize}
+
+\subsection{Optional angular/covariance branch}
+
+Motion-coupled angular field \(B_R\)가 current normal과 force를 바꾸는 경우 branch identity는 R0,
+base/Global mechanics는 R1/R2, learned always-on Local field와 same-coordinate/support fixture는 R5,
+conditional angular 또는 local-affine fade/current-normal force path는 R6가 소유한다.
+R7은 이 exact artifact chain의 hash와 replay를 검증할 뿐 새 angular field를 붙여 upstream motion을 바꾸지 않는다.
+R7은 predeclared branch의 renderer-side covariance evidence, visual necessity와 cost만 harden/ablate한다.
+
+\begin{itemize}
+  \item Angular field는 translational field와 동일한 generalized coordinate 및 transport-only fade를 공유한다.
+  \item Rotation은 proper \(\mathrm{SO}(3)\) map을 사용하고 covariance eigenvalue와 SPD를 보존한다.
+  \item Attached Gaussian의 angular row와 rendered rotation은 identity다.
+  \item Angular branch가 없는 frozen V0는 upstream에서 동결한 local-affine normal/base covariance path를 유지한다.
+\end{itemize}
+
+\subsection{Optional analytic SH prior와 bounded residual}
+
+Gate B, Gate C와 base renderer fixture가 통과한 뒤에만 canonical
+\code{eq:rd-optional-appearance} branch를 검토한다. Rest 대비 relative proper rotation
+\(\Delta R_i^t=R_i^t(R_i^0)^\top\)의 analytic SH transport를 prior로 두고, 필요한 경우에만
+dev-frozen low-rank/degree-limited bounded residual을 더한다.
+
+\begin{itemize}
+  \item Rest state에서 analytic transform은 identity이고 residual은 construction상 정확히 0이다.
+  \item Residual cue는 frozen response coordinate/velocity, relative rotation과 immutable GS/material cue만 받는다.
+  \item Camera pose, view direction, raster target, previous residual/history와 future frame은 입력으로 금지한다.
+  \item Appearance readout은 stateless이며 새 runtime graph/state/response update를 만들지 않는다.
+  \item Dynamics/package/evaluator를 freeze하고 appearance gradient를 motion path로 보내지 않는다.
+\end{itemize}
+
+\subsection{Paper evidence contract}
+
+Hero scene은 정성 설득을, object-disjoint table과 multi-resplat robustness, fixed denominator와 matched-p95
+Pareto는 claim evidence를 소유한다. Scene, wind, camera, baseline, metric, success/failure rule은 결과를 보기 전에
+registry와 hash로 동결한다. Success-only clip이나 best noise seed만 보고하지 않는다.
+
+\section{구현 체크리스트}
+
+\subsection{Upstream base 확인}
+
+\begin{itemize}
+  \item[$\square$] R1/R2 base transport report의 package/config/code hash와 replay command 확인
+  \item[$\square$] Mean/velocity finite-difference, attachment identity, proper-rigid와 SPD fixture 재현
+  \item[$\square$] Invalid/OOD/method-failure denominator가 paper table과 raw trace에서 동일함을 검사
+  \item[$\square$] R7 branch가 wind load, generalized state와 Global/Local selection을 변경하지 않음을 검사
+\end{itemize}
+
+\subsection{Optional angular/appearance}
+
+\begin{itemize}
+  \item[$\square$] Frozen angular branch 사용 시 R1/R2 base, R5 Local, R6 conditional
+  proper rotation, SPD, fade와 current-normal report의 hash와 replay 재현; 새 motion fixture 설계 금지
+  \item[$\square$] Analytic SH rotation prior의 identity, known-axis rotation과 inverse-rotation fixture 통과
+  \item[$\square$] Residual zero-state exactness와 component bound를 construction으로 검사
+  \item[$\square$] Appearance input signature에 camera/view/history/future/teacher target field가 없음을 검사
+  \item[$\square$] Appearance gradient stop과 dynamics/package/evaluator bitwise identity 확인
+  \item[$\square$] Degree-0, analytic prior only, prior+bounded residual을 동일 motion/camera에서 비교
+\end{itemize}
+
+\subsection{Paper hardening}
+
+\begin{itemize}
+  \item[$\square$] Champion/failure scene, wind/camera와 qualitative transfer registry seal
+  \item[$\square$] 모든 mandatory baseline/ablation의 code/config/checkpoint/package hash 확보
+  \item[$\square$] Object outer-cluster와 nested GS/wind comparison table 생성
+  \item[$\square$] Motion, render, setup/memory와 component p50/p95/p99 표의 raw artifact 연결
+  \item[$\square$] Failure case, first-failure frame와 fallback/reject reason 공개 가능 상태 확인
+  \item[$\square$] Gate별 pass/fail과 claim 축소 결과를 abstract/contribution/table/video에 일관되게 반영
+\end{itemize}
+
+\section{Open Design Decisions}
+
+\begin{longtable}{L{0.24\linewidth}L{0.43\linewidth}L{0.23\linewidth}}
+\toprule
+Decision & 닫아야 할 질문 & 허용 경계\\
+\midrule
+\endfirsthead
+\toprule
+Decision & 닫아야 할 질문 & 허용 경계\\
+\midrule
+\endhead
+Frozen angular evidence & R0/R1에서 이미 동결한 branch가 renderer-side visual gain과 cost 측면에서 어떤 evidence를 내는가? & Branch/composition을 R7에서 교체하지 않고 negative result는 limitation 또는 upstream revision으로 기록\\
+SH convention & SH basis/order, coefficient frame, supported degree와 rotation implementation을 무엇으로 동결할지? & Known rotation fixture와 exact rest identity 필수\\
+Residual capacity & \(L_{\mathrm{app}}\), low-rank basis, bound \(\delta_c\), cue와 loss를 어떻게 dev-freeze할지? & Stateless, bounded, zero-state exact, no motion feedback\\
+Appearance necessity & Analytic prior 대비 residual의 flicker/quality 이득이 complexity를 정당화하는가? & 이득 없으면 analytic prior 또는 degree-0로 축소\\
+Champion registry & 3--5개 hero와 최소 failure scene, camera/wind를 어떤 rule로 사전 선택할지? & 결과 후 성공 scene만 선택 금지\\
+Primary render metric & Silhouette, flicker와 qualitative preference를 어떤 protocol로 보고할지? & Motion Gate 대체 금지\\
+Venue package & SCA/CGF 중심 evidence와 더 높은 venue 확장 증거를 어떻게 구분할지? & Venue 목표가 method contract를 역으로 바꾸지 않음\\
+\bottomrule
+\end{longtable}
+
+Optional decision이 upstream motion 또는 package identity를 바꾸면 R7 local 변경으로 처리하지 않는다.
+Canonical sketch/R0 schema를 갱신하고 영향을 받은 R1 이후 Gate를 다시 실행해야 한다.
+
+\section{산출물}
+
+\begin{itemize}
+  \item \code{RendererEvidenceContract}: frozen base/optional branch, SH convention와 identity
+  \item \code{BaseRendererEvidenceReport}: upstream mean/covariance/angular/fade artifact hash와 replay command
+  \item \code{ChampionFailureRegistry}: scene, source object, wind, camera, expected evidence와 failure rule
+  \item \code{BaselineAblationRegistry}: baseline/ablation exact code/config/checkpoint/package hash
+  \item quantitative table source, raw per-sequence metric과 statistical summary
+  \item setup/package memory 및 component p50/p95/p99 profiler artifact
+  \item teacher/ours/baseline split-screen, hero/failure video와 frame provenance
+  \item \code{PaperEvidencePackage}: Gate-to-claim matrix, limitation, table/video provenance와 venue-ready checklist
+\end{itemize}
+
+각 artifact는 owning code/experiment repository의 commit과 hash를 기록한다. 문서에는 status와 link만 두며
+generated output을 ideas repository에 복제하지 않는다.
+
+\section{Fixture와 metric}
+
+\subsection{Renderer fixture}
+
+\begin{itemize}
+  \item Rest identity, hard attachment, known proper-rigid motion, covariance SPD/eigenvalue preservation
+  \item Mean finite-difference velocity와 analytic velocity의 일치; conditional route이면 R6 fade-transition report 재사용
+  \item Optional angular branch의 normal/covariance agreement와 deterministic replay
+  \item Analytic SH identity/known-axis/inverse rotation 및 coefficient magnitude
+  \item Bounded residual의 exact-zero rest, bound saturation, stateless replay와 gradient isolation
+  \item In-envelope invalid covariance/NaN을 숨기지 않는 fixed-denominator report
+\end{itemize}
+
+\subsection{Paper metric}
+
+\begin{itemize}
+  \item mass/area-weighted velocity, displacement/tip, amplitude, phase와 target-band log-PSD
+  \item independent multi-resplat response, force/work와 worst-density dispersion
+  \item silhouette, temporal flicker/popping과 동일-camera qualitative split-screen
+  \item setup time, package memory, network/force/update/transport/render p50/p95/p99와 throughput
+  \item sequence survival, first failure, package/rank/transport failure와 OOD/reject count
+  \item object-level paired effect, descriptive interval와 low-object-count limitation
+\end{itemize}
+
+\section{종료 조건과 실패 경로}
+
+\begin{contractbox}{R7 pass}
+Upstream base transport identity가 재현되고, 선택한 optional branch의 모든 fixture가 통과하며,
+predeclared champion/failure scene, mandatory baseline/ablation, fixed-denominator quantitative table와
+component profiler가 동일 artifact registry로 연결된다. 최종 paper claim은 실제로 통과한 Gate와 일치해야 한다.
+\end{contractbox}
+
+\begin{stopbox}{실패 및 축소 경로}
+\begin{itemize}
+  \item Base mean/covariance fixture가 실패하면 R7에서 보정하지 않고 R1/R2 owner로 되돌린다.
+  \item Angular branch가 불안정하거나 이득이 없으면 frozen base normal/covariance branch로 축소한다.
+  \item Bounded residual이 이득이 없거나 shortcut을 쓰면 analytic SH prior only 또는 degree-0 appearance로 축소한다.
+  \item Appearance 결과는 Gate B/C 실패, motion divergence 또는 wrong force response를 구제하지 못한다.
+  \item Gate C 실패 시 Local claim을, Gate D 실패 시 conditional/Pareto claim을 삭제한다.
+  \item Real-time, broad generalization과 상위 venue claim은 profiler와 object-disjoint evidence 없이는 사용하지 않는다.
+\end{itemize}
+\end{stopbox}
+
+\end{document}

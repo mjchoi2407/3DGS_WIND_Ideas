@@ -1,59 +1,18 @@
 \documentclass[10pt]{article}
-
-\usepackage[a4paper,margin=18mm,headheight=14pt]{geometry}
-\usepackage{fontspec}
-\usepackage{xeCJK}
-\xeCJKsetup{CJKspace=true}
-\setmainfont{DejaVu Serif}
-\setsansfont{DejaVu Sans}
-\setmonofont{DejaVu Sans Mono}
-\setCJKmainfont{Noto Serif CJK KR}
-\setCJKsansfont{Noto Sans CJK KR}
-\setCJKmonofont{Noto Sans Mono CJK KR}
-
-\usepackage{amsmath,amssymb}
-\usepackage{booktabs,longtable,tabularx,array}
-\usepackage{enumitem}
-\usepackage{xcolor}
-\usepackage{hyperref}
-\usepackage{fancyhdr}
-\usepackage[most]{tcolorbox}
-
-\definecolor{CoreBlue}{HTML}{1F4E79}
-\definecolor{CoreLight}{HTML}{EAF3F8}
-\definecolor{StopRed}{HTML}{9C0006}
-\definecolor{StopLight}{HTML}{FCE8E6}
-\definecolor{GateGreen}{HTML}{38761D}
-\definecolor{GateLight}{HTML}{EAF4E2}
-\definecolor{LocalPurple}{HTML}{674EA7}
-\definecolor{LocalLight}{HTML}{EEEAF7}
+\input{development/shared_preamble.tex}
 
 \hypersetup{
-  colorlinks=true,
-  linkcolor=CoreBlue,
-  urlcolor=CoreBlue,
-  pdftitle={Implementation Checklist for Response-Distilled Global-Local Wind Dynamics},
+  pdftitle={Development Roadmap for Response-Distilled Global-Local Wind Dynamics},
   pdfauthor={Wind3DGS Project}
 }
 
 \pagestyle{fancy}
 \fancyhf{}
-\lhead{\small Response-Distilled Global--Local Checklist}
-\rhead{\small 2026-08-22}
+\lhead{\small Response-Distilled Global--Local Development}
+\rhead{\small Master Roadmap}
 \cfoot{\thepage}
 
-\setlength{\parindent}{0pt}
-\setlength{\parskip}{0.25em}
-\setlist[itemize]{leftmargin=1.45em,itemsep=0.08em,topsep=0.18em}
-\setlist[enumerate]{leftmargin=1.75em,itemsep=0.12em,topsep=0.2em}
-\renewcommand{\arraystretch}{1.15}
-\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
-\newcommand{\code}[1]{{\small\nolinkurl{#1}}}
-\newcommand{\must}[1]{\textcolor{CoreBlue}{\textbf{#1}}}
-\newcommand{\haltitem}[1]{\textcolor{StopRed}{\textbf{#1}}}
-\newcommand{\pass}[1]{\textcolor{GateGreen}{\textbf{#1}}}
-
-\title{\textbf{Implementation Checklist}\\
+\title{\textbf{Development Roadmap}\\
 Response-Distilled Global--Local Wind Dynamics}
 \author{Wind3DGS Project}
 \date{2026-08-22}
@@ -61,373 +20,272 @@ Response-Distilled Global--Local Wind Dynamics}
 \begin{document}
 \maketitle
 
-\begin{tcolorbox}[colback=CoreLight,colframe=CoreBlue,title=Authority and reset,fonttitle=\bfseries]
-이 checklist는 \code{3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.tex}의
-stable label과 Gate를 실행 항목으로 옮긴 파생 문서다. 수식과 claim이 충돌하면 sketch가 authority다.
-이전 explicit-scaffold Minimal V0의 S0--S7, milestone 완료 상태와 package hash는 승계하지 않는다.
-기존 loader, renderer, mesh teacher와 transport code는 새 R0--R7 contract를 다시 통과한 뒤에만 재사용 완료로 인정한다.
-\end{tcolorbox}
+\begin{contractbox}{Authority and document split}
+방법 수식과 claim의 authority는
+\code{3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.tex}다.
+이 문서는 R0--R7의 의존성, 상태와 claim routing만 소유하는 master roadmap이다.
+구체적인 구현 계약, 미결정 설계, fixture와 stage 산출물은
+\code{development/} 아래의 독립 문서가 각각 소유한다.
+이전 단일 checklist의 세부 항목을 이 roadmap에 다시 복제하지 않는다.
+\end{contractbox}
 
 \tableofcontents
 \newpage
 
-\section{목적과 scope-control}
+\section{사용 목적}
 
-목표는 narrow thin-surface domain에서
-\begin{center}
-\code{static GS + metric/material/attachment -> cached response package -> wind-driven Global+Local state -> rendered GS}
-\end{center}
-를 검증하는 것이다. Target forward에는 mesh, edge, triangle, geodesic label과 teacher correspondence가 없다.
-
-\begin{tcolorbox}[colback=StopLight,colframe=StopRed,title=R0--R4 전 금지,fonttitle=\bfseries]
-Global feasibility와 multi-resplat held-out evidence 전에 Local selector, nonlinear latent Lagrangian,
-learned aerodynamic force, contact/self-collision, arbitrary material inference, full covariance deformation-gradient,
-higher-order SH transport와 broad real-object dataset을 구현하지 않는다.
-실패할 때 dataset과 module을 동시에 늘리지 않는다.
-\end{tcolorbox}
-
-\subsection{Core domain}
-
+개발자는 현재 작업 중인 R-stage 문서만 열어 수정한다. 이 roadmap은 다음 경우에만 갱신한다.
 \begin{itemize}
-  \item flat-rest single-layer strip와 rectangular flag
-  \item hard edge 또는 declared small-patch attachment
-  \item known metric scale와 2--3 isotropic material presets
-  \item steady/start-stop/sinusoidal/spatial traveling gust
-  \item prescribed one-way wind, small-to-moderate deformation
-  \item self-contact, severe fold, tearing, free flight와 unknown material/attachment 제외
+  \item stage 진입/종료 상태 또는 dependency가 바뀔 때
+  \item sketch stable label의 소유 stage가 바뀔 때
+  \item Gate routing이나 허용 claim이 바뀔 때
+  \item 새 stage가 기존 stage를 대체할 때
 \end{itemize}
 
-\section{Stable sketch references}
+각 part 문서는 공통적으로 목적/소유권, 진입 입력, 동결 계약, 구현 체크리스트,
+Open Design Decisions, 산출물, fixture/metric과 종료 조건을 갖는다.
+설계가 끝나지 않은 항목을 구현자가 암묵적으로 선택하지 않고 해당 part의
+\textbf{Open Design Decisions}에서 먼저 동결한다.
 
-\begin{longtable}{L{0.42\linewidth}L{0.49\linewidth}}
+\section{문서 계층}
+
+\begin{longtable}{L{0.22\linewidth}L{0.27\linewidth}L{0.42\linewidth}}
 \toprule
-Stable label & 실행 소유권\\
+계층 & 문서 & 소유권\\
 \midrule
 \endfirsthead
 \toprule
-Stable label & 실행 소유권\\
+계층 & 문서 & 소유권\\
 \midrule
 \endhead
-\code{eq:rd-setup-input}, \code{eq:rd-frame-input} & Setup/frame I/O와 target-forbidden field\\
-\code{eq:rd-gaussian-token} & Metric/object normalization과 GS token\\
-\code{eq:rd-latent-anchor} & Patch-first, global-context latent token aggregation\\
-\code{eq:rd-response-package} & Cached network output field와 version/hash\\
-\code{eq:rd-area-mass} & Positive total area/mass ownership\\
-\code{eq:rd-attachment-whitening} & Exact attachment, mass normalization과 rank reject\\
-\code{eq:rd-global-response} & Positive-pole passive Global response evaluator\\
-\code{eq:rd-local-residual} & Frozen-Global complementary Local ownership\\
-\code{eq:rd-local-score} & Fixed-budget Local score와 selection trace\\
-\code{eq:rd-wind-pullback} & Area-weighted traction, total force와 generalized load\\
-\code{eq:rd-mean-transport} & Gaussian mean/angular transport와 attachment zero\\
-\code{eq:rd-response-loss}, \code{eq:rd-total-loss} & Gauge-free physical response training objective\\
-\code{eq:rd-pareto-gate} & Practical quality--latency Gate D\\
+Method authority &
+\code{3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.tex} &
+연구 질문, 수식, method identity, Gate와 claim boundary\\
+Master roadmap &
+현재 문서 &
+R0--R7 dependency/status, stable-label routing, Definition of Done\\
+Part contract &
+\code{development/r0_*.tex}--\code{development/r7_*.tex} &
+해당 stage의 구현 계약, 미결정 설계, fixture, artifact와 exit evidence\\
+R1 동반 연구 기록 &
+\code{development/r1_teacher_implementation_record.tex} &
+Teacher 전체 개발 과정의 수식·실패·수치·재현 경로; R1 acceptance를 대체하지 않음\\
+Executable truth &
+\code{../code} schema/config/test 및 \code{../experiments} manifest &
+part 문서를 구현한 versioned code, 실제 threshold 값, run과 evidence\\
 \bottomrule
 \end{longtable}
 
-\section{Typed artifacts와 leakage boundary}
+문서와 code가 충돌하면 먼저 code를 완료 상태로 간주하지 않고 owning part와 sketch를 대조한다.
+Method identity 변경이면 sketch를 먼저 수정하고, implementation-only 선택이면 owning part와
+versioned config/schema를 함께 갱신한다.
 
-\begin{longtable}{L{0.25\linewidth}L{0.66\linewidth}}
+\section{R0--R7 개발 문서}
+
+\begin{longtable}{L{0.07\linewidth}L{0.33\linewidth}L{0.24\linewidth}L{0.25\linewidth}}
 \toprule
-Artifact & 필수 내용\\
+Stage & Owning document & Entry & Exit\\
 \midrule
 \endfirsthead
 \toprule
-Artifact & 필수 내용\\
+Stage & Owning document & Entry & Exit\\
 \midrule
 \endhead
-\code{DomainContract} & geometry/material/attachment/wind envelope,
-target-supplied \(\vartheta_{\rm metric}=(L_0,A_{\rm ref},M_{\rm ref})>0\), bounded \(\vartheta_{\rm aero}\),
-SI 또는 nondimensional unit, timestep/frequency envelope, OOD rule, failure denominator, code/config version\\
-\code{TeacherPackage} & source mesh/connectivity hash, material/attachment/wind, solver/refinement/timestep,
-surface quadrature, canonical probe trajectory, force/work, convergence report\\
-\code{StaticGSPackage} & independent reconstruction ID, source-object group, means/covariances/opacity/appearance,
-metric scale, density/seed/view/densification provenance, teacher-only correspondence hash\\
-\code{StudentInput} & static GS allowed attributes, material, attachment, metric/aero/domain metadata만 포함;
-mesh vertex ID, connectivity, geodesic, correspondence와 dynamic target frame field 없음\\
-\code{LatentProbeReport} & token coverage/duplicate/collapse, multi-resplat consistency, relation retrieval와 close-layer error;
-deployment API output이 아닌 diagnostic\\
-\code{ResponsePackage} & immutable rest-GS identity/payload와 target metric/material/attachment/aero/domain hash,
-target-GS-derived normal/validity/orientation confidence, area/mass measure, exact-attachment mass-whitened Global
-field/poles/damping, Local slot fields/poles/support/confidence, frozen angular-field 또는 local-affine normal branch,
-rank/condition, package/model/config hash\\
-\code{RuntimeState} & Global/Local coordinates and velocities, active Local IDs, dwell/fade counters,
-package identity, previous frame timestamp\\
-\code{FrameTrace} & wind/load, total force/work, Global/Local generalized loads, selected slots,
-response/update/transport flags, component timing, method-failure reason\\
-\code{RunManifest} & source commits, dataset/split/checkpoint/config/package hashes, hardware/precision/command,
-unit/domain, fixed denominator와 Gate status\\
+R0 & \code{development/r0_contract_and_schema.tex} &
+Canonical sketch &
+Closed API/schema/registry와 no-leak contract\\
+R1 & \code{development/r1_teacher_probe_oracle.tex} &
+R0 artifacts &
+Converged teacher, common-probe, traction/ZOH, oracle와 base transport smoke\\
+R2 & \code{development/r2_single_case_global_overfit.tex} &
+R1 pass &
+Single-case Global overfit와 long-horizon finite rollout\\
+R3 & \code{development/r3_multi_resplat_measure.tex} &
+R2 pass, independent GS variants &
+Gate A\(_T\)/A\(_M\)/A\(_L\) routing evidence\\
+R4 & \code{development/r4_heldout_global.tex} &
+R3 route 확정 &
+Object-disjoint Global Gate B와 frozen Best Global\\
+R5 & \code{development/r5_local_residual.tex} &
+Gate B pass &
+Residual atlas, oracle/always-on Local과 Gate C\\
+R6 & \code{development/r6_conditional_local_runtime.tex} &
+Gate C pass &
+Deterministic Local state machine과 Gate D\\
+R7 & \code{development/r7_renderer_and_paper_evidence.tex} &
+선택한 Global/Local route &
+Optional appearance, champion/failure evidence와 paper freeze\\
 \bottomrule
 \end{longtable}
 
-\subsection{Mandatory no-leak tests}
+\section{Training stage와 R-stage 대응}
 
+\begin{longtable}{L{0.09\linewidth}L{0.22\linewidth}L{0.58\linewidth}}
+\toprule
+Training & Development & 동결된 의미\\
+\midrule
+\endfirsthead
+\toprule
+Training & Development & 동결된 의미\\
+\midrule
+\endhead
+T0 & R0--R1 &
+SI/schema, teacher convergence, common-probe, oracle, traction/exact-ZOH와 base transport\\
+T1 & R2 &
+R2 내부의 area measure 및 patch-to-token initialization; mass는 homogeneous rule로 파생\\
+T2 & R2 &
+Single-object/single-GS Global response overfit\\
+T3 & R3--R4 &
+Multi-resplat paired training과 object-disjoint held-out Global\\
+T4 & R5 &
+Frozen Best Global residual로 always-on Local 학습\\
+T5 & R6 &
+Analytic-only selector/state machine 구현, 통합과 replay 평가; selector score와 automaton은 학습하지 않음\\
+T6 & R5--R6 optional &
+Global field/pole과 Gate B checkpoint를 freeze한 Local/package continuity fine-tuning만 허용.
+Local/package 변경은 Gate C/D를 무효화해 R5/R6을 다시 실행하고,
+T6 안의 Global 변경은 금지한다. 별도 method lineage에서 Global을 바꾸면 R4/T3 Gate B부터
+새 checkpoint/evidence를 만들고 이후 R5/R6을 다시 실행한다.\\
+Paper & R7 &
+Base transport 재사용, optional appearance와 paper evidence만 추가\\
+\bottomrule
+\end{longtable}
+
+R2a/R2b는 canonical T-stage를 추가하는 이름이 아니라 R2 문서 내부의 개발 substep이다.
+R2a는 T1 initialization 뒤 T2 fixed-seconds overfit을 닫고, R2b는 mandatory baseline과
+schedule resolution을 닫는다. Stable teacher peak가 없으면 R2b의 period branch만 생략하고
+frozen fixed-seconds fallback과 baseline 결과를 남긴다.
+
+\section{Stable sketch reference routing}
+
+Stable label은 sketch에만 정의하고 part 문서는 이름으로 참조한다.
+\begin{longtable}{L{0.10\linewidth}L{0.36\linewidth}L{0.43\linewidth}}
+\toprule
+Owner & Stable label & 계약\\
+\midrule
+\endfirsthead
+\toprule
+Owner & Stable label & 계약\\
+\midrule
+\endhead
+R0 & \code{eq:rd-setup-input}, \code{eq:rd-frame-input} &
+Setup/frame I/O와 target-forbidden field\\
+R0 & \code{eq:rd-typed-control-map} &
+Base/effective pole, control range와 reset\\
+R0 & \code{eq:rd-gaussian-token}, \code{eq:rd-latent-anchor} &
+Normalization, patch-first token과 global context\\
+R0 & \code{eq:rd-response-package} &
+Cached package payload, schema와 identity\\
+R1 & \code{eq:rd-common-probe-map}, \code{eq:rd-common-probe-adjoint} &
+Training/evaluation mapping과 payload별 work adjoint\\
+R1 & \code{eq:rd-teacher-consistent-mass}, \code{sec:rd-teacher-development-evidence} &
+Teacher DOF/quadrature/mass와 고차 map law, 개발 증거의 채택 경계\\
+R1 & \code{eq:rd-exact-zoh}, \code{eq:rd-wind-pullback} &
+Frame-start traction과 single exact-ZOH evaluator\\
+R1--R2 & \code{eq:rd-attachment-whitening}, \code{eq:rd-global-response} &
+Exact attachment, final-coordinate pole과 passive Global\\
+R2 & \code{eq:rd-response-loss}, \code{eq:rd-total-loss},
+\code{eq:rd-teacher-period-spectrum} &
+Common-probe response loss와 rollout schedule\\
+R3 & \code{eq:rd-area-mass} &
+Positive area, homogeneous mass와 density consistency\\
+R5 & \code{eq:rd-local-residual}, \code{eq:rd-local-support-projection} &
+Frozen-Global residual과 free/valid ordered sparse support\\
+R6 & \code{eq:rd-local-score}, \code{eq:rd-local-runtime-state} &
+Analytic selector와 deterministic live state\\
+R6 & \code{eq:rd-mean-transport}, \code{eq:rd-pareto-gate} &
+Transport-only fade와 quality--latency Gate D\\
+R7 & \code{eq:rd-optional-appearance} &
+Gate 후 stateless bounded appearance branch\\
+\bottomrule
+\end{longtable}
+
+\section{R0 cross-cutting registries}
+
+다음 schema의 \textbf{형식과 freeze 시점}은 R0가 소유한다. 실제 stage별 값은 owning part와
+versioned config가 채운다.
 \begin{itemize}
-  \item Student forward signature와 serialized input에 topology/correspondence field가 존재하지 않는다.
-  \item Source object의 모든 GS/material/wind/frame은 같은 train/dev/test split에 속한다.
-  \item Test normalization, threshold, rank, selector budget과 loss weight를 test open 뒤 바꾸지 않는다.
-  \item Independent GS variant는 단순 primitive split/duplicate가 아니라 별도 reconstruction이다.
-  \item Teacher-only tensor가 dataloader의 model input path에 들어가면 즉시 실패한다.
+  \item \code{DomainContract}: SI unit, geometry/material/attachment/wind/OOD와 failure denominator
+  \item \code{TensorAndFrameSchema}: coordinate frame, tensor shape/axis/dtype, permutation과 ragged mask
+  \item \code{PhysicalValidityContract}: valid index, area/mass/load/field zeroing 또는 asset reject
+  \item \code{ResponsePackageSchema}: rank, aligned payload, serialization, hash와 reset
+  \item \code{MetricRegistry}: metric ID/unit/direction, mask, reduction, object/seed aggregate
+  \item \code{ThresholdRegistry}: Gate Boolean expression, numeric margin, freeze split와 version
+  \item \code{StageArtifactManifest}: required input hash, output/report, validator, failure code와 next route
 \end{itemize}
 
-\section{R0 --- Contract freeze}
+\section{현재 상태}
 
-\begin{itemize}
-  \item[$\square$] \code{response_contract_v1}: setup/frame input, closed runtime payload, response package output와 deterministic evaluator 정의
-  \item[$\square$] \code{teacher_student_visibility.json}: training-only/target-allowed field 표
-  \item[$\square$] \code{object_grouped_split.json}: source-object split와 sealed test hash
-  \item[$\square$] SI/nd unit map, force/traction/area ownership과 target-side \(A_{\rm ref},M_{\rm ref},L_0\) owner;
-  teacher 값 복사와 asset별 사후 보정 금지
-  \item[$\square$] Domain/OOD/failure denominator와 fixed timestep/frequency envelope
-  \item[$\square$] Response package version: positive pole/damping, exact attachment, mass whitening, rank floor
-  \item[$\square$] Token-to-Gaussian query readout과 predicted/derived normal--validity payload; persistent edge 출력 없음
-  \item[$\square$] \(B_R=(B_{R,G},\{B_{R,L,k}\})\) 또는 versioned local-affine normal branch 중 하나를 전 asset에 freeze
-  \item[$\square$] Global always-on, Local=frozen-Global residual, test 전 fixed Local budget
-  \item[$\square$] 기존 code/experiment milestone이 새 완료 근거가 아님을 README/manifest에 표시
-\end{itemize}
+\begin{longtable}{L{0.09\linewidth}L{0.20\linewidth}L{0.58\linewidth}}
+\toprule
+Stage & 상태 & 다음 동작\\
+\midrule
+\endfirsthead
+\toprule
+Stage & 상태 & 다음 동작\\
+\midrule
+\endhead
+R0 & 계약 재동결 필요 & R0 Open Design Decisions와 executable schema를 먼저 닫는다.\\
+R1 & 개발 진단 진행; acceptance 미완료 & Registry/샘플·시간·공간 진단 근거는 R1 문서와 동반 연구 기록에 보존. R0 잔여 계약, 최종 동일-backend 수렴과 oracle/transport를 닫는다.\\
+R2 & Blocked by R1 & Network-free oracle와 base transport가 통과한 뒤 시작한다.\\
+R3 & 대기 & Independent reconstruction eligibility와 density registry를 동결한다.\\
+R4 & 대기 & Dataset size와 Best Global selection protocol을 동결한다.\\
+R5 & 대기 & Gate B 뒤 support proposal과 residual ownership을 동결한다.\\
+R6 & 대기 & Gate C 뒤 transition table과 active/live budget을 동결한다.\\
+R7 & 대기 & 선택된 claim route 뒤 optional paper work만 수행한다.\\
+\bottomrule
+\end{longtable}
 
-\haltitem{R0 failure:} output을 deformation, velocity increment, operator와 혼용하거나 topology leak를 닫지 못하면
-teacher 생성과 network 구현을 시작하지 않는다.
+\section{Gate routing과 허용 claim}
 
-\section{R1 --- Teacher and transport smoke}
+\begin{longtable}{L{0.14\linewidth}L{0.30\linewidth}L{0.45\linewidth}}
+\toprule
+Gate & 실패 의미 & 허용 route\\
+\midrule
+\endfirsthead
+\toprule
+Gate & 실패 의미 & 허용 route\\
+\midrule
+\endhead
+A\(_T\) & Teacher/map/oracle/Global prerequisite 실패 & Learned-response pipeline 중단\\
+A\(_M\) & Independent-GS measure/response consistency 실패 & Fixed reconstruction family; density claim 철회\\
+A\(_L\) & Latent token/relation 이득 없음 & 실패를 기록하고 capacity-matched direct-set을 R4 main route로 전달; 이후 Gate B/C 판정\\
+B & Held-out Global response 실패 & Family 축소 또는 learned-response pivot 중단\\
+C & Learned Local 필요성/우위 없음 & Global-only response paper\\
+D & Conditional execution Pareto 실패 & Always-on Local 또는 Global-only; selector claim 철회\\
+\bottomrule
+\end{longtable}
 
-\subsection{최소 데이터}
-
-\begin{itemize}
-  \item strip 1개, rectangular flag 1개, material 1개
-  \item independent static GS variant object당 2개
-  \item impulse와 step-on/off; zero-wind rest/recovery
-  \item mesh/time refinement 최소 2단계와 common canonical probe
-\end{itemize}
-
-\subsection{필수 확인}
-
-\begin{itemize}
-  \item[$\square$] Teacher refinement 간 velocity, tip trajectory와 dominant frequency 수렴
-  \item[$\square$] Mesh surface quadrature의 total area/mass, force sign과 external work 일치
-  \item[$\square$] Teacher surface motion을 각 independent GS에 transport했을 때 attachment zero와 finite covariance
-  \item[$\square$] Static rest/zero-wind frame identity, proper rigid rotation, SPD covariance fixture
-  \item[$\square$] Teacher/GS/wind/material/trajectory hash와 replay command 저장
-\end{itemize}
-
-\haltitem{R1 kill:} reference가 수렴하지 않거나 mesh--GS transport가 흔들리면 network를 시작하지 않는다.
-
-\section{R2 --- Single-case Global overfit}
-
-\subsection{범위}
-
-한 object, 한 GS, 한 material과 impulse/step response만 사용한다.
-Patch encoder, fixed latent token, global context, area/mass head, Global response package와 deterministic update만 둔다.
-Local, selector, render perceptual loss는 없다.
-
-\subsection{Baseline}
-
-\begin{enumerate}
-  \item zero/mean response
-  \item linear static-GS response regressor
-  \item capacity-matched direct set encoder without latent relation auxiliary
-  \item direct next-deformation predictor
-\end{enumerate}
-
-\subsection{Pass evidence}
-
-\begin{itemize}
-  \item[$\square$] One-step뿐 아니라 multi-step velocity/displacement와 phase를 train sequence에 overfit
-  \item[$\square$] Zero-wind rest에서 zero response; displaced free decay에서 energy/velocity가 유한
-  \item[$\square$] 학습 horizon보다 긴 rollout에서 NaN/divergence 없음
-  \item[$\square$] Attached Gaussian response row가 numerical zero
-  \item[$\square$] Predicted frequency/damping positive, mass Gram identity와 rank report 통과
-  \item[$\square$] Force 방향/크기를 바꾸면 response sign/amplitude가 일관되게 변함
-\end{itemize}
-
-\haltitem{R2 kill:} single-case overfit이 안 되면 dataset, Local 또는 renderer를 늘리지 않고
-unit, response definition, teacher mapping, loss와 integrator를 점검한다.
-
-\section{R3 --- Multi-resplat measure consistency}
-
-\subsection{Paired variants}
-
-동일 source surface를 target density \(0.5\times,1\times,2\times\)와 independent seed/view 조건으로 생성한다.
-Density마다 가능한 경우 2개 이상의 reconstruction을 만들고 같은 teacher probe에 pairing한다.
-
-\subsection{Ablation}
-
-\begin{enumerate}
-  \item Full model
-  \item Equal Gaussian weight
-  \item Opacity-as-area
-  \item Multi-resplat consistency loss 없음
-  \item Latent token/relation auxiliary 없음
-  \item Patch-only, global context 없음
-  \item Teacher quadrature를 직접 쓰는 inference-impossible oracle
-\end{enumerate}
-
-\subsection{Metric}
-
-\begin{itemize}
-  \item paired common-probe response inconsistency
-  \item total area/mass, wind force/work dispersion
-  \item density별 velocity/tip/amplitude/phase error
-  \item worst-density degradation와 token collapse/coverage
-  \item Gaussian 수 대비 setup/runtime memory와 latency slope
-\end{itemize}
-
-\pass{Gate A\(_T\):} teacher refinement, transport, single-case overfit와 long free-decay prerequisite가 통과한다.
-
-\pass{Gate A\(_M\):} dev-frozen tolerance 안에서 independent-GS measure/response consistency가 통과한다.
-
-\pass{Gate A\(_L\):} capacity-matched direct-set baseline보다 latent token/relation이 motion 또는 robustness gain을 낸다.
-
-\haltitem{Gate A failure routing:} A\(_T\) 실패는 learned-response pipeline을 막는다. A\(_M\)만 실패하면
-density claim을 철회하고 fixed reconstruction family로 축소한다. A\(_L\)만 실패하면 latent-anchor contribution을
-삭제하고 direct-set response model로 진행할 수 있다.
-
-\section{R4 --- Narrow-domain held-out Global}
-
-\subsection{Split와 데이터}
-
-초기 feasibility는 최소한 strip/flag 계열의 object-grouped train/dev/test를 사용한다.
-모든 test object에는 independent GS density/seed variant를 2--3개 둔다.
-Train object 수가 작으면 exploratory임을 표시하고 population claim을 하지 않는다.
-
-\subsection{필수 variation}
-
-\begin{itemize}
-  \item aspect ratio와 silhouette
-  \item material preset과 known metric scale
-  \item supported attachment region
-  \item unseen phase/two-tone 또는 reversed traveling gust composition
-  \item 학습보다 긴 zero-wind recovery/free-decay sequence
-\end{itemize}
-
-\subsection{Gate B evidence}
-
-\begin{itemize}
-  \item[$\square$] Direct next-deformation 및 direct-set response baseline 대비 velocity/phase/PSD 개선
-  \item[$\square$] Soft/base/stiff material의 amplitude/frequency ordering 유지
-  \item[$\square$] No target mesh/video/fine-tuning protocol 준수
-  \item[$\square$] Multi-resplat worst case와 method success rate 보고
-  \item[$\square$] Long rollout finite, attachment residual numerical zero
-  \item[$\square$] Object outer/package nested paired effect와 low-N limitation 공개
-\end{itemize}
-
-\haltitem{Gate B failure:} supported family를 더 좁히거나 per-family compiler로 claim을 줄인다.
-Held-out response가 반복적으로 실패하면 learned-response pivot을 중단한다.
-
-\section{R5 --- Local necessity and always-on Local}
-
-\subsection{Global residual atlas}
-
-Best Global rank/capacity sweep을 고정한 뒤 teacher response에서 Global explained component를 빼고
-object/time/space/frequency별 residual을 저장한다.
-
-\begin{itemize}
-  \item[$\square$] Residual이 teacher refinement와 mapping noise보다 큼
-  \item[$\square$] Traveling/local gust에서 공간적으로 localized됨
-  \item[$\square$] 여러 object와 independent GS에서 같은 target band에 반복됨
-  \item[$\square$] Global rank를 늘려도 matched-p95에서 사라지지 않음
-  \item[$\square$] Oracle Local injection이 visible/metric error를 의미 있게 개선
-\end{itemize}
-
-\subsection{Always-on Local training}
-
-Frozen Global residual만 Local label로 사용한다. Local raw field는 exact attachment와
-Global mass-complement projection 뒤 whitening한다. Mode column loss가 아니라 response loss를 사용한다.
-
-비교는 best Global, larger Global, Global+oracle Local, Global+learned always-on Local이다.
-
-\pass{Gate C:} learned always-on Local이 strong Global보다 target flutter amplitude/phase/PSD를 개선하고
-rollout stability와 multi-resplat consistency를 유지한다.
-
-\haltitem{Gate C failure:} Local/selector를 중단하고 Global-only 논문으로 축소한다.
-
-\section{R6 --- Conditional Local}
-
-\subsection{Selector contract}
-
-\begin{itemize}
-  \item[$\square$] Analytic generalized-load/response-energy score를 첫 baseline으로 사용
-  \item[$\square$] Learned residual-risk term은 analytic score가 실패할 때만 추가
-  \item[$\square$] Fixed top-\(K_A\), stable tie-break, minimum dwell, fade와 persistent coordinate
-  \item[$\square$] Global은 항상 활성; Local만 admission 대상
-  \item[$\square$] Activation/deactivation 중 hidden second update 없음
-  \item[$\square$] Selector overhead, all-slot projection, update와 transport를 분리 profiling
-\end{itemize}
-
-\subsection{Gate D comparison}
-
-\begin{enumerate}
-  \item Best fixed Global
-  \item Matched-latency larger Global
-  \item Global+always-on Local
-  \item Global+oracle-selected Local
-  \item Global+conditional learned Local
-  \item 이전 explicit scaffold Global+Local baseline
-\end{enumerate}
-
-\pass{Gate D:} conditional Local이 always-on Local 대비 primary response error 증가를
-\(\epsilon_{E,\mathrm{keep}}\) 이하로 유지하면서 actual p95를 \(\delta_{L,\mathrm{always}}\) 이상 줄인다.
-또한 test 전에 고정한 모든 fixed high-rank Global과 explicit-scaffold non-dominated point의 Pareto envelope
-\(\mathcal B\)에 대해 matched-latency error를 \(\delta_E\) 이상 또는 matched-error p95를
-\(\delta_{L,\mathcal B}\) 이상 개선한다. Metric, sign, envelope interpolation, matched-axis tolerance와
-positive margin은 dev에서 동결하고 test 결과 뒤 바꾸지 않는다. Memory와 throughput은 mandatory secondary다.
-
-\haltitem{Gate D failure:} selector headline을 철회하고 always-on Local 또는 Global-only로 종료한다.
-
-\section{R7 --- Gaussian transport and paper evidence}
-
-\subsection{Transport}
-
-\begin{itemize}
-  \item[$\square$] Mean response field 적용, hard attachment identity
-  \item[$\square$] Optional angular response의 proper rotation과 covariance eigenvalue/SPD 보존
-  \item[$\square$] Identity/proper-rigid/zero-wind/finite/clamp fixture
-  \item[$\square$] Degree-0 appearance primary; higher SH는 optional ablation
-  \item[$\square$] Invalid covariance, OOD와 fallback은 method denominator에 유지
-\end{itemize}
-
-\subsection{Champion set}
-
-\begin{itemize}
-  \item soft strip step/recovery
-  \item stiff strip impulse/chirp
-  \item rectangular flag traveling gust
-  \item 동일 flag의 low/high-density independent reconstruction
-  \item frozen-model qualitative pennant 또는 real flag 1--2개
-  \item 약한/failure regime 최소 1개
-\end{itemize}
-
-장면, wind, camera와 success/failure rule을 결과 전에 등록한다. Hero video만 보고 domain을 다시 정의하지 않는다.
-
-\subsection{Paper metrics}
-
-\begin{itemize}
-  \item per-sequence velocity/displacement/tip error
-  \item amplitude, dominant frequency, phase와 target-band log-PSD
-  \item paired multi-resplat response/work dispersion
-  \item silhouette와 temporal flicker; teacher/ours/baseline split-screen
-  \item setup time, package memory, response network/force/update/transport/render p50/p95/p99
-  \item sequence survival, first failure와 fixed denominator
-\end{itemize}
+R3는 claim이 축소될 수 있어도 실행 자체를 생략하지 않는다.
+Total area/mass 합은 construction sanity이고, Gate A\(_M\)의 primary evidence는 spatial surface measure,
+analytic traction-field force/work와 common-probe response dispersion이다.
 
 \section{Definition of Done}
 
 \begin{itemize}
-  \item[$\square$] R0--R2, Gate A\(_T\), R4 및 Gate B pass; 그렇지 않으면 target-mesh-free learned-response claim 없음
-  \item[$\square$] Density/seed invariance를 주장하면 Gate A\(_M\) pass; 실패 시 fixed reconstruction family로 명시
-  \item[$\square$] Latent-anchor/relation을 기여로 주장하면 Gate A\(_L\) pass; 실패 시 direct-set response로 축소
-  \item[$\square$] Local을 주장하면 R5--R6 및 Gate C/D pass
-  \item[$\square$] Static GS input 외 topology leak 0건, source-object split/hash replay 통과
-  \item[$\square$] Independent GS density/seed evidence를 실행·보고하고, density claim 시 Gate A\(_M\) pass;
-  exact attachment fixture는 모든 fallback에서 통과
-  \item[$\square$] Model/config/package/run hash와 command/hardware/precision/unit 재현 가능
-  \item[$\square$] OOD와 in-envelope method failure를 분리하고 success-only metric 금지
-  \item[$\square$] Baseline/ablation, hero/failure video와 component timing 공개 가능
-  \item[$\square$] Claim 축소표에 따라 Global-only/fixed-family/explicit-scaffold fallback 판정 기록
+  \item[$\square$] R0 schema/registry/no-leak contract와 serialization/permutation fixture 통과
+  \item[$\square$] R1 teacher spatial/temporal convergence, common-probe/work adjoint,
+  same-law traction, corrected oracle, exact-ZOH와 base mean/covariance transport 통과
+  \item[$\square$] R2 single-case Global overfit와 final supported physical-time rollout 통과
+  \item[$\square$] R3를 실행하고 Gate A\(_T\)를 통과하며 A\(_M\)/A\(_L\) 결과에 맞춰 claim route 기록
+  \item[$\square$] R4 object-disjoint Gate B와 frozen Best Global checkpoint/report 통과
+  \item[$\square$] Local을 주장하면 R5/Gate C 통과
+  \item[$\square$] Conditional Local을 주장하면 R6/Gate D와 exhaustive transition replay 통과
+  \item[$\square$] 선택한 route의 R7 champion/failure evidence, baseline, profiler와 reproducibility 공개 가능
+  \item[$\square$] In-envelope package reject, divergence, invalid covariance와 fallback을 fixed denominator에 유지
   \item[$\square$] 이전 explicit-scaffold 결과를 새 방법의 완료 상태로 승계하지 않음
 \end{itemize}
 
-R7 이후 evidence가 animation/simulation system 중심이면 SCA/CGF를 우선 검토한다.
-Measure invariance와 response distillation이 broader principle로 닫히고 comprehensive evidence가 있을 때만
-Eurographics, TVCG, SIGGRAPH/SIGGRAPH Asia dual track 또는 TOG로 목표를 올린다.
+\section{업데이트 규칙}
+
+\begin{enumerate}
+  \item 진행 중인 stage의 part 문서와 code/config/test를 함께 수정한다.
+  \item 새 결정은 part의 Open Design Decisions에서 frozen contract로 이동하고 version/hash를 기록한다.
+  \item 다른 stage가 소비하는 schema가 바뀌면 master dependency와 downstream artifact를 함께 invalidate한다.
+  \item Method equation, contribution 또는 claim boundary가 바뀔 때만 canonical sketch를 수정한다.
+  \item Part TeX를 수정하면 해당 PDF를, shared preamble을 수정하면 모든 part PDF를 재빌드한다.
+  \item Part/shared/master 또는 그 PDF가 바뀌면 checklist 전달 bundle도 상대 경로를 보존해 재생성한다.
+  \item Master roadmap은 세부 실험 로그를 소유하지 않는다. 실제 run/evidence는 \code{../experiments}가 소유한다.
+\end{enumerate}
 
 \end{document}

@@ -33,6 +33,16 @@
 !3dgs_response_distilled_global_local_wind_dynamics_2026-08-22_bundle.zip
 !implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22.pdf
 !implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22_bundle.zip
+# Current R0--R7 standalone development plans.
+!development/r0_contract_and_schema.pdf
+!development/r1_teacher_probe_oracle.pdf
+!development/r1_teacher_implementation_record.pdf
+!development/r2_single_case_global_overfit.pdf
+!development/r3_multi_resplat_measure.pdf
+!development/r4_heldout_global.pdf
+!development/r5_local_residual.pdf
+!development/r6_conditional_local_runtime.pdf
+!development/r7_renderer_and_paper_evidence.pdf
 # Frozen review provenance. These PDFs are archived inputs, not canonical deliverables.
 !backup/review_materials_through_2026-08-21/pdf_reports/*.pdf
 

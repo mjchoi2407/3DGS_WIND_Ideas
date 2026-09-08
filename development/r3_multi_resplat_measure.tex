@@ -1,0 +1,294 @@
+\documentclass[10pt,a4paper]{article}
+
+\input{shared_preamble.tex}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Wind3DGS 개발 문서}
+\rhead{R3 Multi-resplat Measure}
+\cfoot{\thepage}
+
+\title{R3 개발 계약\\Multi-resplat Measure Consistency}
+\author{Wind3DGS}
+\date{2026-08-22}
+
+\begin{document}
+\maketitle
+
+\begin{contractbox}{문서 역할}
+이 문서는 R3 구현과 실험을 진행하면서 계속 갱신하는 실행 계약이다.
+방법의 수학적 의미와 claim의 최종 권위는 canonical idea sketch가 가지며,
+본 문서는 R3에 필요한 입력, 구현 순서, 산출물과 중단 조건만 소유한다.
+R0--R2 계약을 이 문서에서 임의로 재정의하지 않는다.
+Canonical \code{eq:rd-area-mass}, \code{eq:rd-common-probe-map}과
+\code{eq:rd-common-probe-adjoint}를 이름으로 참조한다.
+\end{contractbox}
+
+\tableofcontents
+
+\section{목적과 소유권}
+
+R3의 목적은 같은 source surface에서 독립적으로 복원한 3DGS들이 Gaussian 수, density,
+seed와 view 조건이 달라도 \textbf{같은 물리적 표면 measure와 force-to-motion response}를
+표현하는지 검증하는 것이다. R3는 다음 항목을 소유한다.
+
+\begin{itemize}
+  \item independent multi-resplat group의 생성 및 provenance 검증
+  \item 동일한 canonical common-probe denominator에서의 paired 비교
+  \item spatial surface measure, analytic traction integral, total force/work와 response dispersion 측정
+  \item equal-weight, opacity-as-area와 consistency-loss 제거 ablation
+  \item Gate A\(_M\) measure claim과 Gate A\(_L\) latent-representation claim의 증거
+\end{itemize}
+
+R3는 teacher convergence, force sign, exact-ZOH evaluator 또는 single-case Global overfit을
+다시 승인하는 단계가 아니다. 이들은 R1--R2의 통과 결과를 입력으로 소비한다.
+
+\begin{contractbox}{Primary evidence와 construction sanity의 구분}
+\(\sum_i a_i=A_{\mathrm{ref}}\)와 \(\sum_i m_i=M_{\mathrm{ref}}\)는
+정규화 식으로 보장되는 \textbf{construction sanity}다. 이 두 합이 맞는다는 사실만으로
+density invariance나 novelty를 주장하지 않는다. R3의 primary evidence는 공간적으로 분해한
+spatial surface measure, analytic traction 적분, force/work와 common-probe response의 independent-resplat
+dispersion이다.
+\end{contractbox}
+
+\section{진입 입력}
+
+R3 실행은 아래 입력이 모두 versioned artifact로 존재할 때만 시작한다.
+
+\begin{longtable}{L{0.27\linewidth}L{0.61\linewidth}}
+\toprule
+입력 & 요구 내용\\
+\midrule
+\endfirsthead
+\toprule
+입력 & 요구 내용\\
+\midrule
+\endhead
+\code{DomainContract} & SI 단위, champion domain, 허용 geometry/material/attachment/wind와 OOD 규칙\\
+\code{GateATPrerequisiteReport} & R1 teacher/map/oracle과 R2 Global prerequisite가 통과한 identity/hash\\
+\code{TeacherPackage} & 별도 spatial/temporal convergence를 통과한 teacher rest surface, quadrature와 trajectories\\
+\code{CanonicalProbeMap} & teacher와 모든 declared GS variant가 공유하는 probe, ordered map와 하나의 frozen common-valid mask\\
+\code{StaticGSPackage} & static GS payload, source-object ID, reconstruction provenance와 metric scale\\
+\code{ResponsePackage} & R2 fixture를 통과한 area, derived mass, Global field/pole와 immutable evaluator identity\\
+\code{R2GlobalCheckpoint} & R2 single-case 검증을 통과한 학습 코드와 초기 checkpoint; R3에서 사용한 정확한 hash 저장\\
+\code{MetricRegistry} & metric ID, 단위, normalization, aggregation, 방향과 mapping-noise floor\\
+\code{ThresholdRegistry} & Gate A\(_M\)/A\(_L\)의 dev-frozen tolerance와 Boolean 판정식\\
+\bottomrule
+\end{longtable}
+
+같은 source object의 mesh, 모든 GS variant, material, wind sequence는 하나의 split group에 둔다.
+Source surface 하나에서 한 GS를 단순 split/duplicate한 결과는 independent reconstruction으로 세지 않는다.
+
+\section{이미 동결된 계약}
+
+\subsection{Pair와 denominator}
+
+\begin{itemize}
+  \item Source object마다 2--3개의 predeclared density/seed/view/densification variant를 사용한다.
+  정확한 nominal density ratio는 R3 Open Design Decision에서 run 전에 동결하며,
+  실제 달성 density와 Gaussian 수는 nominal label과 분리해 기록한다.
+  \item 모든 declared variant는 teacher와 같은 canonical probe set으로 remap한다.
+  \item 정량 결과는 teacher와 group의 모든 declared variant가 함께 support하는
+  \textbf{하나의 pre-test frozen common-valid mask}를 사용한다.
+  \item 실패한 variant에 유리하도록 probe를 사후 삭제하거나 variant별 denominator를 만들지 않는다.
+  \item constant/coordinate-linear reproduction, coverage와 mapping-noise floor를 통과하지 못한 map은
+  predeclared reject/failure 규칙으로 처리한다.
+\end{itemize}
+
+\subsection{Measure와 force ownership}
+
+Homogeneous V0는 positive area를 normalize하고 mass를 area에서 파생한다.
+\[
+  a_i=A_{\mathrm{ref}}
+  \frac{\operatorname{softplus}(\xi_i^a)+\epsilon_a}
+       {\sum_j\{\operatorname{softplus}(\xi_j^a)+\epsilon_a\}},
+  \qquad
+  m_i=\frac{M_{\mathrm{ref}}}{A_{\mathrm{ref}}}a_i.
+\]
+\(M_{\mathrm{ref}}\)만 total mass를 소유한다. Opacity, Gaussian count, teacher quadrature를
+target package의 area/mass로 직접 대입하거나 asset별 scale correction을 하지 않는다.
+R0에서 동결한 physical-valid policy를 모든 variant에 동일하게 적용한다.
+
+Analytic traction은 area ownership 검사용 payload다. Probe traction \(\tau_P\)를 source total force로
+보낼 때만 \(F_X=S_X^\top W_{A,P}\tau_P\)를 사용하며, total force payload에는
+\(F_X=S_X^\top F_P\)를 사용한다. Runtime GS wind는 common-probe adjoint를 거치지 않고
+각 Gaussian에서 \(F_i=a_i\tau_i\)로 직접 계산한다.
+
+\subsection{누설 방지와 실험 동결}
+
+\begin{itemize}
+  \item Teacher--GS correspondence는 training loss와 evaluation fixture에만 사용한다.
+  Target inference input이나 runtime package에 topology를 포함하지 않는다.
+  \item Reconstruction 결과를 본 뒤 eligibility, density bin, support mask 또는 metric을 바꾸지 않는다.
+  \item Probe peak/duration, analytic field family, wind program과 ablation budget은 development에서
+  domain-wide로 동결한다.
+  \item Report는 object-outer, variant-within-object paired 구조를 보존한다.
+  Gaussian variant를 독립 object 표본처럼 세어 표본 수를 부풀리지 않는다.
+\end{itemize}
+
+\section{구현 체크리스트}
+
+\subsection{Variant registry와 pairing}
+
+\begin{itemize}
+  \item[$\square$] Source-object ID와 split-group ID를 모든 teacher/GS artifact에 기록
+  \item[$\square$] Variant별 reconstruction provenance 저장: camera subset, seed, initialization과 source commit
+  \item[$\square$] Densification schedule, nominal/achieved density와 achieved Gaussian count를 별도 field로 저장
+  \item[$\square$] Independent reconstruction 판정기를 만들고 split/duplicate 파생본을 거부
+  \item[$\square$] Declared variant 목록을 map/metric 실행 전에 freeze하고 group hash 생성
+  \item[$\square$] Static-GS eligibility 결과와 제외 사유를 denominator와 함께 저장
+\end{itemize}
+
+\subsection{Spatial surface measure와 analytic quadrature}
+
+\begin{itemize}
+  \item[$\square$] Frozen canonical probe partition 또는 predeclared surface cells에서
+  predicted local area와 derived mass를 aggregate
+  \item[$\square$] Constant 및 coordinate-linear scalar measure field의 local integral 오차 측정
+  \item[$\square$] Constant, linear-gradient와 piecewise-localized analytic traction family를
+  모든 variant에 동일하게 적용
+  \item[$\square$] Net force, first moment(정의된 경우), virtual work와 teacher quadrature 대비 오차 측정
+  \item[$\square$] Total area/mass equality는 sanity column으로 분리하고 primary score에 중복 가산하지 않음
+  \item[$\square$] Physical-valid mask의 면적 누락, background/floater load와 zero-row 위반 검사
+\end{itemize}
+
+\subsection{Response consistency와 ablation}
+
+\begin{itemize}
+  \item[$\square$] Impulse, step-on/off, multi-sine/log-chirp와 traveling gust를 동일 physical-time grid에서 실행
+  \item[$\square$] Common-probe displacement/velocity, tip, amplitude, phase, PSD와 external work 저장
+  \item[$\square$] Pairwise뿐 아니라 group centroid 대비 dispersion과 worst-variant degradation 보고
+  \item[$\square$] Mapping-noise floor 이하/초과 성분을 분리해 model error로 과대 해석하지 않음
+  \item[$\square$] Equal Gaussian weight, opacity-as-area, consistency loss 제거,
+  latent/relation auxiliary 제거, patch-only ablation 실행
+  \item[$\square$] Teacher quadrature를 직접 쓰는 inference-impossible oracle을 ceiling으로 명시
+  \item[$\square$] Gaussian 수 대비 setup memory/latency와 evaluator memory slope 기록
+\end{itemize}
+
+\subsection{Latent와 direct-set route 판정}
+
+\begin{itemize}
+  \item[$\square$] Latent-relation model과 capacity-matched direct-set response model을 동일 split/probe/evaluator로 학습
+  \item[$\square$] Parameter, setup FLOPs, memory, training budget와 dev checkpoint selection rule을 사전 동결
+  \item[$\square$] Direct-set은 latent token/relation auxiliary 없이 permutation-equivariant GS set에서 package를 직접 예측
+  \item[$\square$] Single-case R2 진단이 아니라 paired multi-resplat dev evidence로 Gate A\(_L\) 판정
+  \item[$\square$] A\(_L\) pass면 latent route, fail이면 direct-set route의 config/checkpoint를 R4 hand-off로 발행
+  \item[$\square$] 선택 route의 encoder family와 capacity-matching 조건을 보존하는 유한 rank/pole/capacity
+  후보를 \code{GlobalConfigSet}으로 hash; R2b loss/schedule은 후보에서 제외
+\end{itemize}
+
+\subsection{Gate 계산}
+
+\begin{itemize}
+  \item[$\square$] Metric별 단위, normalization, object/variant/time reduction과 pass 방향을 registry에서 로드
+  \item[$\square$] Gate A\(_M\)와 A\(_L\) Boolean 식을 코드에 하드코딩하지 않고
+  frozen registry hash로 평가
+  \item[$\square$] A\(_T\) prerequisite hash를 검증하고 실패 시 A\(_M\)/A\(_L\) 수치로 pipeline을 열지 않음
+  \item[$\square$] Mean뿐 아니라 worst declared density/seed variant와 method success rate 보고
+  \item[$\square$] Exclusion count와 이유를 success denominator에 포함
+  \item[$\square$] 결과를 본 뒤 threshold, primary metric 또는 density bin 변경 금지
+\end{itemize}
+
+\section{Open Design Decisions}
+
+\begin{decisionbox}{R3 시작 전에 닫을 결정}
+다음 항목은 canonical 방법 identity가 아니라 R3 개발 계약의 미결정값이다.
+선택 근거, freeze 시점과 config hash를 decision log에 남긴다.
+\end{decisionbox}
+
+\begin{enumerate}
+  \item \decisionitem{Static-GS reconstruction eligibility:}
+  최소 coverage, opacity/floater 품질, metric-scale 신뢰도와 map 지원률을 어떤 Boolean 규칙으로 묶을지 결정한다.
+  Eligibility는 teacher response 또는 test motion error를 보지 않아야 한다.
+  \item \decisionitem{Achieved count/density registry:}
+  nominal target density와 실제 Gaussian count, surface coverage 및 local sampling density를 어떤 schema로
+  기록하고 density bin을 어떻게 확정할지 결정한다. \(0.5\times,1\times,2\times\)는 권장 시작점일 뿐
+  동결값이 아니며 reconstruction feasibility를 본 development rule로 run 전에 확정한다.
+  \item \decisionitem{최소 variant 수:}
+  source object당 density/seed 조합과 reconstruction 재시도 한도를 정한다.
+  실패한 reconstruction을 성공할 때까지 무제한 교체하지 않는다.
+  \item \decisionitem{Local measure partition:}
+  canonical probe patch, fixed UV/arc-length bin 또는 geometric cell 중 어떤 partition을 primary로 사용할지 결정한다.
+  \item \decisionitem{Analytic traction family:}
+  constant/linear/localized field의 정확한 식, 크기, 방향과 normalization을 정한다.
+  \item \decisionitem{Gate A 수치:}
+  primary metric, object-outer 집계, worst-case allowance와 A\(_M\)/A\(_L\) Boolean threshold를 dev에서 동결한다.
+\end{enumerate}
+
+\section{산출물}
+
+\begin{longtable}{L{0.30\linewidth}L{0.58\linewidth}}
+\toprule
+산출물 & 필수 내용\\
+\midrule
+\endfirsthead
+\toprule
+산출물 & 필수 내용\\
+\midrule
+\endhead
+\code{MultiResplatGroupManifest} & source/split ID, declared variants, independence provenance, group hash\\
+\code{StaticGSVariantRecord} & nominal/achieved density, Gaussian count, eligibility, map coverage와 exclusion reason\\
+\code{SpatialMeasureReport} & spatial area/mass, analytic traction integral, net force/first moment/work 오차\\
+\code{ResponseDispersionReport} & common-probe paired/group dispersion, worst variant, mapping-noise 분해\\
+\code{R3AblationReport} & full/equal/opacity/no-consistency/direct-set/patch-only/oracle 비교\\
+\code{GateAReport} & A\(_T\) prerequisite hash, A\(_M\)/A\(_L\) Boolean 입력과 최종 판정\\
+\code{GlobalConfigSet} & 선택 route 안의 유한 Global rank/pole/capacity/compute 후보와 capacity-matching invalidation hash\\
+\code{R3RouteConfig} & latent 또는 direct-set main route, fixed-family 제한, architecture/config와 invalidation hash\\
+\code{R3RouteCheckpoint} & 선택 route의 dev-selected checkpoint와 R4 initialization/training provenance\\
+\bottomrule
+\end{longtable}
+
+모든 report는 source commit과 model, package, config identity를 포함한다.
+Dataset split, metric/threshold registry, probe/map/common-valid mask와 evaluator hash도 함께 기록한다.
+
+\section{필수 fixture와 metric}
+
+\subsection{필수 fixture}
+
+\begin{enumerate}
+  \item \textbf{Construction sanity:} total area/mass, nonnegative area/mass, invalid row와 unit 검사
+  \item \textbf{Spatial measure reproduction:} constant/coordinate-linear field의 patch별 적분
+  \item \textbf{Analytic traction:} spatially constant/linear/localized traction의 force, moment와 work
+  \item \textbf{Paired response:} impulse, step/recovery, frequency probe와 traveling gust
+  \item \textbf{Ablation parity:} 동일 split, budget, probe mask와 evaluator로 모든 measure baseline 비교
+  \item \textbf{Scaling:} achieved Gaussian count 대비 setup/package/runtime memory와 latency
+\end{enumerate}
+
+\subsection{Primary metric}
+
+\begin{itemize}
+  \item spatial area/mass normalized error와 independent-variant dispersion
+  \item analytic traction의 net-force/virtual-work normalized error
+  \item external work dispersion과 common-probe velocity/response dispersion
+  \item density별 phase/amplitude/PSD error와 worst-density degradation
+\end{itemize}
+
+Total area/mass equality, positivity와 hash 일치는 필수 sanity이지만 primary novelty metric이 아니다.
+Token coverage/duplicate/collapse, map coverage와 latency는 mandatory diagnostic이다.
+
+\section{종료 조건과 실패 경로}
+
+\begin{contractbox}{R3 종료 조건}
+Gate A\(_T\) prerequisite를 통과한 뒤 declared multi-resplat group 전체가 frozen denominator로 평가되고,
+spatial surface measure, analytic traction, force/work와 response dispersion report가 재현 가능하며,
+Gate A\(_M\)/A\(_L\) Boolean 판정이 frozen registry로 생성되면 R3를 종료한다.
+A\(_M\)/A\(_L\) 결과에 맞는 \code{R3RouteConfig}/\code{R3RouteCheckpoint}를 발행하면 R4로 진행할 수 있으며,
+density-aware held-out claim은 A\(_M\) pass일 때만 허용한다.
+\end{contractbox}
+
+\begin{itemize}
+  \item \passitem{A\(_M\) pass, A\(_L\) pass:} measure-consistent latent response claim을 유지하고 R4로 진행한다.
+  \item \haltitem{A\(_M\) fail only:} density-invariant claim을 철회하고 fixed reconstruction family로 축소한다.
+  R4 진행 여부와 허용 reconstruction family를 새 hash로 고정한다.
+  \item \haltitem{A\(_L\) fail only:} latent-anchor/relation contribution을 삭제하고 capacity-matched direct-set
+  response model을 R4의 main route로 사용한다.
+  \item \haltitem{A\(_M\), A\(_L\) both fail:} fixed reconstruction family로 제한한 direct-set response를
+  main route로 발행하고 density/latent contribution을 모두 철회한다.
+  \item \haltitem{A\(_T\) prerequisite fail:} R3 수치로 덮지 않고 R1--R2로 되돌아간다.
+  \item \haltitem{Eligibility collapse:} declared density/seed group 대부분이 static-GS eligibility를 통과하지 못하면
+  denominator를 사후 축소하지 않고 reconstruction domain 또는 방법 claim을 재설계한다.
+  \item \haltitem{Mapping-floor domination:} primary response 차이가 mapping-noise floor로 설명되면
+  density claim의 evidence로 사용하지 않고 map/probe resolution을 먼저 재검토한다.
+\end{itemize}
+
+\end{document}

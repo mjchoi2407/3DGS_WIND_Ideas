@@ -16,17 +16,23 @@ fixed budget으로 실행하는 방향이다.
 - 전달 bundle: `3dgs_response_distilled_global_local_wind_dynamics_2026-08-22_bundle.zip`
 
 정확한 claim은 `fully meshless`가 아니라 **target-mesh-free inference without a persistent physical adjacency graph**다.
-Mesh vertex/connectivity와 mesh--GS correspondence는 teacher simulation과 학습 loss에만 사용한다.
+Mesh vertex/connectivity와 mesh--GS correspondence는 teacher simulation 및 training/evaluation fixture에만 사용한다.
 
 ## 현재 구현 체크리스트
 
-새 방향의 완료 상태는 다음 파생 체크리스트에서 R0--R7과 Gate A--D로 관리한다.
+새 방향의 전체 순서, 의존성과 Gate A--D routing은 짧은 master roadmap에서 관리한다.
+개발 세부 내용은 `development/` 아래 R0--R7 독립 문서로 나누며, 실제 개발 중에는 현재 파트 문서만
+갱신한다. 아직 설계가 필요한 선택은 각 문서의 Open Design Decisions에 두고 구현자가 암묵적으로 확정하지 않는다.
 
 - LaTeX: `implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22.tex`
 - PDF: `implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22.pdf`
 - 전달 bundle: `implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22_bundle.zip`
+- 파트별 index와 갱신 규칙: `development/README.md`
+- 파트 문서: `development/r0_contract_and_schema.tex`부터
+  `development/r7_renderer_and_paper_evidence.tex`까지의 standalone TeX/PDF 8쌍
 
-Method equation과 claim의 authority는 current sketch이며 checklist는 stable label을 참조하는 실행 문서다.
+Method equation과 claim의 authority는 current sketch다. Master roadmap은 stage/claim routing을,
+각 part 문서는 구현 계약, 미결정 설계, fixture, 산출물과 종료 근거를 소유한다.
 
 ## 방향 전환 경계
 
@@ -48,15 +54,20 @@ Method equation과 claim의 authority는 current sketch이며 checklist는 stabl
 이전 방향의 legacy/support 또는 비교 baseline이다. 새 R0--R7 contract를 통과하지 않은 기존 결과를
 현재 learned-response 방법의 evidence로 승계하지 않는다.
 
-이번 아이디어 전환에서는 `code/`와 `experiments/`를 수정하지 않았다. 다음 구현 작업은 먼저
-teacher/student visibility, response-package schema와 source-object split을 동결하고, 기존 loader/teacher/renderer 중
-재사용 가능한 부분만 명시적으로 인수해야 한다.
+2026-09-09 기준 구현 진행과 acceptance 판정은 [R1 명세](development/r1_teacher_probe_oracle.tex)가 소유한다.
+이 채팅에서 수행한 Registry부터 GPU 검사, 구조·시간·공간 진단, 샘플 생성과 P3 보완의 전체 과정은
+[Teacher 개발·실험 연구 기록 TeX](development/r1_teacher_implementation_record.tex) /
+[PDF](development/r1_teacher_implementation_record.pdf)에 정리했다.
+수식·단위·경계 조건, 실패 모델과 수정 이유, 결과 분모·수치, raw/hash/재현 명령 및 논문 주장 경계를 포함한다.
+스케치의 Teacher mass/고차 map 계약도 이에 맞춰 갱신했다. 개발 진단 통과를 R0/R1 전체 완료로 승계하지 않는다.
 
 ## Canonical 산출물 정책
 
-- 이 README가 가리키는 sketch, bibliography, checklist와 각 PDF/bundle만 현행 방법의 canonical 산출물이다.
+- 이 README가 가리키는 sketch, bibliography, master roadmap, `development/`의 R0--R7 및 R1 동반 연구 기록 TeX/PDF와
+  두 전달 bundle만 현행 방법의 canonical 산출물이다.
 - `backup/` 파일과 historical session은 당시 방향의 provenance이며 current authority가 아니다.
-- `ideas/` 최상위에는 정책 파일, current sketch/checklist 산출물과 필요한 현재 companion만 둔다.
+- `ideas/` 최상위에는 정책 파일과 current sketch/master 산출물을 두고, 파트별 개발 문서는
+  `development/`에 둔다.
 - `.gitignore`는 current PDF/bundle과 명시적으로 동결한 archive PDF만 exact path로 허용한다.
 - 임시 LaTeX build output, preview PDF와 임의 revision ZIP은 추적하지 않는다.
 - 연구 방향 전환 시 이전 canonical을 먼저 checksum과 함께 보존하고, 새 문서/PDF/bundle을 검증한 뒤 포인터를 바꾼다.

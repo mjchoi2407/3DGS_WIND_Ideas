@@ -1,0 +1,316 @@
+\documentclass[10pt,a4paper]{article}
+
+\input{shared_preamble.tex}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Wind3DGS 개발 문서}
+\rhead{R5 Local Residual}
+\cfoot{\thepage}
+
+\title{R5 개발 계약\\Local Necessity and Always-on Residual}
+\author{Wind3DGS}
+\date{2026-08-22}
+
+\begin{document}
+\maketitle
+
+\begin{contractbox}{문서 역할}
+이 문서는 frozen Best Global이 설명하지 못한 response가 실제로 localized Local package를
+필요로 하는지 검증하고, 조건부 선택 이전의 learned always-on Local을 확정하기 위한 실행 계약이다.
+R5는 Local necessity와 Gate C까지만 소유하며 temporal selector/state machine은 R6가 소유한다.
+Canonical \code{eq:rd-local-residual}과
+\code{eq:rd-local-support-projection}을 이름으로 참조한다.
+\end{contractbox}
+
+\tableofcontents
+
+\section{목적과 소유권}
+
+R5의 목적은 ``Local을 추가하면 좋아진다''가 아니라 다음 질문을 순서대로 닫는 것이다.
+
+\begin{enumerate}
+  \item Frozen Best Global의 held-out residual이 teacher/mapping noise보다 크고 공간적으로 localized되는가?
+  \item Larger Global보다 support-constrained oracle Local이 actual matched-p95에서 유리한가?
+  Same active-DOF에서도 같은 경향이 유지되는가는 별도 mandatory secondary diagnostic으로 확인한다.
+  \item Oracle ceiling이 확인된 뒤 learned always-on Local이 그 이득을 재현하는가?
+  \item 같은 support/budget의 causal procedural flutter보다 learned Local이 response를 더 잘 맞추는가?
+\end{enumerate}
+
+R5는 residual atlas, Local support package, oracle/learned/procedural 비교와 Gate C를 소유한다.
+R4의 Global checkpoint를 다시 학습하거나 rank/config를 바꾸지 않으며, R6 selector의 latency claim을 하지 않는다.
+
+\section{진입 입력}
+
+\begin{longtable}{L{0.29\linewidth}L{0.59\linewidth}}
+\toprule
+입력 & 요구 내용\\
+\midrule
+\endfirsthead
+\toprule
+입력 & 요구 내용\\
+\midrule
+\endhead
+\code{BestGlobalCheckpoint} & R4 Gate B가 동결한 network/rank/config/checkpoint와 dependency hash\\
+\code{GlobalResponsePackageSet} & Best Global model이 declared asset마다 compile한 immutable Global package와 evaluator hash\\
+\code{R5GlobalHandoff} & frozen Global rollout, common-probe residual extraction API와 larger-Global baseline registry\\
+\code{TeacherPackage} & converged teacher package collection, force/work와 mapping-noise floor\\
+\code{RendererBranchContract} & R0에서 동결한 \(B_R\) 또는 local-affine normal/covariance branch identity\\
+\code{BaseTransportReport} & R1/R2 base/Global mean--normal--covariance transport와 traction fixture hash\\
+\code{SupportProposalConfig} & static-GS-only proposal의 frozen input, rule/network, slot/rank/budget와 hash\\
+\code{MetricRegistry} & residual locality, target-band amplitude/phase/PSD, stability, dispersion와 latency metric\\
+\code{ThresholdRegistry} & oracle admission, learned Local success와 Gate C Boolean threshold\\
+\code{ProceduralRegistry} & sine/noise band, causal envelope/phase, seed set와 matched-budget 규칙\\
+\bottomrule
+\end{longtable}
+
+Gate B를 통과하지 못했거나 Best Global identity가 하나로 고정되지 않았으면 R5를 시작하지 않는다.
+Support proposal은 teacher residual이나 test error를 보지 않는 static-GS-only 입력으로 test-open 전에 동결한다.
+
+\section{이미 동결된 계약}
+
+\subsection{Frozen Global residual}
+
+Local label은 teacher full motion이 아니라 frozen Global이 설명한 component를 뺀 complementary response다.
+\[
+  r_L^*=r_{\mathrm{teacher}}-r_G^* .
+\]
+\(r\)은 canonical common-probe의 time/frequency response이며 개별 eigenmode column이 아니다.
+Global network, field, pole, rank, checkpoint와 evaluator는 Local training 내내 freeze한다.
+Local gradient가 Global parameter로 흐르거나 joint fine-tuning으로 residual definition이 이동하는 경로는 금지한다.
+
+\subsection{Serialized support의 단일 정의}
+
+각 Local slot은 처음부터 \textbf{free이면서 physically valid인 Gaussian만 포함하는}
+하나의 ordered hard support
+\[
+  \mathcal I_k=(i_{k,1},\ldots,i_{k,n_k})
+\]
+를 package에 저장한다. ``raw support를 저장한 뒤 attachment/invalid set을 런타임에서 다시 빼는''
+두 번째 support 정의를 두지 않는다. Support order, proposal identity, membership, mass, coverage,
+rank와 hash는 serialization round trip 뒤에도 동일해야 한다.
+
+\subsection{Support-internal Global-null construction}
+
+\(J_k\in\{0,1\}^{3N\times3n_k}\)를 support-to-full injection,
+\(\widetilde C_k=J_k^\top\widetilde B_{L,k}\),
+\(M_k=J_k^\top M_xJ_k\), \(A_k=B_G^\top M_xJ_k\)라 둔다.
+Raw Local candidate는 support 내부에서만 Global-null projection과 whitening을 수행한다.
+\[
+  \begin{aligned}
+  \Pi_k&=I-M_k^{-1}A_k^\top
+  (A_kM_k^{-1}A_k^\top)^\dagger A_k,\\
+  \overline C_k&=\Pi_k\widetilde C_k,\\
+  C_k&=\overline C_k
+  (\overline C_k^\top M_k\overline C_k)^{-1/2},\\
+  B_{L,k}&=J_kC_k,\qquad
+  Q_{L,k}=C_k^\top J_k^\top F.
+  \end{aligned}
+\]
+Accepted slot은 construction상 다음을 동시에 만족한다.
+\[
+  B_{L,k}[i,:]=0\quad(i\notin\mathcal I_k),\qquad
+  B_G^\top M_xB_{L,k}=0,\qquad
+  B_{L,k}^\top M_xB_{L,k}=I.
+\]
+Support가 free+valid row만 가지므로 attachment/invalid row도 exact zero다.
+Dense Global complement 뒤 hard mask, 또는 hard mask 뒤 dense projection으로 locality/직교성 중 하나를
+깨는 구현은 허용하지 않는다. Load projection과 transport는 support-only sparse path를 사용한다.
+Local \(\Omega_{L,k},Z_{L,k}\)는 이 support-internal Global-null projection과 mass whitening을 마친
+\textbf{최종 coordinate}의 pole이다. Raw candidate coordinate의 pole을 그대로 재사용하지 않고,
+V0는 accepted \(C_k\)를 고정한 common-probe residual-response fit으로 식별한다.
+Operator transform/re-diagonalization은 별도 method revision 없이는 혼용하지 않는다.
+
+\subsection{Local angular/normal branch의 소유권}
+
+R5는 \code{RendererBranchContract}를 바꾸지 않지만 learned Local motion에 필요한 branch-specific payload는 소유한다.
+\(B_R\) branch라면 \(B_{R,L,k}\)를 \(B_{L,k}\)와 같은 final generalized coordinate, ordered support와
+pole에 연결해 예측하고 serialize한다. Support 밖, attachment와 invalid angular row는 exact zero이며
+독립 angular pole/state를 만들지 않는다. Local-affine branch라면 \(B_{R,L,k}\)를 만들지 않고,
+Local이 이동시킨 mean에서 upstream versioned rule로 current normal/covariance를 계산한다.
+어느 branch든 always-on Local rollout의 current normal이 다음 frame traction에 들어가는 경로까지 R5 fixture로 검증한다.
+
+\subsection{검증 순서와 비교 공정성}
+
+R5 구현 순서는 아래와 같이 고정한다.
+
+\begin{enumerate}
+  \item \textbf{Oracle Local:} larger Global sweep과 비교해 localized residual에 Local capacity가 필요한지 확인한다.
+  \item \textbf{Learned always-on Local:} frozen static-GS proposal support에서 oracle response ceiling이
+  개선된 경우에만 frozen-Global residual을 학습한다.
+  \item \textbf{Procedural baseline:} learned package를 동결한 뒤 동일 support를 사용해
+  same active-DOF 비교와 actual matched-p95 비교를 각각 실행한다.
+\end{enumerate}
+
+Oracle이 이득을 내지 못하면 learned Local을 시작하지 않는다. Learned always-on Local이 성공하기 전에는
+procedural baseline 결과로 Local network architecture를 test별 튜닝하지 않는다. 최종 Gate C에는
+frozen Global, larger Global, oracle Local, learned always-on Local과 procedural baseline을 모두 포함한다.
+
+\section{구현 체크리스트}
+
+\subsection{Residual atlas}
+
+\begin{itemize}
+  \item[$\square$] Frozen Global identity/hash 검사 후 teacher와 동일 common-probe/time grid에서 rollout
+  \item[$\square$] Object/time/space/frequency별 \(r_L^*\)와 mapping-noise floor 저장
+  \item[$\square$] Traveling/local gust에서 residual spatial localization과 target-band energy 측정
+  \item[$\square$] 여러 object와 independent GS variant에서 residual band/region 반복성 검사
+  \item[$\square$] Teacher spatial/temporal convergence error와 mapping floor 이하 residual은 Local label에서 분리
+  \item[$\square$] Predeclared larger-Global rank/capacity sweep을 matched-p95 조건으로 실행
+\end{itemize}
+
+\subsection{Support proposal과 construction}
+
+\begin{itemize}
+  \item[$\square$] Static GS, typed attachment/validity와 immutable metadata만 proposal input으로 사용
+  \item[$\square$] Proposal output을 free+valid ordered \(\mathcal I_k\) 하나로 정규화하고 package에 serialize
+  \item[$\square$] Slot별 support size/radius, area/mass coverage, row 수와 proposal confidence 저장
+  \item[$\square$] Support 내부 \(M_k,A_k,\Pi_k\) projection과 mass whitening 구현
+  \item[$\square$] Pseudoinverse/Gram floor, retained rank/condition과 reject/reduce event 저장
+  \item[$\square$] Accepted \(C_k\) 최종 coordinate에서 Local pole/damping을 식별하고 raw pole 재사용을 거부
+  \item[$\square$] \(B_R\) branch이면 same-coordinate/support \(B_{R,L,k}\)를 구성하고
+  support 밖/attachment/invalid angular row를 exact zero로 유지
+  \item[$\square$] Local-affine branch이면 faded되지 않은 always-on Local mean에서 frozen rule로 current normal/covariance 계산
+  \item[$\square$] Support 밖, attachment 및 invalid row numerical zero 검사
+  \item[$\square$] \(B_G^\top M_xB_{L,k}=0\)와 \(B_{L,k}^\top M_xB_{L,k}=I\) fixture 통과
+  \item[$\square$] Serialize/deserialize 후 support order, sparse field와 hash 동일성 검사
+\end{itemize}
+
+\subsection{Oracle에서 learned always-on Local까지}
+
+\begin{itemize}
+  \item[$\square$] Same-support oracle field를 만든 뒤 최종 projected/whitened coordinate의 pole을 common-probe residual로 fit
+  \item[$\square$] Oracle과 larger Global의 same active-DOF 비교를 실행
+  \item[$\square$] 별도 actual matched-p95 비교를 실행하고 두 축의 결과를 섞지 않음
+  \item[$\square$] Oracle admission threshold를 통과한 뒤에만 Local package head 학습 시작
+  \item[$\square$] Frozen Global residual만 label로 사용하고 Global gradient/update가 0인지 감사
+  \item[$\square$] Mode-column alignment loss 대신 common-probe time/FRF/rollout response loss 사용
+  \item[$\square$] All-slot support-only load projection, oscillator update와 sparse transport 구현
+  \item[$\square$] Always-on rollout stability, attachment/locality/Global-null과 independent-resplat consistency 검사
+\end{itemize}
+
+\subsection{Cross-slot 진단과 procedural 비교}
+
+\begin{itemize}
+  \item[$\square$] \(G_{k\ell}=B_{L,k}^\top M_xB_{L,\ell}\),
+  \(\rho_{k\ell}=\lVert G_{k\ell}\rVert_2\), support Jaccard와 combined effective rank 저장
+  \item[$\square$] Simultaneous activation의 duplicate response와 amplitude overshoot 측정
+  \item[$\square$] Locality를 깨는 global cross-slot QR과 새 coupled solver를 V0 경로에서 금지
+  \item[$\square$] Procedural sine/noise가 learned Local과 정확히 같은 ordered support proposal set 사용
+  \item[$\square$] Actual p95를 맞춘 primary 비교에서 load/update/transport 비용을 분리 profile
+  \item[$\square$] 별도 same active-DOF secondary 비교를 실행하고 matched-p95 결과와 한 축으로 합치지 않음
+  \item[$\square$] Causal envelope/phase가 현재와 과거 \(W/Q\)만 사용하고 future 정보가 없는지 검사
+  \item[$\square$] Predeclared noise seed를 모두 aggregate하고 best seed 선택 금지
+  \item[$\square$] Asset/test-result별 band, amplitude, support 또는 seed tuning 금지
+\end{itemize}
+
+\section{Open Design Decisions}
+
+\begin{decisionbox}{핵심 미결정: support proposal}
+Local support를 어떤 static-GS-only 규칙 또는 network로 제안할지는 아직 설계가 필요하다.
+Proposal은 teacher residual/test error를 볼 수 없으며, test-open 전 freeze되어 oracle, learned Local과
+procedural baseline이 동일한 ordered support set을 사용해야 한다.
+\end{decisionbox}
+
+\begin{enumerate}
+  \item \decisionitem{Proposal 형식:} patch query, geometry/normal 기반 deterministic rule 또는
+  setup-network support head 중 V0 방식을 선택한다.
+  \item \decisionitem{Support budget:} slot 수, support radius/size, slot당 rank, overlap allowance와
+  total sparse DOF budget을 정한다.
+  \item \decisionitem{Free+valid 판정 소비:} R0 physical-valid contract를 support proposal 전/후 어느 API에서
+  강제하고 empty/insufficient support를 어떻게 reject할지 정한다.
+  \item \decisionitem{Rank failure:} pseudoinverse/Gram floor 아래일 때 fixed-rank reject 또는
+  deterministic rank reduction 중 하나를 정한다. 결과를 보고 support proposal을 반복 생성하지 않는다.
+  \item \decisionitem{Cross-slot 중복:} 진단 threshold와 반복적인 visible overshoot가 있을 때 사용할
+  deterministic merge/exclusion 규칙을 정한다. 새 coupled solver는 V0 범위 밖이다.
+  \item \decisionitem{Oracle construction:} V0 residual-response fit의 objective, frequency band,
+  initialization, positivity와 실패 threshold를 정한다.
+  \item \decisionitem{Gate C 수치:} Local target band, actual matched-p95의 primary
+  amplitude/phase/PSD metric과 allowance, stability/dispersion veto 및 Boolean 식을 dev에서 동결한다.
+  Same active-DOF는 선택 가능한 Gate 축이 아니라 mandatory secondary diagnostic으로 고정한다.
+\end{enumerate}
+
+\section{산출물}
+
+\begin{longtable}{L{0.31\linewidth}L{0.57\linewidth}}
+\toprule
+산출물 & 필수 내용\\
+\midrule
+\endfirsthead
+\toprule
+산출물 & 필수 내용\\
+\midrule
+\endhead
+\code{GlobalResidualAtlas} & frozen Global hash, object/space/time/frequency residual와 noise-floor 분해\\
+\code{SupportManifest} & free+valid ordered support, proposal/config, rank/coverage와 serialization hash\\
+\code{OracleLocalReport} & same-support oracle fit, larger-Global 비교, admission Boolean과 failure reason\\
+\code{AlwaysOnLocalCheckpoint} & frozen Global dependency, Local model weights/config와 schema hash; per-asset package는 포함하지 않음\\
+\code{AlwaysOnLocalPackageSet} & declared asset별 ordered support, translational/branch-specific angular field, pole와 evaluator를 직렬화한 package set\\
+\code{LocalConstructionReport} & locality, attachment/validity/angular zero, Global-null, Gram과 cross-slot diagnostics\\
+\code{ProceduralRegistry} & exact support, sine/noise band/envelope/seed, causal rule와 budget hash\\
+\code{R5ProfilerFixture} & all-slot load projection/update/transport를 분리 측정하는 frozen hardware/precision/warm-up protocol\\
+\code{GateCReport} & frozen/larger/oracle/learned/procedural 비교, actual p95와 Boolean 판정\\
+\bottomrule
+\end{longtable}
+
+R6 hand-off는 Gate C를 통과한 \code{AlwaysOnLocalCheckpoint}와 \code{AlwaysOnLocalPackageSet},
+actual all-slot cost와 selector가 사용할 허용 metadata만 포함한다. Model checkpoint와 per-asset package는
+별도 hash로 유지하며 R5는 selector score/state를 생성하지 않는다.
+
+\section{필수 fixture와 metric}
+
+\subsection{필수 fixture}
+
+\begin{enumerate}
+  \item \textbf{Frozen owner:} Global parameter/optimizer gradient와 checkpoint hash 불변성
+  \item \textbf{Support round trip:} ordered free+valid support와 sparse field serialization
+  \item \textbf{Construction:} support 밖/attachment/invalid zero, Global-null과 within-slot mass Gram
+  \item \textbf{Final-coordinate pole:} projected/whitened \(C_k\)와 pole의 coordinate identity 및 raw-pole 거부
+  \item \textbf{Local angular/normal:} selected branch의 same-coordinate/support/zero/serialization과
+  always-on current-normal traction replay
+  \item \textbf{Cross-slot:} overlap/Jaccard, spectral coupling, effective rank와 simultaneous overshoot
+  \item \textbf{Oracle ceiling:} localized gust 및 target band에서 larger Global 대비 response/latency Pareto
+  \item \textbf{Learned always-on:} oracle support에서 held-out amplitude/phase/PSD와 long rollout
+  \item \textbf{Procedural parity:} same support에서 actual matched-p95 primary와 별도 same active-DOF
+  secondary run, causal history 및 all-seed aggregate
+  \item \textbf{Sparse system path:} projection/update/transport 각각의 p50/p95/p99와 memory
+\end{enumerate}
+
+\subsection{Gate C metric}
+
+\begin{itemize}
+  \item residual energy가 teacher spatial/temporal convergence와 mapping-noise floor를 넘는 정도
+  \item spatial localization, target-band amplitude, phase, PSD와 common-probe velocity error
+  \item strong/larger Global 대비 oracle 및 learned always-on Local의 actual matched-p95 primary improvement
+  \item 별도 same active-DOF mandatory secondary diagnostic
+  \item learned Local 대비 same-support/budget procedural sine/noise의 paired difference
+  \item long-rollout stability, independent-resplat response dispersion와 duplicate overshoot
+\end{itemize}
+
+Primary와 threshold는 test-open 전 \code{ThresholdRegistry}에 동결한다. Visual improvement만으로
+Gate C를 통과시키지 않으며, setup time/package memory/throughput도 mandatory secondary diagnostic으로 보고한다.
+
+\section{종료 조건과 실패 경로}
+
+\begin{contractbox}{R5 종료 조건}
+Residual atlas가 noise floor 위의 localized failure를 입증하고, oracle Local이 larger Global보다
+dev-frozen actual matched-p95 primary metric에서 이득을 보이며, learned always-on Local이 같은 support에서 그 이득을 재현하고
+procedural baseline보다 frozen primary metric을 개선하면 Gate C를 통과한다.
+이때만 immutable always-on package를 R6로 넘긴다.
+\end{contractbox}
+
+\begin{itemize}
+  \item \passitem{Gate C pass:} always-on Local을 core에 유지하고 R6 conditional execution으로 진행한다.
+  \item \haltitem{Residual 없음:} residual이 teacher/mapping floor 이하이거나 localized/repeatable하지 않으면
+  Local 구현을 중단하고 Global-only 논문으로 축소한다.
+  \item \haltitem{Oracle failure:} larger Global보다 matched-p95 이득이 없으면 learned Local을 학습하지 않는다.
+  \item \haltitem{Learned failure:} oracle은 성공하지만 learned always-on이 재현하지 못하면
+  Local network/label/support 설계를 진단하되 selector로 이동하지 않는다.
+  \item \haltitem{Procedural parity failure:} learned Local이 same-support/budget procedural baseline보다
+  primary metric을 개선하지 못하면 Gate C를 실패 처리하고 Global-only 경로로 종료한다.
+  \item \haltitem{Construction failure:} locality, attachment/validity zero 또는 Global-null을 동시에 보존하지 못하면
+  dense projection이나 새 solver로 우회하지 않고 support/rank proposal을 재설계한다.
+  \item \haltitem{Gate C failure:} Local과 selector claim을 모두 중단하고 R4의 frozen Global-only 결과로 종료한다.
+\end{itemize}
+
+\end{document}

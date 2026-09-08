@@ -1,0 +1,446 @@
+\documentclass[10pt]{article}
+
+\input{shared_preamble.tex}
+
+\hypersetup{
+  pdftitle={R0 Contract and Schema --- Wind3DGS Development Specification},
+  pdfauthor={Wind3DGS Project}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Wind3DGS Development --- R0}
+\rhead{\small Contract and Schema}
+\cfoot{\thepage}
+
+\title{\textbf{R0 --- Contract and Schema}\\
+개발 명세와 동결 체크리스트}
+\author{Wind3DGS Project}
+\date{2026-08-22}
+
+\begin{document}
+\maketitle
+
+\begin{contractbox}{문서 권위와 사용법}
+이 문서는 canonical idea sketch의 구현 파생 문서다. 방법 수식과 claim의 최종 권위는
+\code{3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.tex}에 있다.
+특히 \code{eq:rd-setup-input}, \code{eq:rd-frame-input},
+\code{eq:rd-typed-control-map}, \code{eq:rd-gaussian-token},
+\code{eq:rd-response-package}, \code{eq:rd-area-mass},
+\code{eq:rd-attachment-whitening}, \code{eq:rd-exact-zoh},
+\code{eq:rd-wind-pullback}, \code{eq:rd-mean-transport}를 참조한다.
+이 문서는 구현하면서 상태와 구체적 선택을 갱신하되, sketch의 계약을 조용히 바꾸지 않는다.
+\end{contractbox}
+
+\tableofcontents
+\newpage
+
+\section{목적과 소유권}
+
+R0의 목적은 이후 R1--R7이 같은 입력, 단위, tensor 의미, artifact와 실패 분모를 사용하도록
+\textbf{실행 경계}를 먼저 고정하는 것이다. 이 단계에서는 teacher data나 network 성능을 만들지 않는다.
+
+\begin{longtable}{L{0.24\linewidth}L{0.30\linewidth}L{0.36\linewidth}}
+\toprule
+소유자 & R0가 소유하는 것 & R0가 소유하지 않는 것\\
+\midrule
+\endfirsthead
+\toprule
+소유자 & R0가 소유하는 것 & R0가 소유하지 않는 것\\
+\midrule
+\endhead
+Contract/schema & setup/frame API, tensor semantic axis, dtype/unit, version, validation, serialization/hash 경계 & teacher constitutive model, model depth, 최종 loss weight\\
+Physics boundary & SI-only, sole mass owner, traction/evaluator identity, target privilege boundary & teacher discretization 및 수렴 결과, learned response 정확도\\
+Data boundary & source-object group, target-allowed field, sealed test identity, failure denominator policy & 실제 K0/K1 sample 생성과 split 통계\\
+Evaluation boundary & \code{MetricRegistry}와 \code{ThresholdRegistry}의 형식 및 freeze lifecycle & dev 결과를 보기 전 정할 수 없는 수치 threshold\\
+Stage interface & R0--R7 artifact producer/consumer와 완료 보고 형식 & 각 후속 stage의 구현 내부 구조\\
+\bottomrule
+\end{longtable}
+
+\must{R0 성공의 의미:} 같은 package를 serialize--deserialize해도 evaluator 결과가 동일하고,
+Gaussian 입력 순서가 달라도 stable ID로 되돌린 결과가 같으며, teacher-only field가 target forward에
+들어갈 수 없고, 모든 물리 scalar와 failure가 registry에 기계적으로 기록되는 상태다.
+
+\section{진입 입력}
+
+\subsection{권위 문서와 초기 상태}
+
+\begin{itemize}
+  \item Canonical sketch와 현행 R0--R7 checklist의 동일 revision/hash.
+  \item Narrow core domain: flat-rest single-layer strip/rectangular flag, hard edge 또는 작은 declared patch
+  attachment, known metric, 2--3 isotropic material preset, prescribed one-way wind, small-to-moderate deformation.
+  \item 기존 explicit-scaffold 및 legacy code/experiment는 참고 구현 또는 baseline일 뿐 새 R0 완료 근거가 아니다.
+  \item R0 진입 시 sealed test의 내용은 열지 않는다. Source-object group ID와 sealing hash만 만든다.
+\end{itemize}
+
+\subsection{Setup과 frame 의미 입력}
+
+Setup 의미 입력은 sketch \code{eq:rd-setup-input}의
+\[
+  \mathcal I_{\mathrm{setup}}=
+  (\mathcal G^0,\vartheta_{\mathrm{metric}},\vartheta_{\mathrm{mat}},
+   \mathcal C_{\mathrm{attach}},\vartheta_{\mathrm{aero}},\vartheta_{\mathrm{domain}})
+\]
+이다. \(\mathcal G^0\)는 rest static GS다. Metric payload는
+\[
+  \vartheta_{\mathrm{metric}}=(L_0,A_{\mathrm{ref}},M_{\mathrm{ref}})>0
+\]
+이며 세 값 모두 positive다. \(\vartheta_{\mathrm{aero}}\)는 domain-wide frozen
+\(\kappa_{\mathrm{aero}}\)[kg/m\(^3\)]와 \code{traction_law_id}만 물리 공력 항으로 소유한다.
+\(\vartheta_{\mathrm{domain}}\)은 \(\tau_{\mathrm{guard}}\)[Pa]와 activation failure/OOD policy를 소유하며,
+guard를 artist control이나 재료/공력계수로 노출하지 않는다.
+% [논문 작성 참고 -- 수정 이유]
+% kappa_aero=0.5*rho_air*C_n만 현재 힘에서 식별 가능하므로 rho_air와 C_n을 schema field로 분리하지 않는다.
+% tau_guard는 결과를 맞추는 물리 자유도가 아니라 overflow 검출용 수치 계약이므로 DomainContract가 소유한다.
+Frame 의미 입력은 sketch \code{eq:rd-frame-input}의
+\[
+  \mathcal I_t=(W_t,\vartheta_{\mathrm{ctrl},t},\Delta t,s_{t-1},\mathcal P),
+  \qquad \vartheta_{\mathrm{ctrl},t}=(g_W(t),g_K,g_D)
+\]
+이다. Setup compiler는 package를 한 번 만들고, frame evaluator는 cached package와 명시적 state만 소비한다.
+
+Target 입력에 mesh vertex/connectivity, geodesic, mesh--GS correspondence, teacher trajectory,
+dynamic target RGB/video 또는 별도 opaque hidden state가 들어오면 R0 실패다.
+
+\subsection{필수 선행 registry seed}
+
+R0 시작 시 아직 값이 비어 있어도 다음 registry의 schema와 owner를 만든다.
+\begin{itemize}
+  \item \code{DomainContract}, \code{TypedControlContract}, \code{TeacherStudentVisibility}
+  \item \code{TensorSchemaRegistry}, \code{CoordinateContract}, \code{SerializationContract}
+  \item \code{MetricRegistry}, \code{ThresholdRegistry}, \code{StageArtifactRegistry}
+  \item \code{ObjectGroupedSplit}, \code{FailureReasonRegistry}, \code{MethodIdentityRegistry}
+  \item \code{RendererBranchContract}: base normal/covariance branch와 optional appearance branch 허용 여부;
+  SH degree와 residual capacity는 R7이 optional branch를 열 때 dev-freeze
+\end{itemize}
+
+\section{이미 동결된 계약}
+
+이 절은 설계 선택지가 아니다. 변경하려면 canonical sketch와 모든 downstream 문서를 함께 revision한다.
+
+\subsection{물리 단위와 질량 소유권}
+
+\begin{itemize}
+  \item 외부/runtime contract는 SI-only다. \(L_0\)[m], \(A_{\mathrm{ref}}\)[m\(^2\)],
+  \(M_{\mathrm{ref}}\)[kg], time/\(\Delta t\)[s], force[N], traction[Pa]를 사용한다.
+  \item \(\Omega\)는 positive angular frequency[rad/s], \(Z=\operatorname{diag}(\zeta_j)\)는
+  positive dimensionless modal damping ratio다. Cycles/s나 숨은 normalized time을 허용하지 않는다.
+  \item \(M_{\mathrm{ref}}\)가 total mass의 유일한 owner다. Homogeneous V0에서
+  \(m_i=(M_{\mathrm{ref}}/A_{\mathrm{ref}})a_i\)이며 independent mass head는 없다
+  (sketch \code{eq:rd-area-mass}). Material preset은 stiffness/damping만 소유한다.
+  \item Encoder normalized coordinate는 numerical feature일 뿐 별도 물리 unit mode가 아니다.
+  Loss, validator와 evaluator 전에 SI payload로 복원한다.
+\end{itemize}
+
+\subsection{출력 의미와 runtime 경계}
+
+\begin{itemize}
+  \item Setup network 출력은 absolute deformation이나 next pose가 아니라
+  \textbf{causal force-to-motion operator의 parameter를 담은 response package}다
+  (sketch \code{eq:rd-response-package}).
+  \item Frame evaluator가 current wind와 package로 generalized response/state increment를 계산한다.
+  Setup package와 frame increment를 같은 ``response output''으로 serialize하지 않는다.
+  \item Global은 always-on passive package다. Local은 frozen Global이 설명한 component를 뺀 residual이며,
+  Local budget/상태는 R5--R6 문서가 소유한다.
+  \item Runtime package와 state는 rest GS 및 모든 target-allowed physical metadata의 identity/hash를 소유한다.
+  Frame evaluator가 teacher mesh나 외부 hidden cache를 조회하지 않는다.
+\end{itemize}
+
+\subsection{Typed control과 evaluator identity}
+
+\begin{itemize}
+  \item \(0\le g_W(t)\le g_W^+\), \(W_t^{\mathrm{eff}}=g_W(t)W_t\)이며 wind direction은 \(W_t\)가 소유한다.
+  \item Package의 \(\Omega_S^{\mathrm{base}},Z_S^{\mathrm{base}}\)는 immutable이다. Evaluator만
+  \(\Omega_S^{\mathrm{eff}}=\sqrt{g_K}\Omega_S^{\mathrm{base}}\),
+  \(Z_S^{\mathrm{eff}}=g_DZ_S^{\mathrm{base}}\)를 파생한다
+  (sketch \code{eq:rd-typed-control-map}).
+  \item \(g_K,g_D>0\)는 rollout 동안 고정한다. 이를 바꾸면 derived-evaluator hash를 바꾸고 rest state에서
+  재시작한다. Material/attachment 변경은 setup rerun과 새 package를 요구한다.
+  \item Traction law는 \code{traction_law_id}=\code{two_sided_normal_quadratic_v1}이며,
+  teacher와 target GS는 동일한 domain-wide \(\kappa_{\mathrm{aero}}\)를 사용한다.
+  % [논문 작성 참고 -- 수정 이유]
+  % 공기밀도/법선계수/풍속 gain을 동시에 자유롭게 두면 F가 kappa_aero*g_W^2에 비례해 식별이 닫히지 않는다.
+  % 그래서 kappa_aero는 package identity에 고정하고 runtime에서는 g_W만 바람 세기 control로 허용한다.
+  \item Numerical guard는 \code{traction_guard_id}=\code{vector_norm_before_area_v1}다.
+  Vector-norm traction guard를 area 곱보다 먼저 적용하고 정량 core의 activation count는 0이어야 한다
+  (sketch \code{eq:rd-wind-pullback}). Activation이 생긴 frame은 OOD/failure denominator에 남긴다.
+  % [논문 작성 참고 -- 수정 이유]
+  % guard activation을 허용하면 quadratic law가 clipped law로 바뀌므로 정상 결과의 안정화 장치로 쓰지 않는다.
+  \item Evaluator identity는 \code{integrator_id}=\code{exact_zoh_augexp_v1},
+  \code{force_sample_time}=\code{frame_start_v1}다.
+  Frame-start load를 한 frame hold하고 mode별 exact ZOH를 한 번만 적용한다
+  (sketch \code{eq:rd-exact-zoh}).
+  \item Zero ambient \(W_t=0\)은 relative-velocity drag를 남길 수 있다. Strict passive free decay는
+  aerodynamic evaluation을 끈 \(Q=0\) fixture로 별도 표기한다.
+\end{itemize}
+
+\subsection{Topology, split와 permutation 원칙}
+
+\begin{itemize}
+  \item Target inference는 persistent physical adjacency graph를 생성, 저장 또는 소비하지 않는다.
+  Patch/attention relation은 같은 network forward 안에서만 사용하는 transient computation이다.
+  \item Mesh topology와 correspondence는 teacher simulation, training loss와 evaluation remap에만 허용된다.
+  \item 같은 source object의 모든 mesh, independent GS variant, material, wind와 frame은 같은 split에 둔다.
+  \item Gaussian-to-token aggregation은 set 입력을 읽고 token-to-Gaussian query decoder는 입력 permutation에
+  equivariant해야 한다. Serialized 순서가 model 의미를 바꾸어서는 안 된다.
+  \item Test normalization, threshold, rank, budget와 loss weight는 test open 뒤 바꾸지 않는다.
+\end{itemize}
+
+\subsection{Package 불변량}
+
+\begin{itemize}
+  \item Area는 nonnegative이고 declared normalization domain에서 합이 \(A_{\mathrm{ref}}\)다.
+  Mass는 area에서 파생되고 합이 \(M_{\mathrm{ref}}\)다. Physical-valid set의 정확한 normalization domain은
+  아직 Open Design Decision이다.
+  \item Attachment row는 exact zero projection 후 mass whitening하며 \(B^\top M_xB=I\)를 만족한다
+  (sketch \code{eq:rd-attachment-whitening}). Rank floor 아래 Gram은 축소 또는 package reject 대상이다.
+  어느 정책을 택할지는 아직 동결하지 않았다.
+  \item Normal/covariance branch는 angular field \(B_R\) 또는 versioned local-affine update 중 하나만
+  전체 domain에 사용한다. 어느 branch인지는 R0 종료 전에 동결해야 한다.
+  \item Base mean/covariance transport는 attachment zero, rest identity, proper rotation, SPD/finite covariance를
+  만족해야 한다 (sketch \code{eq:rd-mean-transport}).
+\end{itemize}
+
+\section{구현 체크리스트}
+
+\subsection{Schema와 API}
+
+\begin{itemize}
+  \item[$\square$] \code{response_contract_v1}에 setup compiler, package validator, frame evaluator,
+  state reset과 serialization API를 명시한다.
+  \item[$\square$] 함수별 allowed/forbidden argument, return type, device/dtype policy와 error type을 등록한다.
+  \item[$\square$] Setup input, response package, runtime state와 frame trace를 서로 다른 type/version으로 둔다.
+  \item[$\square$] Variable \(N\) 입력 batching, padding/mask, ragged Local support와 batch axis 규칙을 기록한다.
+  \item[$\square$] 모든 tensor에 semantic axis, physical unit, dtype, finite/positivity condition, stable-ID relation을 붙인다.
+  \item[$\square$] Package rank/condition, law/evaluator ID, model/config/control-range와 rest-GS hash를 validator가 확인한다.
+  \item[$\square$] Material/attachment/control 변경 시 package 또는 derived-evaluator hash/reset 규칙을 자동 검사한다.
+\end{itemize}
+
+현재 schema가 반드시 표현해야 할 semantic tensor는 다음과 같다. 아래 axis는 의미 요구사항이며,
+contiguous layout, packed covariance 및 ragged encoding은 Open Design Decision이다.
+
+\begin{longtable}{L{0.24\linewidth}L{0.28\linewidth}L{0.38\linewidth}}
+\toprule
+Payload & 필수 semantic axis & 필수 validator\\
+\midrule
+\endfirsthead
+\toprule
+Payload & 필수 semantic axis & 필수 validator\\
+\midrule
+\endhead
+Rest GS & Gaussian \(N\), xyz, covariance, opacity/allowed appearance & stable ID unique, covariance SPD/finite, rest hash 일치\\
+Metric/material & scalar 또는 preset axis & SI unit, positivity/range, sole-mass-owner 위반 없음\\
+Attachment/validity & Gaussian \(N\) 또는 geometric-region description & declared owner/version, deterministic materialization\\
+Area/mass/normal & \(a,m,\gamma_{\rm valid},\gamma_{\rm ori}\) on \(N\); \(n^0\) on \(N\times3\) & nonnegative/finite, unit normal on accepted rows, sum/zero policy\\
+Global field & \(B_G\) on \(N\times3\times r_G\); \(\Omega_G,Z_G\) on \(r_G\) & attached/invalid row, rank, Gram identity, positive pole/damping\\
+Optional angular field & \(B_{R,G}\) on \(N\times3\times r_G\) 및 Local 대응 axis & branch ID, shared coordinate, unit/finite condition\\
+Local package & slot \(K_L\), ordered support, support xyz, Local rank & support uniqueness/order, attachment/validity, sparse bounds\\
+Runtime state & batch, Global/Local coordinate와 velocity, Local state/timer/fade & package identity, finite state, reset provenance\\
+Frame trace & frame/time, control, load, state transition, timing, failure & monotone time, actual \(\Delta t\), method identity와 denominator key\\
+\bottomrule
+\end{longtable}
+
+\subsection{Coordinate와 permutation contract}
+
+\begin{itemize}
+  \item[$\square$] World, object-canonical, normalized-feature와 generalized coordinate를 이름과 transform으로 분리한다.
+  \item[$\square$] Object center \(o\), positive \(L_0\), attachment cue, orientation/sign confidence와 inverse transform을 저장한다.
+  \item[$\square$] Position은 \((\mu^0-o)/L_0\), covariance는 \(\Sigma^0/L_0^2\)로만 feature normalize하고
+  physical output은 SI로 복원한다 (sketch \code{eq:rd-gaussian-token}).
+  \item[$\square$] Random input permutation 전후 package를 stable ID로 gather했을 때 area/normal/field와 rollout이 일치한다.
+  \item[$\square$] Serialization order, model compute order와 renderer order를 분리하고 모든 gather/scatter에 stable ID를 요구한다.
+  \item[$\square$] Proper rigid transform, uniform metric scale, symmetry/sign ambiguity와 rejection behavior를 fixture로 만든다.
+\end{itemize}
+
+\subsection{Physical-valid set와 package validation}
+
+\begin{itemize}
+  \item[$\square$] \code{PhysicalValidPolicy}에 valid-set owner와 hard/soft field를 기록한다.
+  Area normalization domain, invalid \(a,m,F,B,n\) 처리와 asset reject rule도 같은 contract에 명시한다.
+  \item[$\square$] Floater/background/close two-sided layer가 load나 mode mass를 몰래 소유하지 않는지 검사한다.
+  \item[$\square$] Hard attachment와 physical-invalid를 별도 reason code로 유지하고 denominator에서 숨기지 않는다.
+  \item[$\square$] Valid-set 변경이 area/mass/package/map hash를 모두 무효화하도록 dependency를 등록한다.
+  \item[$\square$] Fixed-rank 미달, invalid covariance, orientation confidence 부족, nonfinite tensor와 OOD를
+  predeclared package failure로 serialize한다.
+\end{itemize}
+
+\subsection{MetricRegistry와 ThresholdRegistry}
+
+\begin{longtable}{L{0.24\linewidth}L{0.66\linewidth}}
+\toprule
+Registry & 필수 field\\
+\midrule
+\endfirsthead
+\toprule
+Registry & 필수 field\\
+\midrule
+\endhead
+\code{MetricRegistry} & \code{metric_id/version}, 물리 quantity와 unit, probe/map/common-valid-mask ID,
+normalization/reference scale, sample axis, time/sequence reduction, source-object outer aggregation,
+seed aggregation, better direction, NaN/failure encoding, implementation/config hash\\
+\code{ThresholdRegistry} & \code{threshold_id/version}, 연결 metric, 비교 연산자, 숫자와 unit,
+absolute/relative 여부, 적용 domain/stage/Gate, tolerance source, dev freeze 시점, sealed-test 사용 금지,
+override 금지와 registry hash\\
+\code{FailureReasonRegistry} & OOD pre-exclusion과 in-envelope method failure를 분리하는 stable reason,
+denominator inclusion, owning stage, first-failure precedence와 trace/report mapping\\
+\end{longtable}
+
+\begin{itemize}
+  \item[$\square$] Metric 함수가 값뿐 아니라 denominator count, excluded/failure count와 registry hash를 반환한다.
+  \item[$\square$] Gate는 자연어 ``의미 있는 개선''이 아니라 threshold ID들의 AND/OR 식을 manifest에 저장한다.
+  \item[$\square$] Source object를 outer cluster로 두고 그 안의 GS/wind를 nested paired sample로 집계할 수 있게 한다.
+  \item[$\square$] Test open 후 새 metric/threshold version을 같은 result table에 조용히 덮어쓰지 못하게 한다.
+\end{itemize}
+
+\subsection{Serialization과 reproducibility}
+
+\begin{itemize}
+  \item[$\square$] Schema version, endianness/dtype, tensor shape, unit, optional field presence와 dependency hash를 저장한다.
+  \item[$\square$] Serialize--deserialize--serialize canonical bytes 또는 semantic hash의 round-trip identity를 검사한다.
+  \item[$\square$] Unknown required field/version은 hard fail하고 unknown optional field 처리 규칙을 명시한다.
+  \item[$\square$] Package/run에 source commit, config, checkpoint, hardware/precision, command와 replay seed를 저장한다.
+  \item[$\square$] Secret, 개인 절대 경로와 teacher-only raw payload가 target package에 들어가지 않는지 검사한다.
+\end{itemize}
+
+\subsection{Stage artifact matrix}
+
+다음 표는 각 문서가 소유할 최소 산출물과 소비 경계를 정의한다. 실제 파일명/포맷은
+\code{StageArtifactRegistry}에서 동결한다.
+
+\begin{longtable}{L{0.09\linewidth}L{0.30\linewidth}L{0.24\linewidth}L{0.26\linewidth}}
+\toprule
+Stage & Produced artifact & Primary consumer & 금지된 대체 근거\\
+\midrule
+\endfirsthead
+\toprule
+Stage & Produced artifact & Primary consumer & 금지된 대체 근거\\
+\midrule
+\endhead
+R0 & named contracts/registries, \code{ObjectGroupedSplit}, \code{RendererBranchContract}, \code{R0ContractReport} & R1--R7 전부 & legacy milestone 또는 자연어-only 설정\\
+R1 & \code{TeacherPackage}, \code{CanonicalProbeMap}, \code{StaticGSPackage}, \code{OracleGlobalPackage}, \code{BaseTransportReport}, \code{TeacherSpectrumStatus} & R2--R7 & network 결과로 reference 오류를 덮는 것\\
+T1 & \code{T1InitCheckpoint}, \code{T1InitReport} & R2a & total measure 합만으로 initialization 합격\\
+R2a & \code{R2aOverfitCheckpoint}, single-case fixed-seconds package/trace와 overfit report & R2b & short one-step loss만으로 합격\\
+R2b & \code{R2GlobalCheckpoint}, \code{R2bHandoff}, \code{GateATPrerequisiteReport} & R3--R5 & best schedule의 사후 선택\\
+R3 & \code{MultiResplatGroupManifest}, measure/response reports, \code{GateAReport}, \code{GlobalConfigSet}, \code{R3RouteConfig}, \code{R3RouteCheckpoint} & R4, claim registry & construction상 area/mass 합만 증거로 사용\\
+R4 & \code{DataSplitManifest}, \code{BestGlobalCheckpoint}, \code{GlobalResponsePackageSet}, \code{GateBReport}, \code{R5GlobalHandoff} & R5, R7 & model checkpoint와 per-asset package를 한 artifact로 합침\\
+R5 & \code{GlobalResidualAtlas}, \code{AlwaysOnLocalCheckpoint}, \code{AlwaysOnLocalPackageSet}, \code{R5ProfilerFixture}, \code{GateCReport} & R6, R7 & teacher/test residual로 support 사후 선택\\
+R6 & \code{ConditionalRuntimeConfig}, \code{ConditionalRuntimeTrace}, \code{GateDReport} & R7 & idealized FLOPs만으로 speed claim\\
+R7 & \code{RendererEvidenceContract}, \code{ChampionFailureRegistry}, \code{PaperEvidencePackage} & paper & appearance로 실패한 motion Gate 구제\\
+\bottomrule
+\end{longtable}
+
+위 이름은 \code{StageArtifactRegistry}의 canonical artifact ID다. 실제 파일명은 달라도 producer와 consumer가
+같은 ID와 content hash를 사용해야 하며 자연어 alias로 대체하지 않는다. 특히 학습된 model checkpoint와
+그 model이 declared asset마다 compile한 \code{ResponsePackage} set은 서로 다른 artifact로 직렬화하고
+dependency hash로만 연결한다.
+
+\section{Open Design Decisions}
+
+\begin{decisionbox}{해석 규칙}
+아래 ``권장 기본값''은 구현을 시작하기 위한 제안이며 아직 동결된 방법이 아니다.
+실제 선택은 지정된 시점에 decision record, config/schema version과 fixture 결과를 함께 남긴 뒤에만 계약이 된다.
+\end{decisionbox}
+
+\begin{longtable}{L{0.19\linewidth}L{0.25\linewidth}L{0.30\linewidth}L{0.16\linewidth}}
+\toprule
+결정 항목 & 허용 선택지 & 권장 기본값(미동결) & 동결 시점\\
+\midrule
+\endfirsthead
+\toprule
+결정 항목 & 허용 선택지 & 권장 기본값(미동결) & 동결 시점\\
+\midrule
+\endhead
+Physical-valid 정책 & Gaussian hard valid set / asset-level reject / 둘의 사전 선언 조합 & hard valid set에서만 area를 normalize하고 invalid \(a,m,F,B\)를 exact zero; confidence가 전체적으로 낮으면 asset reject & R0 package schema 종료 전\\
+Canonical frame & attachment 축+geometry cue / sign-invariant feature+confidence reject & attachment-defined primary cue, symmetry에서는 sign-invariant feature와 reject reason & R1 data 생성 전\\
+Tensor layout & dense padded / ragged offsets / 혼합 & Global dense, Local은 ordered index+offset ragged, batch mask 명시 & 첫 package serializer 전\\
+Stable ordering & input order 유지+ID gather / canonical stable-ID sort & serialization은 stable-ID sort, network는 임의 permutation을 허용하고 output을 ID로 scatter & R0 permutation fixture 전\\
+Rank 부족 & rank 축소 / fixed-rank package reject & V0는 fixed rank 미달 package reject로 contract를 단순화 & R2a dataset freeze 전\\
+Normal/\allowbreak covariance & shared-coordinate angular field \(B_R\) / versioned local-affine mean update & persistent graph가 필요 없는 \(B_R\); supervision과 package 크기가 과도하면 local-affine & R1 traction/transport fixture 전\\
+Angular composition & \(B_R\) branch에서 Global/Local 합산 후 한 번의 exp-map / 사전 선언한 다른 proper composition & deterministic order와 proper \(\mathrm{SO}(3)\), attachment identity를 동시에 만족하는 가장 단순한 규칙 & R1 traction/transport fixture 전\\
+Covariance encoding & full \(3\times3\) / symmetric packed-6 / eigensystem & packed-6 저장+validator에서 full SPD 복원 & serializer v1 동결 전\\
+Serialization & safe tensor container+JSON manifest / schema binary format & 비실행형 tensor container와 canonical JSON manifest를 분리하고 semantic content hash 사용 & R1 artifact 생성 전\\
+Metric normalization & SI absolute / reference-scale dimensionless / 둘 다 보고 & Gate primary는 predeclared dimensionless, SI absolute는 diagnostic으로 병기 & R2 loss/metric freeze 전\\
+Threshold lifecycle & 모든 수치 R0 고정 / stage별 dev freeze & schema는 R0, 숫자는 해당 stage dev에서 test open 전에 freeze하고 immutable version 발행 & 각 stage test open 전\\
+\bottomrule
+\end{longtable}
+
+Physical-valid 정책과 normal/covariance branch는 area, load, current normal과 method identity를 바꾸는
+결정이다. 두 항목과 angular composition을 동결할 때는 R0 decision record에만 두지 않고 canonical
+sketch와 master roadmap의 semantics도 먼저 갱신한다. 그 revision/hash가 일치해야 R0를 종료할 수 있다.
+
+\section{산출물}
+
+R0 완료 시 최소한 다음 canonical artifact ID가 존재해야 한다. 괄호 안 파일명은 예시이며 registry가 실제 경로를 소유한다.
+
+\begin{itemize}
+  \item \code{domain_contract.json}, \code{typed_control_contract.json}\\
+  \code{teacher_student_visibility.json}, \code{object_grouped_split.json}
+  \item \code{tensor_schema_registry.json}, \code{coordinate_contract.json}\\
+  \code{serialization_contract.json}, \code{physical_valid_policy.json}
+  \item \code{metric_registry.json}, \code{threshold_registry.json}\\
+  \code{failure_reason_registry.json}, \code{method_identity_registry.json}
+  \item \code{stage_artifact_registry.json}, \code{response_contract_v1}의 machine-readable schema와 API 문서
+  \item \code{RendererBranchContract}: base normal/covariance branch와 optional appearance 허용 flag
+  \item Minimal valid/invalid package fixture, round-trip package, frame input/state/trace fixture
+  \item \code{R0ContractReport}: 결정 기록, 미결정 항목, fixture command/result,
+  source/config/schema hash와 다음 stage 허용 여부
+\end{itemize}
+
+Package에는 immutable rest GS identity, target metric/material/attachment/aero/domain identity,
+physical-valid/normal branch ID, response field와 pole 의미, rank/condition, law/evaluator ID와 model/config hash가
+닫힌 형태로 들어가야 한다. Runtime state와 frame trace는 package 파일과 분리한다.
+% [논문 작성 참고 -- 수정 이유]
+% aero identity에는 kappa_aero와 normal-only law만, domain identity에는 tau_guard와 activation policy만 넣어
+% 논문에서 물리 파라미터와 numerical safeguard를 분리해 보고할 수 있게 한다.
+
+\section{필수 fixture와 metric}
+
+\begin{longtable}{L{0.22\linewidth}L{0.50\linewidth}L{0.18\linewidth}}
+\toprule
+Fixture & 합격 조건 & 실패 owner\\
+\midrule
+\endfirsthead
+\toprule
+Fixture & 합격 조건 & 실패 owner\\
+\midrule
+\endhead
+Schema round trip & 모든 required tensor/unit/ID/hash가 semantic identity로 복원되고 evaluator 결과가 bitwise 또는 declared tolerance 안에서 동일 & serialization 또는 schema\\
+Unit dimensionality & SI sample의 area--mass--force--generalized load--state unit이 validator와 analytic fixture에 일치 & domain/schema\\
+Permutation & 여러 random Gaussian permutation 후 stable-ID gather 결과와 rollout이 동일 & model API/schema\\
+Coordinate & rest identity, proper rigid transform, uniform scale와 inverse transform이 declared tolerance 통과 & coordinate contract\\
+Hash invalidation & rest GS, material, attachment, valid set, law, control range 또는 schema를 바꾸면 올바른 downstream hash가 달라짐 & artifact registry\\
+No leakage & target forward signature, serialized package와 batch에 teacher-only field가 없음; object-group split 교차 없음 & visibility/split\\
+Valid set & invalid Gaussian의 area/mass/load/field ownership과 denominator가 frozen policy와 정확히 일치 & valid policy\\
+Package invariant & positivity, attachment zero, Gram identity, rank/condition, branch ID와 rest hash 통과 & package validator\\
+Control/reset & \(g_K,g_D\), material, attachment 변경이 각각 정해진 derived hash/package rerun/reset을 유발 & API/state\\
+Failure denominator & NaN, invalid covariance, rank fail, rollout fail과 OOD가 서로 다른 stable reason으로 집계됨 & metric/failure registry\\
+\bottomrule
+\end{longtable}
+
+모든 fixture는 deterministic seed, command, source/config hash와 측정 tolerance를 남긴다.
+수동 screenshot이나 log 문구만으로 합격 처리하지 않는다.
+
+\section{종료 조건과 실패 경로}
+
+\subsection{R0 종료 조건}
+
+다음이 모두 참일 때만 R1을 시작한다.
+\begin{itemize}
+  \item[$\square$] setup/frame/package/state/trace type과 tensor semantic axis가 machine-readable schema로 닫혔다.
+  \item[$\square$] Coordinate, physical-valid, rank, normal/covariance와 serialization 선택이 decision record로 동결됐다.
+  \item[$\square$] SI/mass owner, target privilege, permutation, package invariant와 reset fixture가 모두 통과했다.
+  \item[$\square$] Metric/threshold/failure registry의 형식, stage artifact matrix와 sealed-test lifecycle이 동결됐다.
+  \item[$\square$] R0 completion report가 미결정 수치의 owner와 정확한 동결 시점을 명시한다.
+\end{itemize}
+
+\begin{stopbox}{R0 실패와 routing}
+Setup package와 frame response increment를 혼용하거나, topology/correspondence leak를 닫지 못하거나,
+unit/mass/valid-set owner가 두 개 이상이거나, permutation/serialization 후 의미가 달라지면
+teacher 생성과 network 구현을 시작하지 않는다. Schema와 fixture owner를 고쳐 같은 R0를 다시 실행한다.
+Dataset 확대, Local module 또는 renderer는 이 실패를 해결하는 경로가 아니다.
+\end{stopbox}
+
+R0에서 아직 숫자를 정할 근거가 없는 threshold는 임의값으로 ``완료'' 처리하지 않는다.
+대신 registry field, dev 산출물 owner, 동결 deadline과 test-access 금지를 닫으면 된다.
+
+\end{document}

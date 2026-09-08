@@ -1,0 +1,298 @@
+\documentclass[10pt]{article}
+
+\input{shared_preamble.tex}
+
+\hypersetup{
+  pdftitle={R6 Development Plan: Conditional Local Runtime},
+  pdfauthor={Wind3DGS Project}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small Wind3DGS Development Plan}
+\rhead{\small R6 --- Conditional Local Runtime}
+\cfoot{\thepage}
+
+\title{\textbf{R6 Development Plan}\\
+Conditional Local Runtime}
+\author{Wind3DGS Project}
+\date{2026-08-22}
+
+\begin{document}
+\maketitle
+
+\begin{contractbox}{Authority and stage identity}
+이 문서는 canonical idea sketch의 R6 실행 계획이다. Method equation과 claim의 authority는
+\code{3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.tex}이며,
+본 문서는 구현 진행 상태, fixture와 evidence link만 소유한다.
+Canonical \code{eq:rd-local-score}, \code{eq:rd-local-runtime-state},
+\code{eq:rd-mean-transport}와 \code{eq:rd-pareto-gate}를 이름으로 참조한다.
+
+V0의 selector는 \textbf{analytic-only}다. 따라서 canonical training Stage T5는 새 selector network를
+학습하는 단계가 아니라, frozen Global/Local package 위에 selector와 state machine을
+\textbf{통합하고 평가하는 단계}로 해석한다. Learned residual-risk selector와
+learned state automaton은 R6 V0 범위 밖이다. \(\mathcal L_{\mathrm{switch}}\)는 optional T6에서
+Local/package continuity에만 사용할지 또는 0으로 둘지 사전 동결하며, selector score/state를
+학습하지 않는다. T6가 Local package를 바꾸면 Gate C/D evidence를 무효화하고 R5/R6을 다시 실행한다.
+\end{contractbox}
+
+\tableofcontents
+\newpage
+
+\section{목적과 소유권}
+
+R6의 목적은 R5에서 필요성이 확인된 always-on Local response를 현재 wind excitation에 따라
+고정 budget 안에서 실행하고, quality retention과 actual p95 latency 이득을 함께 검증하는 것이다.
+R6은 다음만 소유한다.
+
+\begin{itemize}
+  \item dimensionless analytic Local score와 deterministic desired ranking
+  \item Active/Decay/Inactive persistent runtime state와 admission/release logic
+  \item transport-only fade, live slot/DOF budget과 overflow trace
+  \item selector, all-slot load projection, oscillator update와 sparse transport profiling
+  \item always-on Local 및 frozen Pareto baseline에 대한 Gate D evidence
+\end{itemize}
+
+R6은 Global/Local response field, pole, support, traction law, exact-ZOH evaluator를 다시 학습하거나
+재식별하지 않는다. New physics backend, learned aerodynamic force, recurrent selector와 hidden
+per-frame network state도 추가하지 않는다.
+
+\section{진입 입력}
+
+R6 구현을 시작하려면 다음 입력이 모두 immutable identity/hash와 함께 존재해야 한다.
+
+\begin{longtable}{L{0.28\linewidth}L{0.62\linewidth}}
+\toprule
+입력 & 진입 조건\\
+\midrule
+\endfirsthead
+\toprule
+입력 & 진입 조건\\
+\midrule
+\endhead
+\code{DomainContract}\newline\code{TypedControlContract}\newline\code{RendererBranchContract} & SI unit, frame order, traction/numerical-guard, exact-ZOH와 normal/covariance branch ID가 동결됨\\
+% [논문 작성 참고 -- 수정 이유]
+% R6은 guard를 선택하거나 tune하지 않고, R0/R1에서 동결한 normal-only law와 zero-activation policy를 그대로 소비한다.
+\code{BestGlobalCheckpoint}\newline\code{GlobalResponsePackageSet}\newline\code{GateBReport} & Global model weights와 declared-asset package가 별도 artifact/hash로 Gate B를 통과함\\
+\code{AlwaysOnLocalCheckpoint}\newline\code{AlwaysOnLocalPackageSet}\newline\code{GateCReport} & Local model과 free+valid sparse package set이 별도 artifact/hash로 Gate C를 통과함\\
+\code{DataSplitManifest}\newline\code{MetricRegistry}\newline\code{ThresholdRegistry} & object split, wind sequence, denominator, primary response metric과 p95 protocol이 sealed됨\\
+\code{ProceduralRegistry}\newline\code{R5ProfilerFixture} & procedural 비교 identity와 all-slot projection/update/transport timing protocol이 동결됨\\
+\bottomrule
+\end{longtable}
+
+진입 시 package의 \(B_G,B_{L,k},\Omega_S^{\mathrm{base}},Z_S^{\mathrm{base}}\),
+ordered support, rank와 material/attachment identity를 수정하지 않는다. R6 tuning이 이 payload를
+바꾸면 R5 결과를 승계하지 않고 해당 upstream Gate부터 다시 실행한다.
+
+\section{동결 계약}
+
+\subsection{Analytic-only selector}
+
+Canonical \code{eq:rd-local-score}에 따라, slot rank \(r_k\)와 effective angular frequency를 사용하는
+score는
+\[
+  \eta_k(t)=\frac{1}{r_kM_{\mathrm{ref}}L_0^2}
+  \sum_{j=1}^{r_k}
+  \frac{Q_{L,k,j}(t)^2}
+  {(\omega_{L,k,j}^{\mathrm{eff}})^4+\varepsilon_\omega},
+  \qquad [\varepsilon_\omega]=\mathrm{s}^{-4}
+\]
+로 고정한다. \(Q_{L,k}\)는 ordered support-only projection으로 얻은 unscaled generalized load다.
+Score precision, \(\varepsilon_\omega\), stable tie-break와 config hash를 모든 run에 기록한다.
+
+\begin{itemize}
+  \item \(\lambda_g=0\)이며 learned descriptor, learned risk head와 recurrent selector state를 사용하지 않는다.
+  \item Score는 desired ranking만 만든다. 실제 admission은 dwell과 live budget을 함께 적용한다.
+  \item Global은 항상 활성이고 Local만 conditional admission 대상이다.
+  \item 모든 Local candidate의 score를 얻기 위한 비용도 selector overhead에 포함한다.
+\end{itemize}
+
+\subsection{Response update와 fade invariant}
+
+각 Local slot은 최소한 \((q_k,\dot q_k,\sigma_k,\gamma_k,d_{k,\mathrm{dwell}},
+d_{k,\mathrm{hold}})\)를 소유하며
+\(\sigma_k\in\{\mathrm{Inactive},\mathrm{Active},\mathrm{Decay}\}\)다
+(sketch \code{eq:rd-local-runtime-state}).
+
+\begin{itemize}
+  \item Active는 frame-start \(Q_{L,k}\)로 exact ZOH를 정확히 한 번 실행한다.
+  \item Decay는 \(Q_{L,k}=0\)인 homogeneous exact ZOH를 정확히 한 번 실행한다.
+  \item Inactive는 zero state이며 update와 transport에서 제외한다.
+  \item \(\gamma_k\)는 transport에만 적용한다. \(\gamma_kQ_{L,k}\) 형태의 double fade는 금지한다.
+  \item Transport velocity에는 \(\dot\gamma_kB_{L,k}q_k\)를 반드시 포함한다.
+  \item Fade, dwell과 hold는 frame count가 아니라 actual \(\Delta t\)를 누적한 physical seconds다.
+  \item Fade나 state transition을 이유로 second force sample, corrector 또는 second response update를 실행하지 않는다.
+\end{itemize}
+
+Selected \(B_R\) branch에서는 translational Local과 같은 \(\gamma_k\)를 angular transport에도 적용해
+\(\phi_{L,k}=\gamma_kB_{R,L,k}q_k\)와
+\(\dot\phi_{L,k}=\dot\gamma_kB_{R,L,k}q_k+\gamma_kB_{R,L,k}\dot q_k\)를 사용한다.
+Local-affine branch에서는 이미 fade된 mean/velocity에서 frozen rule로 current normal/covariance를 계산한다.
+어느 branch든 이 current normal이 다음 frame의 frame-start traction에 들어가며, branch-specific fade와
+force replay는 R6가 소유한다. R7로 미루거나 appearance path로 보정하지 않는다.
+
+Decay는 \(\gamma_k=0\), \(\dot\gamma_k=0\)이고
+\[
+  E_k=\tfrac12\|\dot q_{L,k}\|_2^2+
+  \tfrac12\|\Omega_{L,k}^{\mathrm{eff}}q_{L,k}\|_2^2
+\]
+가 dev-frozen \(E_{\mathrm{release}}\,[\mathrm J]\) 아래로
+\(T_{\mathrm{hold}}\) seconds 연속 유지될 때만 Inactive로 release한다.
+Energy threshold의 수치와 transition guard 순서는 미결정이지만 이 conjunction은 동결 계약이다.
+
+\subsection{Live budget invariant}
+
+Live set은 Active뿐 아니라 visible Decay tail도 포함한다.
+\[
+  \mathcal U_t=\{k:\sigma_k^t\in\{\mathrm{Active},\mathrm{Decay}\}\},\qquad
+  |\mathcal U_t|\le K_A,\qquad
+  \sum_{k\in\mathcal U_t}r_k\le D_A.
+\]
+Budget이 찼다는 이유로 Decay state를 즉시 zero하거나 budget 밖에서 몰래 적분하지 않는다.
+신규 admission이 보류된 품질 손실과 대기 시간도 Gate D의 fixed denominator와 p95에 포함한다.
+
+\subsection{Canonical frame order}
+
+한 frame은 다음 순서를 한 번만 실행한다.
+
+\begin{enumerate}
+  \item 이전 state와 transport-only fade로 canonical \code{eq:rd-mean-transport}의
+  current geometry, velocity와 normal을 복원한다.
+  \item Frame-start traction, Global load, 모든 Local candidate load와 score를 계산한다.
+  \item Frozen transition/admission rule로 desired, Active, Decay와 deferred set을 결정한다.
+  \item Global/Active는 current load, Decay는 zero load로 exact ZOH를 한 번 실행한다.
+  \item Fade state와 \(\gamma,\dot\gamma\)를 한 번 갱신한다.
+  \item Sparse displacement/velocity를 transport하고 hold/release를 판정한다.
+  \item Score, transition, budget, overflow와 component timing을 FrameTrace에 기록한다.
+\end{enumerate}
+
+\section{구현 체크리스트}
+
+\subsection{Selector와 score}
+
+\begin{itemize}
+  \item[$\square$] Canonical score를 vectorized sparse generalized load에서 계산
+  \item[$\square$] SI unit replay와 \(g_K\) sweep에서 dimensionless score 확인
+  \item[$\square$] NaN/Inf, near-zero pole와 typed epsilon 처리 및 method-failure trace
+  \item[$\square$] Stable slot ID에 의한 deterministic tie-break와 replay hash 확인
+  \item[$\square$] Learned selector, target residual, future wind/load와 test target 입력이 없음을 검사
+\end{itemize}
+
+\subsection{Persistent state와 update}
+
+\begin{itemize}
+  \item[$\square$] Global 및 Local state의 package/derived-evaluator identity 검증
+  \item[$\square$] Inactive admission, Active retention, Active-to-Decay, Decay reactivation과 release 구현
+  \item[$\square$] Active full-load/Decay zero-load exact-ZOH가 frame당 각각 최대 한 번 실행됨을 검사
+  \item[$\square$] Reactivation에서 phase/state를 보존하고 Inactive admission만 zero state에서 시작
+  \item[$\square$] Physical-time fade/dwell/hold가 variable \(\Delta t\) replay에서 일치
+  \item[$\square$] \(\gamma\)가 load에 들어가지 않고 \(\dot\gamma Bq\)가 velocity에 포함됨을 검사
+  \item[$\square$] \(B_R\) branch의 \(\gamma B_Rq\), \(\dot\gamma B_Rq+\gamma B_R\dot q\)와
+  local-affine branch의 faded-mean current normal을 각각 fixture로 검사
+  \item[$\square$] Fade된 current normal이 다음 frame traction에 들어가며 transition에서 force/normal jump와 double fade가 없음을 검사
+\end{itemize}
+
+\subsection{Budget와 profiler}
+
+\begin{itemize}
+  \item[$\square$] Active와 Decay를 live slot 및 live DOF 양쪽 cap에 포함
+  \item[$\square$] Rank가 다른 slot에서도 두 cap을 동시에 만족하는 admission 구현
+  \item[$\square$] Capacity 부족 시 deterministic defer/reject와 missed score/duration 기록
+  \item[$\square$] Selector, all-slot load projection, update, transport와 render timing을 분리
+  \item[$\square$] p50/p95/p99, throughput와 memory를 동일 warm-up/synchronization protocol로 측정
+\end{itemize}
+
+\section{Open Design Decisions}
+
+다음 항목은 아직 canonical method decision이 아니다. 구현자가 임의로 선택하지 않고 R6 개발 fixture에서
+후보를 비교한 뒤, test open 전에 하나를 동결한다.
+
+\begin{longtable}{L{0.24\linewidth}L{0.42\linewidth}L{0.24\linewidth}}
+\toprule
+Decision & 닫아야 할 질문 & 허용 경계\\
+\midrule
+\endfirsthead
+\toprule
+Decision & 닫아야 할 질문 & 허용 경계\\
+\midrule
+\endhead
+State transition table & desired 진입/이탈, minimum dwell의 시작과 reset, reactivation 및 hold reset guard를 어떤 순서로 적용할 것인가? & Active/Decay/Inactive 의미와 single-update invariant는 변경 금지\\
+Fade Markov state & \(\gamma\)만으로 next fade를 재현할지, explicit fade phase/elapsed seconds를 state schema에 추가할지? & State와 actual \(\Delta t\)만으로 다음 값을 결정하고 hidden history 금지\\
+Active versus live cap & desired Active 목표 수와 Active+Decay live cap을 같은 값으로 둘지, predeclared decay headroom을 둘지? & Canonical hard cap은 항상 live set에 적용하고 hidden over-budget 금지\\
+Admission policy & Score 순, slot ID tie-break, rank-aware fill과 dwell 우선순위를 어떤 deterministic pseudocode로 동결할지? & 결과 뒤 asset별 tuning과 forced tail zero 금지\\
+Maximum Decay residence & Release threshold를 오래 통과하지 못하는 tail을 언제 method failure/reject로 기록할지? & Max duration 도달을 visible state 강제 삭제의 근거로 사용하지 않음\\
+Fade curve & Linear, smoothstep 등 어떤 physical-time curve와 endpoint derivative convention을 사용할지? & Transport-only 적용, endpoint에서 \(\gamma,\dot\gamma\)가 release 조건과 일치\\
+Budget values & \(K_A,D_A,T_{\mathrm{fade}},T_{\mathrm{dwell}},T_{\mathrm{hold}}\)와 release threshold를 어떻게 dev-freeze할지? & Test result, asset와 frame별 변경 금지\\
+Continuity fine-tuning & \(\lambda_{\mathrm{switch}}=0\) / analytic selection 아래 Local/package-only optional T6 & Selector/automaton 학습 금지; Local 변경 시 Gate C/D를 무효화하고 R5/R6 재실행\\
+\bottomrule
+\end{longtable}
+
+결정 결과는 state-machine version, pseudocode, config hash와 fixture evidence로 남긴다. 선택이 method identity를
+바꾸면 canonical sketch와 checklist를 먼저 갱신하고 R6만 독자적으로 새 계약을 만들지 않는다.
+
+\section{산출물}
+
+\begin{itemize}
+  \item \code{ConditionalRuntimeConfig}: selector score/epsilon/precision/tie-break, 상태/transition guard,
+  timer/fade, budget와 optional T6 decision의 canonical config ID
+  \item \code{ConditionalRuntimeTrace}: desired/admitted/deferred set, state, score, load,
+  translational fade, angular 또는 local-affine fade, current normal와 component timing schema/raw trace
+  \item deterministic selector/state-machine unit test와 variable-\(\Delta t\) replay fixture
+  \item always-on/oracle/conditional/fixed-Global/explicit-scaffold 비교 registry
+  \item \code{GateDReport}: component profiler, always-on/conditional/fixed-Global/explicit-scaffold
+  actual-p95 Pareto, Boolean subcondition과 최종 pass/fail
+  \item Open Design Decision별 선택, 기각안, 근거와 frozen config hash
+\end{itemize}
+
+각 산출물은 owning code/experiment repository의 commit과 artifact hash를 기록한다. 이 문서에는 실제 진행 상태와
+evidence link만 갱신하고 결과 파일을 복제하지 않는다.
+
+\section{Fixture와 metric}
+
+\subsection{필수 fixture}
+
+\begin{itemize}
+  \item Score unit, stable tie와 independent replay fixture
+  \item Inactive admission, Active dwell, Active-to-Decay, Decay reactivation, normal release의 transition fixture
+  \item Variable \(\Delta t\)에서 동일 physical-time fade/dwell/hold fixture
+  \item Fade 중 rendered mean finite difference와 analytic velocity의 일치 fixture
+  \item Selected \(B_R\) 또는 local-affine branch에서 fade/current-normal/next-frame traction의
+  continuity, attachment identity와 deterministic replay fixture
+  \item Double fade, second force sample/update와 hidden over-budget를 탐지하는 negative fixture
+  \item Active+Decay cap saturation, mixed-rank admission과 long-tail overflow fixture
+  \item Selector-disabled always-on Local과 conditional path의 identical-response control fixture
+  \item 동일 hardware/precision에서 component-level cold/warm timing fixture
+\end{itemize}
+
+\subsection{Primary metric}
+
+\begin{itemize}
+  \item always-on Local 대비 mass/area-weighted velocity 및 target-band response error 증가
+  \item amplitude, phase, log-PSD, switching pop와 velocity continuity
+  \item admission miss rate, missed score, overflow duration와 live Active/Decay occupancy
+  \item selector/all-slot projection/update/transport/render p50/p95/p99, throughput와 memory
+  \item fixed denominator의 survival, first failure, NaN/divergence와 forced fallback count
+\end{itemize}
+
+Gate D threshold, Pareto envelope, interpolation과 positive margin은 test 전에 dev-freeze한다.
+
+\section{종료 조건과 실패 경로}
+
+\begin{contractbox}{R6 pass}
+State-machine replay와 모든 hard invariant를 통과하고, conditional Local이 always-on Local 대비
+primary response error 증가를 frozen allowance 안에 유지하면서 actual p95를 유의하게 낮춘다.
+동시에 frozen high-rank Global과 explicit-scaffold Pareto envelope 밖의 점을 만든 경우에만
+canonical \code{eq:rd-pareto-gate}에 따라 conditional execution을 contribution으로 유지한다.
+\end{contractbox}
+
+\begin{stopbox}{실패 경로}
+\begin{itemize}
+  \item Selector overhead 또는 all-slot projection이 이득을 없애면 conditional-speed claim을 철회한다.
+  \item Quality retention 또는 state continuity가 실패하면 always-on Local로 종료한다.
+  \item Gate C 전제가 재현되지 않으면 R6 결과로 보완하지 않고 Global-only 경로로 돌아간다.
+  \item Learned selector가 필요해 보여도 R6 V0에 즉시 추가하지 않는다. 별도 method version과 Gate 재설계가 필요하다.
+  \item Budget을 맞추기 위해 Decay tail을 강제 zero하거나 denominator에서 실패 frame을 제거하지 않는다.
+\end{itemize}
+\end{stopbox}
+
+\end{document}

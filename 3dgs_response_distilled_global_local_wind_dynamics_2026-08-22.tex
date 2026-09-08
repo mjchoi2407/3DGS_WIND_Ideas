@@ -18,6 +18,7 @@
 \usepackage{hyperref}
 \usepackage{fancyhdr}
 \usepackage{microtype}
+\usepackage{tocloft}
 \usepackage[most]{tcolorbox}
 
 \definecolor{CoreBlue}{HTML}{1F4E79}
@@ -50,6 +51,8 @@
 \setlength{\parskip}{0.45em}
 \setlist[itemize]{leftmargin=1.5em,itemsep=0.15em,topsep=0.25em}
 \setlist[enumerate]{leftmargin=1.8em,itemsep=0.2em,topsep=0.25em}
+\setlength{\cftsecnumwidth}{3em}
+\setlength{\cftsubsecnumwidth}{4em}
 \renewcommand{\arraystretch}{1.18}
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
 \newcommand{\code}[1]{{\small\nolinkurl{#1}}}
@@ -119,7 +122,8 @@ Target mesh, target dynamic video, per-target physical fitting과 persistent edg
 \endhead
 Rendering Gaussian & 입력 및 최종 렌더 primitive. 수와 density는 reconstruction마다 달라질 수 있다.\\
 Latent response token & Patch evidence와 global context를 모으는 network 내부의 normalized slot. 물리 vertex나 외부 anchor graph가 아니다.\\
-Response package & Area/mass measure, Global/Local motion field, modal pole와 damping, selector metadata를 포함한 setup output.\\
+Response package & Learned area와 homogeneous rule로 파생한 mass measure, Global/Local motion field,
+angular-frequency pole와 modal damping ratio, selector metadata를 포함한 setup output.\\
 Dynamic state & Runtime generalized coordinate와 velocity. Wind load와 response package로 deterministic하게 갱신한다.\\
 \bottomrule
 \end{longtable}
@@ -148,7 +152,7 @@ material, metric scale 및 attachment만으로, target mesh나 target motion vid
 \begin{enumerate}
   \item \textbf{MC1 --- GS-measure-consistent latent response representation.}
   Independent GS density/seed/split--merge 변화에도 표면 measure, total wind work와 response가 일관되도록
-  patch 기반 latent token과 per-Gaussian area/mass ownership을 response supervision과 함께 학습한다.
+  patch 기반 latent token과 per-Gaussian area ownership 및 homogeneous mass quadrature를 response supervision과 함께 학습한다.
   \item \textbf{MC2 --- topology-privileged, target-mesh-free response distillation.}
   Training mesh의 vertex, relation과 simulation trajectory를 privileged teacher로 쓰되,
   inference에서는 static GS로부터 passive response package를 amortized prediction한다.
@@ -196,23 +200,71 @@ Encoder 내부 patch, attention affinity와 transient neighborhood까지 없다�
 \end{equation}
 여기서 \(\mathcal G^0=\{\mu_i^0,\Sigma_i^0,\alpha_i,c_i\}_{i=1}^{N}\)는 rest static GS다.
 \(\vartheta_{\mathrm{metric}}=(L_0,A_{\mathrm{ref}},M_{\mathrm{ref}})\)는 target에서 제공하는
-positive world-length/area/mass reference이며, \(\vartheta_{\mathrm{mat}}\)는 mass/stiffness/damping preset,
+positive world-length/area/mass reference이며, \(\vartheta_{\mathrm{mat}}\)는 stiffness/modal-damping preset,
 \(\mathcal C_{\mathrm{attach}}\)는 hard attachment mask 또는 geometric region이다.
-\(\vartheta_{\mathrm{aero}}\)는 bounded traction preset이고 \(\vartheta_{\mathrm{domain}}\)은
-허용 geometry, wind, timestep/frequency 및 OOD envelope를 소유한다. 이 typed physical metadata를 모르는
-target은 core input 밖이며 appearance에서 역추론하지 않는다.
+\(\vartheta_{\mathrm{aero}}\)는 domain 전체에 고정하는 effective traction scale
+\(\kappa_{\mathrm{aero}}\)와 \code{traction_law_id}를 소유하고,
+\(\vartheta_{\mathrm{domain}}\)은 허용 geometry, wind, timestep/frequency, numerical traction guard 및
+OOD envelope를 소유한다. 이 typed physical metadata를 모르는 target은 core input 밖이며 appearance에서 역추론하지 않는다.
+% [논문 작성 참고 -- 수정 이유]
+% 현재 one-air-condition 범위에서는 공기밀도와 법선 저항계수가 곱으로만 힘에 나타나므로 각각 식별할 수 없다.
+% 따라서 rho_air와 C_n을 별도 사용자/학습 파라미터로 두지 않고 kappa_aero=0.5*rho_air*C_n으로 합쳤다.
+% Wind Projection Basis도 rho와 C_D를 하나의 scalar factor로 합치는 선례를 제공한다.
+% 논문 citation 후보: \cite{diener2009windbasis}.
 Appearance는 renderer가 소유하며 physics encoder는 opacity, covariance와 low-order appearance cue 중
 development에서 허용한 subset만 사용한다. Texture memorization을 막기 위해 appearance randomization ablation을 둔다.
 
+V0의 외부 physical contract는 nondimensional unit mode를 허용하지 않는 \textbf{SI-only}다.
+즉 \(L_0\,[\mathrm m]\), \(A_{\mathrm{ref}}\,[\mathrm m^2]\), \(M_{\mathrm{ref}}\,[\mathrm{kg}]\),
+\(\Delta t\,[\mathrm s]\), force \([\mathrm N]\)와 traction \([\mathrm{N/m^2}]\)를 사용한다.
+\(\Omega_S\)는 angular-frequency convention의 diagonal matrix \([\mathrm{rad/s}]\)이고
+\(Z_S=\operatorname{diag}(\zeta_{S,j})\)는 dimensionless modal damping-ratio matrix다.
+\(M_{\mathrm{ref}}\)만 total mass를 소유하며 material preset이나 network output이 두 번째 total-mass
+scale을 만들 수 없다. Unit mode, angular-frequency convention과 typed scalar의 단위는 package/run hash에 기록한다.
+Encoder의 \(\widehat\mu,\widehat\Sigma\)는 numerical feature normalization일 뿐 별도 physical unit mode가 아니며,
+response loss, package validation과 evaluator에 들어가기 전 모든 physical payload를 위 SI convention으로 복원한다.
+
 Frame 입력은
 \begin{equation}
-  \mathcal I_t=\left(W_t(\cdot),\ \Delta t,\ s_{t-1},\ \mathcal P\right),
+  \begin{aligned}
+  \mathcal I_t&=\left(W_t(\cdot),\ \vartheta_{\mathrm{ctrl},t},\ \Delta t,\ s_{t-1},\ \mathcal P\right),\\
+  \vartheta_{\mathrm{ctrl},t}&=\left(g_W(t),g_K,g_D\right),
+  \end{aligned}
   \label{eq:rd-frame-input}
 \end{equation}
 이다. \(W_t\)는 prescribed wind field, \(s_{t-1}\)는 cached generalized state,
 \(\mathcal P\)는 setup response package다. Package는 rest GS와 모든 target-allowed physical metadata의
 identity/hash 및 runtime payload를 소유하므로 frame API가 teacher mesh나 별도 hidden state를 조회하지 않는다.
 Target dynamic RGB/video나 target mesh state를 재입력하지 않는다.
+
+\subsection{Typed artist control의 물리적 의미}
+
+Artist control은 자유로운 latent vector \(\mathbf a\)로 network에 추가하지 않고,
+이미 선언한 typed input과 cached response의 유효 범위 안에서만 정의한다.
+Development에서 동결한 \(g_W(t)\in[0,g_W^+]\)는 바람의 크기만
+\(W_t^{\mathrm{eff}}=g_W(t)W_t\)로 조절하고 방향은 \(W_t\)가 소유한다. Package의
+\(\Omega_S^{\mathrm{base}},Z_S^{\mathrm{base}}\)는 immutable이고,
+\(S\in\{G\}\cup\{(L,k)\}_{k=1}^{K_L}\)에 대한 evaluator가
+\begin{equation}
+  \Omega_S^{\mathrm{eff}}=\sqrt{g_K}\,\Omega_S^{\mathrm{base}},
+  \qquad
+  Z_S^{\mathrm{eff}}=g_DZ_S^{\mathrm{base}},
+  \qquad g_K>0,\ g_D>0
+  \label{eq:rd-typed-control-map}
+\end{equation}
+를 파생한다. \(g_K,g_D\)는 package에 저장된 허용 구간 안에서 rollout 전체에 고정하고,
+cached base field를 in-place로 수정하지 않는다. 둘 중 하나를 바꾸면 derived evaluator identity/hash를
+갱신하고 rest state에서 새 rollout을 시작한다. 이 조절은 arbitrary material을 추론하는 기능이
+아니며, material preset 자체나 attachment를 바꾸면 setup network를 다시 실행해 새 package를
+만들고 rest state로 reset한다. Run manifest는 rollout의 actual \(g_K,g_D\)와 \(g_W(t)\)
+program/hash를, frame trace는 각 frame의 actual \(g_W(t),g_K,g_D\)와 derived evaluator identity를 소유한다.
+
+각 control은 동일한 rest state와 wind program에서 amplitude, dominant frequency, phase와
+free-decay envelope의 반응을 sweep한다. Wind gain 대비 load/response direction, stiffness gain 대비
+frequency ordering, damping gain 대비 decay ordering과 in-envelope 유한성을 보고, expected monotonicity나
+phase continuity가 깨지면 해당 control 범위를 축소하거나 비주장한다. Optional Local/flutter style
+gain은 Gate C 통과 후에만 Global을 건드리지 않는 정성 demo control로 분리하며,
+Gate B/C 정량 evidence에 사용하지 않는다.
 
 \subsection{정량 core와 champion domain}
 
@@ -246,12 +298,119 @@ Teacher mesh simulator는 vertex/element connectivity, surface quadrature, mater
 prescribed wind를 소유한다. Reference trajectory에는 canonical surface sample에서의
 position, displacement, velocity, optional normal, applied traction와 external work를 저장한다.
 Teacher refinement와 timestep convergence가 확인되기 전에는 student training을 시작하지 않는다.
+Core teacher와 target GS evaluator는 각자의 surface quadrature 위에서 같은
+\code{traction_law_id}, effective scale, guard-before-area 순서와 frame-start sampling contract를 사용한다.
+다른 teacher forcing law는 V0 label로 섞지 않고 별도 dataset/method version으로 분리한다.
+% [논문 작성 참고 -- 수정 이유]
+% tau_guard는 재료나 공력의 물리계수가 아니라 수치 안전장치다. 동일 teacher/student identity에는 포함하되
+% coefficient tuple로 해석하지 않고 정상 quantitative envelope에서 activation zero를 요구한다.
 
 Mesh vertex를 모두 supervision에 사용하는 것은 유용하지만, \textbf{vertex 하나를 latent anchor 하나와
 일대일 대응시키지 않는다}. Vertex 수와 tessellation은 simulator discretization 선택이기 때문이다.
-각 vertex는 area-weighted dense teacher sample로 사용하고, fixed/capped latent token은 이 sample을
-soft aggregation한 response carrier로 학습한다. 필요하면 공통 canonical surface probe로 remap해
-서로 다른 teacher mesh resolution도 같은 evaluation space에서 비교한다.
+선형 nodal teacher에서는 vertex와 area-weighted sample을 연결할 수 있지만, 일반적인 고차 teacher의
+자유도는 양의 면적을 가진 물리 sample과 같지 않다. Teacher field를 양의 quadrature와 canonical
+surface probe에서 평가한 뒤 fixed/capped latent token의 response supervision에 사용한다.
+공통 probe로의 remap은 서로 다른 teacher mesh 및 GS representation의 정량 비교에서 필수다.
+
+Teacher의 shape-evaluation matrix를 \(\Psi\), 양의 quadrature를
+\(W_{A,T}=\operatorname{diag}(a_q)\), \(\sum_q a_q=A_{\mathrm{ref}}\)라 하면,
+homogeneous consistent mass를 사용하는 후보는
+\begin{equation}
+  M_T^{\mathrm{scalar}}=\frac{M_{\mathrm{ref}}}{A_{\mathrm{ref}}}
+  \Psi^\top W_{A,T}\Psi,\qquad
+  \mathbf 1^\top M_T^{\mathrm{scalar}}\mathbf 1=M_{\mathrm{ref}},\qquad
+  M_T=M_T^{\mathrm{scalar}}\otimes I_3
+  \label{eq:rd-teacher-consistent-mass}
+\end{equation}
+를 따른다. 질량행렬의 양정성은 충분한 quadrature rank와 허용 자유도에서 검증한다.
+Teacher element/quadrature/mass law를 registry에 명시하며, 고차 자유도에 임의의 양의 point mass를
+붙이지 않는다. 이 확장은 student GS의 기존 positive area와 diagonal mass 계약을 바꾸지 않는다.
+
+\subsection{Mandatory common-probe transfer contract}
+
+Training loss와 모든 paired quantitative evaluation은 source object마다 test open 전에 고정한
+canonical probe set
+\[
+  \mathcal X_P^0=\{(p_j^0,w_{A,j}^P,w_{M,j}^P)\}_{j=1}^{N_P}
+\]
+에서 수행한다. Teacher discretization을 \(X=T\), independent GS variant를 \(X=r\)라 할 때,
+ordered interpolation support와 representation별 map law를 갖는
+\begin{equation}
+  T_X\in\mathbb R^{N_P\times N_X},\qquad
+  \sum_i(T_X)_{ji}=1,\qquad
+  S_X=T_X\otimes I_3
+  \label{eq:rd-common-probe-map}
+\end{equation}
+를 만든다. GS의 convex support map과 선형 barycentric teacher map에는
+\((T_X)_{ji}\ge0\)를 유지한다. 고차 teacher shape function에만 부호가 있는 weight를 허용하며,
+별도 map-law/version으로 polynomial reproduction, conditioning/noise amplification과 coverage를
+검증한다. Signed shape weight와 양의 surface quadrature는 서로 다른 물리량이다.
+기존 nonnegative map schema를 암묵적으로 재해석하지 않는다. Reference와 GS response는
+\[
+  u_P^*=S_Tu_T^*,\quad v_P^*=S_Tv_T^*,\qquad
+  u_P^{(r)}=S_ru_{\mathrm{GS}}^{(r)},\quad
+  v_P^{(r)}=S_rv_{\mathrm{GS}}^{(r)}
+\]
+로 같은 공간에 올린다. 모든 accepted \(S_X\)는 row-partition tolerance와 임의의
+\(d\in\mathbb R^3\)에 대한 constant-field reproduction
+\[
+  S_X(\mathbf 1_{N_X}\otimes d)=\mathbf 1_{N_P}\otimes d
+\]
+를 통과해야 한다. 추가 mapping-noise 기준은 source rest position에서 평가한 predeclared
+constant/coordinate-linear analytic vector-field family를 probe로 보낸 normalized reproduction error로
+측정하고, 모든 \(X\)가 dev-frozen tolerance를 통과해야 한다. Manifest는 probe ID/rest position/area--mass weight, 각 row의 ordered
+support와 weight, coverage distance, unsupported-probe rate, kernel/version, \(S_T,S_r\) hash,
+fixture tolerance와 측정된 mapping-noise floor를 저장한다. Coverage가 dev-frozen threshold보다
+낮은 variant는 결과를 본 뒤 probe를 골라내지 않고 predeclared failure/reject 규칙을 따른다.
+정량 denominator는 teacher와 source-object group의 모든 declared GS variant가 함께 support하는
+probe intersection으로 만든 하나의 pre-test frozen common-valid mask를 사용한다. Variant마다 유리한
+probe subset을 따로 선택하지 않으며 mask, excluded reason과 hash를 모든 paired run이 공유한다.
+
+Adjoint는 payload의 물리량을 구분한다. \(f_P\)가 probe별 \emph{total force}이면
+\(f_X=S_X^\top f_P\)가 virtual work를 보존한다. 반면 \(\tau_P\)가 probe
+\emph{traction}이면 \(W_{A,P}=\operatorname{diag}(w_{A,j}^PI_3)\)를 먼저 적용해
+\begin{equation}
+  f_X=S_X^\top W_{A,P}\tau_P,\qquad
+  \tau_P^\top W_{A,P}S_Xu_X=f_X^\top u_X
+  \label{eq:rd-common-probe-adjoint}
+\end{equation}
+인 source total force를 만든다. Traction에 \(S_X^\top\)만 직접 적용하거나 area를 두 번
+곱하는 구현은 금지한다. 이 transfer는 training/evaluation fixture 전용이다. Target runtime의
+GS traction과 force는 common-probe map 없이 각 Gaussian에서 직접 계산한다.
+
+Teacher convergence도 두 축을 섞지 않는다. Accepted fine timestep을 고정한 spatial mesh-refinement
+error와 accepted fine mesh를 고정한 temporal timestep-refinement error를 동일 probe와 physical-time
+grid에서 별도로 측정하고, 각각 dev-frozen tolerance와 hash를 통과해야 한다. 두 refinement를 동시에
+바꾼 차이만으로 cancellation을 허용하지 않으며, 이 mapping/convergence fixture가 끝나기 전에는
+student response fitting을 시작하지 않는다.
+두 축의 acceptance는 같은 structure/element/mass/damping/attachment/load identity를 공유해야 한다.
+서로 다른 teacher 후보의 시간 통과와 공간 통과를 합쳐 하나의 reference를 승인하지 않는다.
+정적 polynomial energy 일치만으로 동적 수렴을 대신하지 않으며, interior weak-force consistency,
+mesh 방향, 초기 상태의 고주파 성분과 velocity 오차도 진단한다.
+
+\subsection{Teacher 개발 근거와 현재 채택 경계 (2026-09-09)}
+\label{sec:rd-teacher-development-evidence}
+
+현재 구현에는 Newton native trajectory/registry/probe 경로, CPU nonlinear shell 진단,
+P2/P3 \(C^0\) interior-penalty 선형 판 및 독립 \(C^2\) cubic B-spline 기준이 있다.
+고정 native hinge 계수의 mesh 의존성, 면적 보정 hinge의 방향 편향, quadratic patch의 내부 힘
+결함을 확인했다. 따라서 이 후보들의 정적 에너지 검사를 곧바로 accepted teacher 근거로 쓰지 않는다.
+P3 후보는 고정된 처방 압력 fixture에서 공간/방향/독립 기준의 1\% 개발 기준을 통과했지만,
+원래 \(u_z^0=10^{-3}x^2\) 초기 변위의 속도 수렴은 실패 상태다.
+여기서 \(x=0\) 경계는 위치만 고정하고 회전 기울기는 자유다. 이를 clamped 판으로 소개하지 않는다.
+
+P3 결과는 선형 normal plate와 처방 압력에 한정된다. Full nonlinear membrane+bending,
+canonical relative-wind traction과 frame-start hold, 새 고차 probe/registry, 동일 backend의 시간·공간
+검증 및 independent-GS oracle는 아직 연결되지 않았다. 기존 CPU shell의 시간 수렴 통과를 P3에
+승계하지 않는다. Development loader로 검증한 15개 Newton sample window는
+\code{training_eligible=false}를 유지하며 R2 학습 label이 아니다.
+1\%는 해당 개발 fixture의 사전 고정 기준이지 모든 R1 metric에 새로 적용한 보편 threshold가 아니다.
+
+전체 설계·반례·수치·재현 경로는 다음 두 문서에 보존한다.
+\code{development/r1_teacher_probe_oracle.tex}와
+\code{development/r1_teacher_implementation_record.tex}에 연결한다.
+실험용 처방 압력과 rest-start 입력은 원래 displaced free-decay 요구를 삭제하지 않는다.
+첫 accepted 데이터의 입력 범위는 미결정이며, 바꾸려면 scope와 fixture를 먼저 명시한다.
 
 \subsection{Independent multi-resplat pairing}
 
@@ -270,6 +429,28 @@ soft aggregation한 response carrier로 학습한다. 필요하면 공통 canoni
 
 Core probe는 short impulse, step-on/off, log-chirp 또는 multi-sine, traveling Gaussian gust다.
 Probe peak와 duration은 asset별로 조정하지 않고 development에서 domain-wide freeze한다.
+
+\subsection{K0/R1 network-free oracle preflight}
+
+Student network 전에 strip의 converged teacher와 independent GS 두 개로 common-probe oracle Global
+fixture를 통과한다. 각 GS의 attached row를 exact zero로 둔 raw field를 teacher의 common-probe
+impulse/FRF response에 fit하고, SI unit, force sign, \(S_T/S_r\), mass metric과 exact evaluator를
+독립적으로 검사한다. 두 oracle package의 response를 다시 \(\mathcal X_P^0\)에 올린 paired error는
+mapping과 evaluator contract의 preflight이지 MC1의 learned held-out evidence가 아니다.
+
+Raw field \(B_c\)를 \(G=B_c^\top M_xB_c\), \(R=G^{-1/2}\),
+\(B=B_cR\)로 mass-normalize하면 coordinate basis도 변한다. 따라서 teacher의 기존 diagonal
+\(\Omega,Z\)를 그대로 붙이는 것은 금지한다. Oracle은 다음 둘 중 하나만 사용한다.
+\begin{enumerate}
+  \item normalized \(B\)를 고정한 뒤 common-probe time/FRF response로 positive
+  \(\Omega,Z\)를 다시 fit한다.
+  \item raw coordinate의 full reduced \(M_c,C_c,K_c\)를 보유할 때
+  \(R^\top M_cR,R^\top C_cR,R^\top K_cR\)로 함께 변환한 뒤 일관되게
+  re-diagonalize하여 field와 pole을 갱신한다.
+\end{enumerate}
+Arbitrary whitening과 unchanged diagonal pole의 조합, response fit 없이 mapped teacher mode만으로
+oracle 성공을 선언하는 경로는 허용하지 않는다. Rank floor, attachment zero, mass orthogonality,
+common-probe response와 free-decay exact-ZOH fixture가 모두 통과한 뒤에만 R2 network overfit으로 간다.
 
 \subsection{Privilege boundary}
 
@@ -337,7 +518,8 @@ Token을 얻은 뒤에는 원래 Gaussian feature가 token과 object context를 
   y_i=D_{\mathrm{query}}\!\left(g_i,\{h_k\}_{k=1}^{K},h_{\mathrm{obj}}\right),
   \qquad i=1,\ldots,N .
 \]
-여기서 \(y_i\)는 Gaussian별 area/mass, normal/validity와 Global/Local response-field row를 생성한다.
+여기서 \(y_i\)는 Gaussian별 area, normal/validity와 Global/Local response-field row를 생성하며,
+V0 mass는 \eqref{eq:rd-area-mass}의 homogeneous rule로 area에서 결정한다.
 따라서 fixed token 수가 variable Gaussian 수로 되돌아가는 readout은 명시적이지만, Gaussian 사이 physical
 edge나 persistent graph를 만들지는 않는다.
 
@@ -375,19 +557,29 @@ target-allowed immutable runtime payload를
   \begin{aligned}
   \mathcal P&=\operatorname{Pack}\!\left(\mathcal D_{\mathrm{rt}}^0,F_\theta(\mathcal I_{\mathrm{setup}})\right)\\
   &=\left(\mathcal D_{\mathrm{rt}}^0,a,m,n^0,\gamma_{\mathrm{valid}},\gamma_{\mathrm{ori}},
-  B_G,\Omega_G,Z_G,\{B_{L,k},\Omega_{L,k},Z_{L,k},c_k\}_{k=1}^{K_L},B_R\right).
+  B_G,\Omega_G^{\mathrm{base}},Z_G^{\mathrm{base}},
+  \{\mathcal I_k,B_{L,k,\mathcal I_k},\Omega_{L,k}^{\mathrm{base}},
+  Z_{L,k}^{\mathrm{base}},c_k\}_{k=1}^{K_L},B_R\right).
   \end{aligned}
   \label{eq:rd-response-package}
 \end{equation}
 여기서 \(a_i\ge0\)와 \(m_i\ge0\)는 Gaussian별 surface-area 및 mass quadrature,
-\(B_G\)는 Global translational response field, \(B_{L,k}\)는 Local slot field,
-\(\Omega\)와 \(Z\)는 positive modal frequency와 damping,
+\(B_G\)는 Global translational response field, \(\mathcal I_k\)는 R0에서 동결한 physical-valid
+정책을 통과한 free Gaussian만 포함하는 ordered Local support이고
+\(B_{L,k,\mathcal I_k}\)는 그 support에만 저장하는 Local field다.
+\(\Omega^{\mathrm{base}}\)는 immutable positive angular-frequency diagonal matrix이고
+\(Z^{\mathrm{base}}\)는 immutable positive dimensionless modal damping-ratio diagonal matrix이며,
 \(n_i^0,\gamma_{\mathrm{valid},i},\gamma_{\mathrm{ori},i}\)는 target GS에서 frozen model이 예측하거나
 versioned covariance rule로 계산한 rest surface payload다. \(c_k\)는 support/confidence metadata다.
 \(B_R=(B_{R,G},\{B_{R,L,k}\})\)를 쓰는 branch에서는 각 angular field가 같은 이름의 translational
 coordinate를 공유한다. 이를 쓰지 않는 core branch는 transported means에서 계산하는 versioned local-affine
 normal update를 package에 기록한다. 두 branch 중 하나를 R0에서 freeze하고 asset별로 바꾸지 않는다.
 Network inference는 setup에서 한 번 수행하고 package를 cache한다.
+
+여기서 physical-valid Gaussian의 정확한 index set과 threshold/reject 규칙은 R0의 미결정 설계다.
+허용하는 물리 의미는 hard valid set, asset-level reject 또는 둘의 사전 선언 조합뿐이다.
+Soft confidence를 area/mass, traction/load, response row나 quantitative denominator의 임의 배율로 쓰지 않는다.
+이 정책이 동결되기 전에는 해당 normalization과 연산을 구현하지 않는다.
 
 Runtime의 frame response는 이 package와 current wind로 계산한 generalized acceleration/velocity increment다.
 따라서 ``response를 출력한다''는 말은 \textbf{setup network가 causal force-to-motion operator를
@@ -396,18 +588,33 @@ parameterize하고, frame evaluator가 그 operator의 response increment를 계
 \subsection{Area/mass measure와 density consistency}
 
 Gaussian은 texture와 reconstruction error에 따라 비균일하게 배치되므로 opacity나 primitive count를
-surface area로 간주하지 않는다. Positive raw logits를 normalize해 declared total area와 mass를 보존한다.
+surface area로 간주하지 않는다. V0 homogeneous-thickness/density core는 positive area logits만
+normalize하고 mass를 declared areal density에서 파생한다.
 \begin{equation}
   a_i=A_{\mathrm{ref}}\frac{\operatorname{softplus}(\xi_i^a)+\epsilon_a}
   {\sum_j(\operatorname{softplus}(\xi_j^a)+\epsilon_a)},\qquad
-  m_i=M_{\mathrm{ref}}\frac{\operatorname{softplus}(\xi_i^m)+\epsilon_m}
-  {\sum_j(\operatorname{softplus}(\xi_j^m)+\epsilon_m)}.
+  m_i=\frac{M_{\mathrm{ref}}}{A_{\mathrm{ref}}}a_i.
   \label{eq:rd-area-mass}
 \end{equation}
-\(A_{\mathrm{ref}},M_{\mathrm{ref}}>0\)는 target-side typed metric/material contract가 소유하고 package에
-그 값과 단위를 hash한다. Teacher mesh 값으로 target package를 채우거나 asset별 사후 보정하지 않는다.
+\(A_{\mathrm{ref}},M_{\mathrm{ref}}>0\)는 target-side typed metric contract가 소유하고 package에
+그 값과 SI 단위를 hash한다. \(M_{\mathrm{ref}}\)가 유일한 total-mass owner다.
+Teacher mesh 값으로 target package를 채우거나 material preset/network head가 별도 mass scale을
+곱하거나 asset별 사후 보정하지 않는다.
+식 \eqref{eq:rd-area-mass}의 합 index는 R0에서 동결할 physical-valid policy를 따른다.
+Hard-valid-set 경로를 선택하면 invalid row는 area, mass, load와 response field에서 함께 exact zero여야 하며,
+asset-level reject 경로를 선택하면 개별 confidence를 물리량의 soft multiplier로 임의 사용하지 않는다.
 Surface split/merge에서 child ownership 합이 parent ownership과 같으면 constant-cell force/work는 보존된다.
 Independent reconstruction에서는 common teacher probe에서 total area, work와 response dispersion을 측정한다.
+
+Spatially varying thickness/density가 명시적인 후속 claim과 typed input으로 필요하다는 evidence가 생길 때만
+nonuniform extension을 열어
+\[
+  m_i=M_{\mathrm{ref}}
+  \frac{\operatorname{softplus}(\xi_i^m)+\epsilon_m}
+  {\sum_j(\operatorname{softplus}(\xi_j^m)+\epsilon_m)}
+\]
+인 별도 mass-fraction head를 사용한다. 이 branch도 합이 \(M_{\mathrm{ref}}\)가 되며 schema/domain 전체에서
+사전 선언하고 homogeneous V0와 결과 후 asset별로 섞지 않는다.
 
 \subsection{Hard attachment와 mass whitening}
 
@@ -421,20 +628,57 @@ Raw response field \(\widetilde B\)는 attachment row를 exact zero projection�
 그러면 attached row는 수치오차 안에서 0이고 \(B^\top M_xB=I\)다.
 Gram eigenvalue가 floor 아래면 rank를 줄이거나 package를 reject한다.
 Attachment를 network input에도 넣어 response shape와 pole을 조건화하되 hard exactness는 learned penalty에 맡기지 않는다.
+이 SI mass-normalized convention에서
+\([B]=\mathrm{kg}^{-1/2}\), \([q]=\mathrm{kg}^{1/2}\mathrm m\),
+\([Q]=\mathrm{kg}^{1/2}\mathrm m\,\mathrm s^{-2}\)이고,
+같은 \(q\)를 쓰는 angular field는
+\([B_R]=(\mathrm{kg}^{1/2}\mathrm m)^{-1}\)다.
 
 \subsection{Passive Global package}
 
 Global coordinate \(q_G\)는 다음 mass-normalized damped response를 따른다.
 \begin{equation}
-  \ddot q_G+2Z_G\Omega_G\dot q_G+\Omega_G^2q_G=Q_G,
+  \ddot q_G+2Z_G^{\mathrm{eff}}\Omega_G^{\mathrm{eff}}\dot q_G+
+  (\Omega_G^{\mathrm{eff}})^2q_G=Q_G,
   \qquad u_G=B_Gq_G.
   \label{eq:rd-global-response}
 \end{equation}
-Frequency와 damping은 positive parameterization으로 만들고 \(B_G\)는 attachment projection과 whitening을 통과한다.
-Free response에서는 energy가 감소하는 passive LTI core가 된다. Runtime은 explicit Euler보다
-independent damped oscillator의 exact zero-order-hold update 또는 stable implicit update를 사용한다.
-State-dependent wind가 외부 에너지를 공급하므로 forced rollout에는 별도 force cap, timestep/frequency envelope와
+Angular frequency와 modal damping ratio는 positive parameterization으로 만들고 \(B_G\)는
+attachment projection과 whitening을 통과한다. Free response에서는 energy가 감소하는 passive LTI core가 된다.
+Learned \(\Omega_S,Z_S\)는 항상 projection/whitening을 마친 \textbf{최종 coordinate}의 pole이다.
+Raw field coordinate에서 예측한 pole을 basis construction 뒤 그대로 재사용하는 경로는
+oracle과 main head 모두 금지한다.
+V0 runtime evaluator는 대체 가능한 integrator family가 아니라 independent damped oscillator의
+\textbf{single exact zero-order-hold} update 하나로 동결한다. Mode \(j\)에 대해
+\begin{equation}
+  \begin{aligned}
+  A_{S,j}&=
+  \begin{bmatrix}
+    0&1\\
+    -(\omega_{S,j}^{\mathrm{eff}})^2&
+    -2\zeta_{S,j}^{\mathrm{eff}}\omega_{S,j}^{\mathrm{eff}}
+  \end{bmatrix},
+  &b&=\begin{bmatrix}0\\1\end{bmatrix},\\
+  \mathcal A_{S,j}&=\begin{bmatrix}A_{S,j}&b\\0&0\end{bmatrix},
+  &\exp(\Delta t\mathcal A_{S,j})
+    &=\begin{bmatrix}\Phi_{S,j}&\Gamma_{S,j}\\0&1\end{bmatrix},\\
+  \begin{bmatrix}q\\\dot q\end{bmatrix}_{j}^{t}
+    &=\Phi_{S,j}\begin{bmatrix}q\\\dot q\end{bmatrix}_{j}^{t-1}
+      +\Gamma_{S,j}Q_{S,j}^{t}.&&
+  \end{aligned}
+  \label{eq:rd-exact-zoh}
+\end{equation}
+Load는 frame 시작에서 한 번 sample해 해당 frame 동안 hold하고 mode마다 한 번만 update한다.
+Package/run manifest는 \code{integrator_id=exact_zoh_augexp_v1}과
+\code{force_sample_time=frame_start_v1}을 evaluator identity로 저장한다.
+같은 manifest에 \(\Delta t\), precision, \(\max_j\omega_j^{\mathrm{eff}}\Delta t\)와
+typed epsilon도 저장한다.
+State-dependent wind가 외부 에너지를 공급하므로 forced rollout에는 위 numerical traction guard,
+timestep/frequency envelope와
 long-horizon stress test가 필요하다.
+% [논문 작성 참고 -- 수정 이유]
+% guard가 정상 결과를 결정하면 quadratic force law가 사실상 잘린 다른 모델이 된다. 따라서 core 결과에서는
+% guard를 안정화 수단으로 사용하지 않고 activation을 failure/OOD 신호로 보고한다.
 
 Full dense \(M,C,K\)나 nonlinear \(M(q),C(q),V(q)\)를 V0 output으로 두지 않는다.
 이들은 latent gauge와 conditioning을 어렵게 하고 NeuROK/LaGSplat의 비선형 latent solver 범위와 겹친다.
@@ -444,14 +688,45 @@ Non-proportional damping이나 mode coupling이 반복적으로 필요한 경우
 
 Local은 teacher full motion을 그대로 다시 학습하지 않는다. Frozen Global response가 설명한 component를 빼고
 \begin{equation}
-  r_L^*=r_{\mathrm{teacher}}-r_G^*,\qquad
-  B_{L,k}=\operatorname{whiten}\!\left[(I-B_GB_G^\top M_x)
-  P_{\mathrm{attach}}\widetilde B_{L,k}\right]
+  r_L^*=r_{\mathrm{teacher}}-r_G^*
   \label{eq:rd-local-residual}
 \end{equation}
 로 정의한 complementary residual만 학습한다. \(r\)는 canonical surface probe의
 time/frequency response이며 개별 eigenmode column이 아니다.
 이 정의가 Global/Local double counting과 sign/permutation/degenerate-mode gauge 문제를 줄인다.
+
+Locality는 soft loss가 아니라 package construction이다. 각 slot은 attached/invalid Gaussian을 제거한
+ordered hard support \(\mathcal I_k=(i_{k,1},\ldots,i_{k,n_k})\)와 그 순서의 sparse field만 저장한다.
+\(J_k\in\{0,1\}^{3N\times3n_k}\)를 support-to-full injection,
+\(\widetilde C_k=J_k^\top\widetilde B_{L,k}\)를 raw support field,
+\(M_k=J_k^\top M_xJ_k\), \(A_k=B_G^\top M_xJ_k\)라 두고
+\begin{equation}
+  \begin{aligned}
+  \Pi_k&=I-M_k^{-1}A_k^\top
+  (A_kM_k^{-1}A_k^\top)^\dagger A_k,\\
+  \overline C_k&=\Pi_k\widetilde C_k,\qquad
+  C_k=\overline C_k(\overline C_k^\top M_k\overline C_k)^{-1/2},\\
+  B_{L,k}&=J_kC_k,\qquad
+  Q_{L,k}=C_k^\top J_k^\top F .
+  \end{aligned}
+  \label{eq:rd-local-support-projection}
+\end{equation}
+즉 Global complement를 full field에 적용한 뒤 다시 mask하지 않고, support 내부에서
+\(A_kC_k=0\)인 nullspace로 project한 뒤 같은 support mass metric으로 whitening한다.
+따라서 construction상 support 밖 row와 attachment row가 0이고,
+\(B_G^\top M_xB_{L,k}=0\), \(B_{L,k}^\top M_xB_{L,k}=I\)를 함께 보존한다.
+Pseudoinverse/Gram floor 아래의 방향은 dev-frozen rule로 rank를 줄이거나 package를 reject한다.
+이는 physical adjacency graph가 아니라 ordered sparse response-field payload다.
+
+Slot 간 중복은 새 coupled solver로 제거하지 않고
+\[
+  G_{k\ell}=B_{L,k}^\top M_xB_{L,\ell},\qquad
+  \rho_{k\ell}=\|G_{k\ell}\|_2,\qquad
+  r_{\mathrm{eff}}=\operatorname{rank}_{\tau}
+  [B_{L,1},\ldots,B_{L,K_L}]
+\]
+로 진단한다. Duplicate activation의 visible overshoot가 반복될 때만 dev에서 deterministic merge나
+mutually exclusive group을 검토하며, V0에 global QR, coupled Local stiffness 또는 새 solver를 넣지 않는다.
 
 Local은 처음부터 함께 학습하지 않는다.
 \begin{enumerate}
@@ -463,16 +738,28 @@ Local은 처음부터 함께 학습하지 않는다.
 
 \subsection{Conditional Local selection}
 
-각 Local slot의 generalized load와 predicted response energy로 inexpensive score를 계산한다.
-개념적 quasi-static score는
+각 Local slot의 sparse generalized load로 dimensionless이며 slot rank에 정규화된 analytic score를 계산한다.
+\(r_k\)가 slot rank이고 \(\omega_{L,k,j}^{\mathrm{eff}}\)가 effective angular frequency일 때 V0는
 \begin{equation}
-  \eta_k(t)=\frac{\|Q_{L,k}(t)\|_2^2}
-  {\omega_{L,k}^4+\epsilon_\eta}
-  +\lambda_g\,\chi_k(\nabla W_t,h_k,c_k),
+  \eta_k(t)=\eta_k^{\mathrm{qs}}(t)
+  =\frac{1}{r_kM_{\mathrm{ref}}L_0^2}
+  \sum_{j=1}^{r_k}
+  \frac{Q_{L,k,j}(t)^2}
+  {(\omega_{L,k,j}^{\mathrm{eff}})^4+\varepsilon_\omega},
+  \qquad [\varepsilon_\omega]=\mathrm s^{-4},\qquad \lambda_g=0,
   \label{eq:rd-local-score}
 \end{equation}
-이며 \(\chi_k\)는 작은 learned residual-risk term이거나 0일 수 있다.
-Fixed top-\(K_A\), deterministic tie-break, minimum dwell, fade와 persistent state로 pop을 막는다.
+로 동결한다. \([Q^2/\omega^4]=\mathrm{kg\,m^2}\)이므로 \(\eta_k\)는 dimensionless
+per-DOF scalar이며 vector \(\Omega\)에 대한 reduction이 구현마다 달라지지 않는다.
+Analytic selector가 teacher/oracle-ranked desired set의 quality retention을 dev-frozen 기준으로
+실패하면 V0의 Gate D를 실패 처리하고 always-on Local로 남긴다. Learned residual-risk term은
+V0를 조용히 확장하는 fallback이 아니라 별도 method version이다. 그 version을 후속으로 열 경우에만
+\(\eta_k=\eta_k^{\mathrm{qs}}+\lambda_g\chi_k\), \([\lambda_g]=[\chi_k]=1\)로 두고,
+\(\chi_k\)는 current causal wind/load summary와 package가 소유하는 immutable descriptor
+\(h_k^{\mathrm{sel}}\subset c_k\)만 받는다. Descriptor schema, checkpoint와 weight는 test 전에
+동결하며 recurrent selector state나 teacher/test target을 받지 않는다.
+Score는 deterministic tie-break를 갖는 desired ranking만 만들고, minimum dwell, fade와 아래
+Active/Decay budget이 실제 admission을 결정한다.
 Global은 항상 활성이고 Local만 budgeted된다. Selection overhead와 all-slot load projection이 전체 비용을 지배하면
 selective speed claim은 철회한다.
 
@@ -480,16 +767,56 @@ selective speed claim은 철회한다.
 
 \subsection{Distributed wind load}
 
-Current relative velocity와 oriented normal에서 bounded traction \(\tau_i^t\)를 계산하고 learned measure를 곱한다.
+V0는 frame 시작의 geometry/velocity에서 한 번 sample하는 two-sided, normal-only,
+normal-sign-invariant quasi-steady traction 하나만 사용한다. \(n_i^{t-1}\)은 unit current normal이고
 \begin{equation}
-  F_i^t=a_i\,\tau(v_{\mathrm{wind},i}^t-v_i^t,n_i^t;\vartheta_{\mathrm{aero}}),
-  \qquad
-  Q_S^t=B_S^\top F^t,
+  \begin{aligned}
+  v_{\mathrm{rel},i}^{t}
+    &=W_t^{\mathrm{eff}}(\mu_i^{t-1})-v_i^{t-1},
+    &v_{n,i}^{t}&=(v_{\mathrm{rel},i}^{t})^\top n_i^{t-1},\\
+  \tau_{\mathrm{raw},i}^{t}
+    &=\kappa_{\mathrm{aero}}|v_{n,i}^{t}|v_{n,i}^{t}n_i^{t-1},
+    &\tau_i^t&=\operatorname{clip}_{\|\cdot\|_2\le\tau_{\mathrm{guard}}}
+    (\tau_{\mathrm{raw},i}^{t}),
+    &F_i^t&=a_i\tau_i^t,\qquad Q_S^t=B_S^\top F^t .
+  \end{aligned}
   \label{eq:rd-wind-pullback}
 \end{equation}
-여기서 \(S\)는 Global과 selected Local field의 집합이다.
-Traction과 total force를 구분해 area를 두 번 곱하지 않는다. Opacity를 area substitute로 쓰지 않으며,
-floater/background와 close two-sided layer가 load를 받지 않도록 validity/confidence와 domain reject를 둔다.
+% [논문 작성 참고 -- 수정 이유]
+% kappa_aero [kg/m^3]는 0.5*rho_air*C_n을 합친 effective scale이다. 같은 공기 조건에서는 두 인자를
+% 따로 추정할 수 없고, g_W까지 함께 바꾸면 F가 kappa_aero*g_W^2에 비례해 더 강하게 confound된다.
+% V0는 response distillation이 기여이지 새로운 고정밀 aerodynamics가 기여가 아니므로 normal load만 남긴다.
+% Gaussian Swaying은 drag/friction/lift와 C_D,C_F,C_L을 모두 쓰지만, 그 계수는 representative value로 고정한다.
+% 접선항은 normal-only가 사전 동결한 Local/flutter 기준을 실패할 때만 새 law/version의 ablation으로 연다.
+% 논문 citation 후보: \cite{yan2026gaussianswaying,diener2009windbasis}.
+\(n\mapsto-n\)이면 \(v_n\mapsto-v_n\)이므로
+\(|v_n|v_n n\)과 전체 traction은 변하지 않는다. Vector-norm guard를
+area multiplication 전에 적용하고 force-level clamp와 asset별 scale tuning은 사용하지 않는다.
+\(\kappa_{\mathrm{aero}}>0\)는 domain-wide frozen scalar이며 runtime artist control이 아니다.
+정량 core에서 \(\tau_{\mathrm{guard}}\) activation은 0이어야 하고, activation frame을 정상 sample로 숨기지 않고
+predeclared OOD/failure로 집계한다. Normal-only가 Local/flutter fidelity의 사전 동결 기준을 실패할 때만
+\(v_{\parallel}=v_{\mathrm{rel}}-v_n n\)에 대해
+\(r_{\parallel}\|v_{\parallel}\|_2v_{\parallel}\)를 고정 비율로 더하는 optional law를 새 dataset/method version에서
+비교하며, asset별 \(r_{\parallel}\) 조정이나 별도 lift coefficient는 열지 않는다.
+% [논문 작성 참고 -- 수정 이유]
+% tau_guard는 논문의 물리 자유도가 아니라 catastrophic overflow를 잡는 implementation guard다.
+% 접선 저항은 structural/modal damping과 식별이 섞이기 쉬우므로 기본법에서 제거하고, 필요성이 실험으로 확인될 때만
+% fixed-ratio ablation으로 복원한다. 이 경계는 공력 항을 늘려 결과를 맞추는 사후 튜닝을 막는다.
+\(S=G\)는 full field를, Local candidate는 \eqref{eq:rd-local-support-projection}의 sparse support
+block만 사용한다. 이 runtime force는 \(S_T,S_r\) common-probe transfer를 거치지 않는다.
+\(W_t^{\mathrm{eff}}=g_W(t)W_t\)이며 actual control과 load를 frame trace에 기록한다.
+Opacity를 area substitute로 쓰지 않으며, floater/background와 close two-sided layer가 load를 받지 않도록
+hard validity set과 confidence-triggered asset/domain reject를 둔다. Confidence를 force 배율로 쓰지 않는다.
+Package/run hash는
+\code{traction_law_id=two_sided_normal_quadratic_v1}과
+\code{traction_guard_id=vector_norm_before_area_v1}을 method identity로 저장한다.
+같은 hash에 \(\kappa_{\mathrm{aero}},\tau_{\mathrm{guard}}\), SI unit과 guard activation count도 포함한다.
+% [논문 작성 참고 -- 수정 이유]
+% 재현성에는 guard threshold와 activation 여부가 필요하지만, 이를 aerodynamic coefficient로 소개하면 안 된다.
+% 논문 표에는 kappa_aero와 law를 보고하고 guard는 numerical-safety/validity 항목으로 분리한다.
+\(g_W(t)=0\)인 zero-ambient-wind frame에서도 \(v_{\mathrm{rel},i}^t=-v_i^{t-1}\)이므로 aerodynamic drag는
+남을 수 있다. 따라서 이 조건을 strict no-load/free response와 혼용하지 않고, 후자는
+\(Q_S^t=0\)을 명시하고 aerodynamic evaluation을 끄는 별도 fixture로 측정한다.
 
 Rest normal은 covariance-derived tangent cue, learned orientation confidence와 training-only teacher supervision을 사용한다.
 Current normal은 angular response 또는 local affine approximation으로 갱신한다.
@@ -498,16 +825,55 @@ orientation confidence가 낮은 target은 quantitative set에서 reject/fallbac
 
 \subsection{Single response update}
 
-Global 및 admitted Local coordinate를 하나의 state tuple로 유지한다.
+Global state와 각 Local slot의
+\begin{equation}
+  s_{L,k}^t=(q_{L,k}^t,\dot q_{L,k}^t,\sigma_k^t,\gamma_k^t,
+  d_{k,\mathrm{dwell}}^t,d_{k,\mathrm{hold}}^t),\qquad
+  \sigma_k^t\in\{\mathrm{Inactive},\mathrm{Active},\mathrm{Decay}\},\quad
+  0\le\gamma_k^t\le1
+  \label{eq:rd-local-runtime-state}
+\end{equation}
+를 frame state가 명시적으로 소유한다. Active는 full \(Q_{L,k}^t\)로 exact-ZOH update하고,
+Decay는 새 excitation 없이 \(Q_{L,k}^t=0\)인 homogeneous update를 계속하며,
+Inactive는 \(q=\dot q=\gamma=0\)으로 update와 transport에서 제외한다.
+Decay 중 재선택되면 state/phase를 zero하지 않고 Active로 복귀한다.
+\(\gamma_k\)는 transport에만 적용하는 dev-frozen fade다. Load에
+\(\gamma_k Q_{L,k}\)를 곱하지 않아 excitation과 transport를 이중 fade하지 않는다.
+Fade, minimum dwell과 release hold는 frame count가 아니라 각각
+\(T_{\mathrm{fade}},T_{\mathrm{dwell}},T_{\mathrm{hold}}\,[\mathrm s]\)의 physical duration으로
+정의하며 state의 \(d_{\mathrm{dwell}},d_{\mathrm{hold}}\)는 actual \(\Delta t\)를 누적한다.
+Active에서는 \(\gamma_k\)가 1로, Decay에서는 0으로 같은 frozen physical-time curve를 따라간다.
+세 duration, fade curve/version과 discretization rule을 run hash에 저장한다.
+
+\(\mathcal U_t=\{k:\sigma_k^t\in\{\mathrm{Active},\mathrm{Decay}\}\}\)라 하면 fixed budget은
+Active뿐 아니라 Decay tail까지 함께 세어
+\[
+  |\mathcal U_t|\le K_A,\qquad \sum_{k\in\mathcal U_t}r_k\le D_A
+\]
+를 항상 만족해야 한다. Decay를 budget 밖에서 몰래 적분하거나 새 admission을 위해 visible tail을 즉시
+버리지 않는다. Budget이 찼으면 deterministic priority/dwell rule에 따라 새 desired slot을 보류하며,
+그 quality와 actual p95 비용을 그대로 Gate D에 포함한다. Decay는 \(\gamma_k=0\),
+\(\dot\gamma_k=0\)이고 physical modal energy
+\[
+  E_k=\tfrac12\|\dot q_{L,k}\|_2^2+
+  \tfrac12\|\Omega_{L,k}^{\mathrm{eff}}q_{L,k}\|_2^2
+\]
+가 dev-frozen SI threshold \(E_{\mathrm{release}}\,[\mathrm J]\) 아래로
+\(T_{\mathrm{hold}}\) seconds 유지될 때만 Inactive로 release한다.
+
 각 frame은 다음 순서를 정확히 한 번 수행한다.
 \begin{enumerate}
-  \item 이전 state에서 current mean, velocity, orientation과 load site를 복원한다.
-  \item 모든 required load site의 bounded wind force를 한 번 평가한다.
-  \item Global load와 Local candidate score를 계산하고 fixed budget을 admit한다.
-  \item Global과 selected Local damped response를 같은 \(\Delta t\)로 한 번 update한다.
-  \item Local activation/deactivation fade를 적용하되 hidden re-solve는 하지 않는다.
-  \item 최종 response field로 Gaussian을 transport하고 frame trace를 기록한다.
+  \item \(s_{t-1}\)에서 fade를 포함한 current mean, kinematic velocity, orientation과 load site를 복원한다.
+  \item Frame-start bounded traction을 한 번 평가하고 Global load와 sparse Local candidate score를 계산한다.
+  \item Desired ranking, dwell과 Active/Decay combined budget으로 state transition/admission을 결정한다.
+  \item Global과 Active는 current load, Decay는 zero load로 같은 \(\Delta t\)의
+  \eqref{eq:rd-exact-zoh}를 정확히 한 번 update한다.
+  \item Transport-only \(\gamma_k\)를 한 번 update하고
+  \(\dot\gamma_k^t=(\gamma_k^t-\gamma_k^{t-1})/\Delta t\)를 계산한다.
+  \item 최종 response field와 정확한 kinematic velocity로 Gaussian을 transport한다.
+  \item Release 조건을 판정하고 state transition, budget, score와 load를 frame trace에 기록한다.
 \end{enumerate}
+Fade 또는 state transition을 이유로 second force sample, hidden re-solve나 second response update를 수행하지 않는다.
 
 Network가 매 frame absolute pose를 다시 생성하지 않기 때문에 arbitrary wind program의 causal control과
 long-horizon stability를 독립적으로 검증할 수 있다.
@@ -516,17 +882,58 @@ long-horizon stability를 독립적으로 검증할 수 있다.
 
 최소 translational transport는
 \begin{equation}
-  \mu_i^t=\mu_i^0+B_{G,i}q_G^t+\sum_{k\in S_t}B_{L,k,i}q_{L,k}^t.
+  \begin{aligned}
+  \mu_i^t&=\mu_i^0+B_{G,i}q_G^t+
+  \sum_{k\in\mathcal U_t}\gamma_k^tB_{L,k,i}q_{L,k}^t,\\
+  v_i^t&=B_{G,i}\dot q_G^t+
+  \sum_{k\in\mathcal U_t}
+  \left(\gamma_k^tB_{L,k,i}\dot q_{L,k}^t+
+  \dot\gamma_k^tB_{L,k,i}q_{L,k}^t\right).
+  \end{aligned}
   \label{eq:rd-mean-transport}
 \end{equation}
+\(\dot\gamma Bq\)를 빼면 rendered position의 finite-difference velocity와 wind coupling/velocity metric이
+불일치하므로 생략하지 않는다. 같은 fade와 derivative convention을 angular field \(B_R\)에도 적용한다.
 Flag-like disk Gaussian은 normal rotation이 시각적으로 중요하므로 같은 generalized coordinate를 사용하는
 small angular field \(B_R\)를 허용한다. Rotation은 exponential map으로 적용하고 covariance eigenvalue는 보존한다.
 Scale/shear, nonlinear deformation-gradient transport와 higher-order SH rotation은 translation/rotation V0가
 시각적으로 실패한 증거가 있을 때만 추가한다.
 
+Branch identity와 base/Global mechanics는 R0--R2, learned Local의 \(B_{R,L,k}\) 또는 local-affine
+current-normal path는 R5, conditional fade/derivative와 다음 frame traction replay는 R6가 소유한다.
+R7은 이 upstream artifact chain을 재현하고 optional appearance evidence만 추가한다.
+
 Attachment Gaussian의 displacement/angular row는 exact zero다. Identity, proper-rigid, covariance SPD,
 finite output와 visual pop fixture를 통과해야 한다. Transport 실패 frame을 quality metric에서 제거하지 않고
 method failure denominator에 유지한다.
+
+Gate B와 Gate C가 통과하고 위 mean/covariance base renderer fixture가 성공한 후에만,
+R7의 optional renderer-side appearance branch를 검토한다. Analytic frame transport를 prior로 두고
+\[
+  \Delta R_i^t=R_i^t(R_i^0)^\top\in\mathrm{SO}(3)
+\]
+로 rest 대비 proper rotation을 정의한 뒤
+\begin{equation}
+  c_i^t=R_{\mathrm{SH}}(\Delta R_i^t)c_i^0+\Delta c_i^t,
+  \qquad
+  \Delta c_i^t=
+  \operatorname{clip}_{\delta_c}\!\left[
+  P_{\le L_{\mathrm{app}}}U_{\mathrm{app}}
+  \bigl(r_\psi(\zeta_i^t)-r_\psi(\zeta_i^0)\bigr)\right]
+  \label{eq:rd-optional-appearance}
+\end{equation}
+와 같이 bounded residual만 더한다. \(U_{\mathrm{app}}\)는 dev-frozen low-rank basis,
+\(P_{\le L_{\mathrm{app}}}\)는 degree-limited projection이며 \(\delta_c\)와 \(L_{\mathrm{app}}\)를 test 전에
+동결한다. \(\zeta_i^t\)는 freeze된 response coordinate/velocity, \(\Delta R_i^t\)와 immutable
+GS/material cue만 포함하며 camera pose, view direction, raster target을 받지 않는다.
+\(\zeta_i^0\)는 동일한 static cue에서 \(\Delta R_i=I\), \(q_S=\dot q_S=0\)으로 둔 feature이다.
+동일한 zero-state feature의 차를 취하므로 residual은 construction상 정확히 0이다. 이 readout은
+stateless이며 previous residual, residual history 또는 숨은 appearance state를 입력하지 않는다.
+
+이 branch를 학습할 때 response network, response package와 deterministic evaluator를 freeze하고
+appearance gradient를 dynamics로 보내지 않는다. Runtime graph, 별도 dynamic state 또는 second response update를
+추가하지 않는 renderer readout이다. Appearance 개선은 Gate B/C의 motion error를 대체하거나
+실패한 motion Gate를 구제할 수 없다.
 
 \section{학습 objective와 단계적 training}
 
@@ -545,7 +952,9 @@ Random impulse, distributed wind와 frequency probe \(p\)에 대해 canonical su
   \right)
   \label{eq:rd-response-loss}
 \end{equation}
-를 최소화한다. \(W_A,W_M\)는 teacher surface area/mass measure다.
+를 최소화한다. \(W_A,W_M\)는 frozen common-valid probe mask 위의
+\(W_{A,P},W_{M,P}\)다. 합/평균, reference-scale normalization, sequence reduction과
+FRF phase mask는 R2 개발 문서에서 학습 전에 동결하고 hash한다.
 FRF loss는 amplitude와 phase를 함께 보고, time loss는 position보다 velocity를 primary로 둔다.
 
 \subsection{Loss family}
@@ -566,7 +975,7 @@ Multi-resplat consistency & 같은 source surface의 independent GS variants가 
 Latent relation auxiliary & Same-surface retrieval과 close-layer shortcut을 줄이되 relation graph를 output으로 만들지 않는다.\\
 Global/Local ownership & Local이 fixed Global residual만 설명하고 중복 energy를 최소화한다.\\
 Selection sparsity/continuity & Fixed budget, turnover와 activation pop을 제한한다.\\
-Exact construction & Positive pole/damping, attachment zero, mass whitening은 penalty가 아니라 layer로 보장한다.\\
+Exact construction & Positive angular-frequency/modal damping ratio, attachment zero와 Global/Local mass construction은 penalty가 아니라 layer로 보장한다.\\
 \bottomrule
 \end{longtable}
 
@@ -582,20 +991,76 @@ Total objective는
 \end{equation}
 정확한 weight는 canonical method equation이 아니라 development config다.
 Search range, selection metric과 final value를 train/dev/test lifecycle에 맞춰 freeze하고 run hash에 넣는다.
+Analytic-only V0에서 \(\mathcal L_{\mathrm{switch}}\)는 selector score나 state automaton을 학습하지 않는다.
+Optional T6에서 frozen analytic selection 아래 Local/package continuity에만 사용할지,
+아예 \(\lambda_{\mathrm{switch}}=0\)으로 둘지는 R6 development fixture에서 비교한 뒤
+T6 실행과 Gate D test open 전에 동결한다.
+어느 경우에도 learned selector를 V0에 암묵적으로 추가하지 않는다.
+
+\subsection{Teacher period 기준 physical-time rollout curriculum}
+
+Rollout horizon은 frame 수로 고정하지 않는다. Converged teacher의 impulse/chirp에서 canonical
+surface probe velocity FRF를 teacher area/mass measure \(w_j\)로 aggregate한
+\begin{equation}
+  A_v(\omega)=\frac{\sum_j w_j\|H_{v,j}^*(\omega)\|_2^2}{\sum_jw_j}
+  \label{eq:rd-teacher-period-spectrum}
+\end{equation}
+를 구한다. Area 또는 mass 중 primary weighting, predeclared Global frequency band,
+spectral window, frequency resolution, prominence threshold와 zero-frequency exclusion 규칙을 dev에서 동결한다.
+그 밴드에서 prominence를 통과한 가장 강한 nonzero peak를 \(\omega_{\mathrm{dom}}\)으로 선택해
+\(T_{\mathrm{dom}}=2\pi/\omega_{\mathrm{dom}}\)을 정의하고,
+\(H_s=\rho_sT_{\mathrm{dom}}\)인 짧은 physical horizon에서 시작해 최종 long-horizon multiple까지
+\(\rho_s\)를 늘린다. \(\Delta t\)가 다르면 frame 수는 달라지되 비교하는 물리 시간과 period 수는
+같게 유지한다. \(\omega_{\mathrm{dom}}\), \(\rho_s\), stage transition과 final horizon은 dev에서 동결한다.
+
+Peak availability와 Gate 판정은 다음 truth table로 고정한다.
+\begin{itemize}
+  \item Teacher의 별도 spatial/time refinement에서 velocity FRF/spectrum 자체가 tolerance 안에
+  수렴하지 않으면 Gate A\(_T\) 실패다.
+  \item Spectrum이 수렴하고 clear stable peak가 있으면 위 period-normalized schedule을 사용한다.
+  \item Spectrum은 수렴했지만 broad/flat/multi-peak라 clear stable peak가 없으면 teacher failure가 아니다.
+  Dev에서 domain-wide로 미리 정한 fixed physical-time direct-long horizon
+  \(H_{\mathrm{long}}\,[\mathrm s]\)을 처음부터 사용하는 schedule로 fallback하고,
+  frame 수가 아니라 같은 seconds를 비교하며
+  teacher-period curriculum을 contribution/claim에서 삭제한다.
+  \item 어느 schedule이든 final supported physical horizon의 deterministic rollout이 발산하면
+  Gate A\(_T\)/B 실패다.
+\end{itemize}
+Fallback 사용, horizon ID와 판정 branch는 manifest와 결과 표에 기록한다.
+
+Network는 setup에서 한 번 package를 출력하므로 recurrent next-state predictor의 teacher forcing,
+scheduled sampling 또는 opaque hidden-state injection을 사용하지 않는다. 각 rollout은 동일한 초기
+physical state에서 cached package를 고정하고, deterministic evaluator가 자신의 generalized coordinate와
+velocity를 전개하며 horizon만 점진적으로 늘린다.
+
+Curriculum 자체의 효과는 direct-long-horizon schedule과 fixed-frame schedule을 대상으로 model, data split,
+probe set을 고정하고, total deterministic-evaluator step 수와 FLOPs를 primary compute budget으로 맞춘
+equal-compute ablation으로 판정한다. 이 budget을 맞추기 위해 optimizer update 수와 batch
+size/composition은 조정할 수 있으며, actual GPU wall time과 peak memory를 함께 보고한다.
+Period-normalized long rollout의 velocity/phase/energy drift 이득이 사라지면 curriculum을
+contribution에서 삭제하고 가장 단순한 schedule을 사용한다. Final supported horizon에서 in-envelope
+divergence나 decay-order 붕괴가 반복되면 짧은 horizon의 수치로 대체하지 않고 Gate A\(_T\)/B
+실패로 처리한다.
 
 \subsection{학습 순서}
 
 \begin{enumerate}
-  \item \textbf{Stage T0:} teacher convergence, mesh--GS correspondence와 unit/force sign 검증
+  \item \textbf{Stage T0:} separate teacher spatial/time convergence, common-probe mapping,
+  K0/R1 oracle와 SI unit/force sign/exact-ZOH 검증
   \item \textbf{Stage T1:} area/mass measure와 patch-to-token representation pretraining
   \item \textbf{Stage T2:} single-object/single-GS Global overfit 및 long rollout
   \item \textbf{Stage T3:} multi-resplat paired Global training과 narrow-domain held-out 검증
   \item \textbf{Stage T4:} frozen Global residual로 always-on Local package 학습
-  \item \textbf{Stage T5:} conditional Local selection과 temporal switching 학습
-  \item \textbf{Stage T6:} limited joint fine-tuning; attachment/passive construction은 항상 유지
+  \item \textbf{Stage T5:} analytic-only Local selector와 state machine 구현, 통합 및 replay 평가;
+  selector score와 state automaton은 학습하지 않음
+  \item \textbf{Stage T6:} optional Local/package continuity fine-tuning. Global field/pole과
+  Gate B checkpoint는 freeze하며 T6 안의 Global 갱신은 금지한다. Local/package가 바뀌면 기존
+  Gate C/D evidence를 무효화하고 R5/R6을 다시 실행한다. 별도 method lineage에서 Global을 바꾸면
+  R4/T3의 Gate B부터 새 checkpoint와 evidence를 만들고 이후 R5/R6을 다시 실행한다.
 \end{enumerate}
 
-Direct image/perceptual render loss는 response core가 성공한 뒤 optional fine-tuning으로만 검토한다.
+Direct image/perceptual render loss는 Gate B/C와 base renderer가 성공한 뒤,
+freeze된 motion/package에서 R7 optional appearance residual을 학습할 때만 검토한다.
 처음부터 renderer loss를 넣으면 motion Jacobian과 physical response가 틀려도 영상만 맞는 shortcut이 생길 수 있다.
 
 \section{왜 기존 방법을 그대로 쓰지 않는가}
@@ -632,10 +1097,13 @@ Transformer, latent token, \(B^\top F\), damped oscillator와 attention 자체�
 \subsection{Gate A --- Teacher, measure와 latent representation}
 
 \begin{itemize}
-  \item \textbf{Gate A\(_T\), teacher prerequisite:} mesh/time refinement가 canonical velocity, tip trajectory와
-  dominant frequency에서 수렴하고, single object Global package가 training sequence를 overfit하며 긴 free decay에서 발산하지 않는다.
-  \item \textbf{Gate A\(_M\), measure:} independent GS density/seed variant의 total area, work와 common-probe
-  response dispersion이 dev-frozen tolerance 안에 있다.
+  \item \textbf{Gate A\(_T\), teacher prerequisite:} 별도 mesh/time refinement가 canonical velocity,
+  tip trajectory와 velocity spectrum에서 수렴하고, dominant frequency가 available할 때만 해당 peak
+  frequency도 수렴하며, K0/R1 oracle 및 single-object Global package가 training sequence와 긴
+  free decay fixture를 통과한다. Converged broad/no-peak spectrum은 위 fixed-seconds fallback을 사용한다.
+  \item \textbf{Gate A\(_M\), measure:} independent GS density/seed variant의 total area/mass 합은
+  construction sanity로 확인하고, primary evidence는 local measure, analytic traction-field force/work와
+  common-probe response dispersion이 dev-frozen tolerance 안에 있는지로 판정한다.
   \item \textbf{Gate A\(_L\), latent representation:} capacity-matched direct-set encoder보다 latent token/relation이
   response 또는 density robustness를 개선한다.
 \end{itemize}
@@ -652,12 +1120,25 @@ fixed mean/nearest-response baseline보다 velocity, phase, material ordering과
 
 \subsection{Gate C --- Local necessity}
 
-Strong Global rank/capacity sweep과 Global+teacher/oracle Local residual을 same latency 또는 same active-DOF 조건에서 비교한다.
+Strong Global rank/capacity sweep과 Global+teacher/oracle Local residual은
+\textbf{actual matched-p95}에서 Gate C의 필수 primary 비교를 수행한다.
+Same active-DOF 비교는 별도 run/table의 mandatory secondary diagnostic으로 수행하며 두 축을 한 결과로 섞지 않는다.
+추가로 Global+procedural sine flutter와 Global+band-limited noise flutter를 두되,
+learned Local과 같은 spatial support proposal을 사용하고, actual matched-p95 primary 비교와
+same active-DOF secondary 비교를 각각 실행한다.
+이 support는 static GS만 입력하는 proposal rule/network를 test open 전에 freeze해 얻으며,
+teacher residual, test target 또는 test error로 선택하지 않는다. Procedural amplitude envelope와 phase는
+현재 및 과거 \(\{W_\tau,Q_\tau\}_{\tau\le t}\)만의 causal function으로 계산하고 future wind/load를 보지 않는다.
+Frequency band, amplitude normalization, envelope/filter, noise spectrum, support 규칙과 복수의 noise seed를
+development에서 domain-wide로 사전 선언하고, 모든 seed 결과를 aggregate하여 보고하며 best seed를
+고르지 않는다. Asset별 또는 test result별 tuning은 금지한다.
 Local은 다음이 모두 참일 때만 core로 남긴다.
 \begin{itemize}
   \item Traveling/local gust에서 residual이 teacher/mapping noise보다 크고 여러 object/GS variant에서 반복된다.
   \item Residual이 공간적으로 localized되고 target temporal band의 amplitude/phase/PSD에 영향을 준다.
   \item Global rank를 늘리는 것보다 oracle/always-on Local이 matched-p95에서 의미 있는 품질 이득을 낸다.
+  \item Learned Local이 same-support/budget procedural flutter보다 held-out response의 spatial phase와
+  target-band error를 유의미하게 개선한다.
 \end{itemize}
 실패하면 paper를 measure-consistent Global response로 축소한다.
 
@@ -691,6 +1172,7 @@ Selection overhead가 이득을 상쇄하면 conditional claim을 철회하고 a
   \item Capacity-matched direct static-GS \(\rightarrow\) Global response package without latent relation supervision
   \item Global rank/capacity sweep
   \item Global + oracle/always-on Local
+  \item Global + dev-frozen same-support/budget procedural sine/noise Local
   \item Global + conditional learned Local
   \item Equal-splat/opacity weight, no multi-resplat consistency, no relation auxiliary ablations
   \item 공개 코드와 task adaptation이 가능한 direct GS physics/wind 방법 1--2개
@@ -725,7 +1207,7 @@ Density invariance & Gaussian count/opacity가 바뀌면 naive mass/force가 달
 Static identifiability & 같은 geometry도 material/attachment가 다르면 response가 다르다. & 물리 metadata를 입력하고 supported preset만 주장한다.\\
 Latent collapse & Fixed token이 같은 patch를 중복하거나 teacher tessellation을 암기할 수 있다. & Coverage/duplicate probe, density pair, object-group split과 token-free baseline을 둔다.\\
 Response gauge & Mode sign/order/subspace가 비유일하다. & Mode column 대신 physical probe response를 학습한다.\\
-Local leakage & Local이 Global sway를 다시 학습해 selector 의미가 사라질 수 있다. & Frozen Global residual, complement projection과 always-on oracle Gate를 사용한다.\\
+Local leakage & Local이 Global sway를 다시 학습해 selector 의미가 사라질 수 있다. & Frozen Global residual, support-constrained Global-null projection과 always-on oracle Gate를 사용한다.\\
 Autoregressive drift & Small one-step error가 phase와 energy drift로 누적된다. & Passive pole parameterization, stable update, multi-step/free-decay loss와 stress test를 사용한다.\\
 Renderer mismatch & Mean은 맞아도 covariance/normal이 틀리면 blur와 wrong wind가 생긴다. & Translation kill 후 angular transport와 identity/rigid/SPD fixture를 추가한다.\\
 Generalization failure & Narrow data에서 network가 shape/template을 암기할 수 있다. & Source-object split, held-out aspect/silhouette, no fine-tune와 failure regime를 공개한다.\\
@@ -742,38 +1224,47 @@ per-scene fitting으로 바꾸지는 않는다.
 \subsection{Milestone}
 
 \begin{enumerate}
-  \item \textbf{R0 Contract:} typed I/O, privilege boundary, units, domain와 failure denominator 동결
-  \item \textbf{R1 Teacher smoke:} strip/flag reference convergence, mesh--GS remap, force/transport fixture
+  \item \textbf{R0 Contract:} typed I/O, SI/mass owner, privilege boundary, domain와 failure denominator 동결
+  \item \textbf{R1 Teacher smoke:} strip/flag separate reference convergence, common-probe transfer,
+  network-free oracle, traction/exact-ZOH/transport fixture
   \item \textbf{R2 Global overfit:} single object/package response overfit, passive rollout, exact attachment
   \item \textbf{R3 Measure consistency:} paired independent GS density/seed invariance와 Gate A
   \item \textbf{R4 Narrow-domain Global:} object-disjoint held-out Global response와 Gate B
   \item \textbf{R5 Local necessity:} residual atlas, high-rank Global, oracle/always-on Local과 Gate C
   \item \textbf{R6 Conditional Local:} fixed-budget selection, persistent state/fade와 Gate D
-  \item \textbf{R7 Renderer/paper:} covariance rotation, champion scene, baseline과 ablation, claim과 venue freeze
+  \item \textbf{R7 Renderer/paper:} frozen base transport evidence 검증, optional appearance,
+  champion/failure scene, baseline/ablation, claim과 venue freeze
 \end{enumerate}
 
-R1--R2가 실패하면 dataset 확대나 Local 구현을 하지 않는다. R3가 실패하면 density-invariant claim을 철회하거나
-fixed reconstruction family로 줄인다. R4가 실패하면 target-mesh-free amortized claim을 중단한다.
+R1--R2가 실패하면 dataset 확대나 Local 구현을 하지 않는다. R3 실행은 생략하지 않으며,
+Gate A\(_T\) 실패는 pipeline을 막고 Gate A\(_M\) 실패는 fixed reconstruction family로,
+Gate A\(_L\) 실패는 capacity-matched direct-set encoder로 축소한다.
+R4가 실패하면 target-mesh-free amortized claim을 중단한다.
 R5가 실패하면 Global-only 논문으로 축소하고, R6가 실패하면 always-on Local로 남긴다.
 
 \subsection{Claim 경로}
 
-\begin{longtable}{L{0.16\linewidth}L{0.16\linewidth}L{0.16\linewidth}L{0.40\linewidth}}
+\begin{longtable}{L{0.13\linewidth}L{0.13\linewidth}L{0.17\linewidth}L{0.17\linewidth}L{0.27\linewidth}}
 \toprule
-Measure & Global & Local & 허용 claim\\
+Measure & Global & Local & Conditional & 허용 claim\\
 \midrule
 \endfirsthead
 \toprule
-Measure & Global & Local & 허용 claim\\
+Measure & Global & Local & Conditional & 허용 claim\\
 \midrule
 \endhead
-Pass & Pass & Pass & Measure-consistent static-GS Global--Local wind-response distillation\\
-Pass & Pass & Fail & Measure-consistent passive Global wind-response package\\
-Fail & Pass & Pass & Fixed-reconstruction-family learned response; density claim 철회\\
-Pass & Fail & -- & Pivot 중단 또는 explicit scaffold/teacher solver로 복귀\\
-Fail & Fail & -- & Learned response 방법 중단\\
+Pass & Pass & Pass & Pass & Measure-consistent selective Global--Local wind-response distillation\\
+Pass & Pass & Pass & Fail & Measure-consistent always-on Global--Local response; selector claim 철회\\
+Pass & Pass & Fail & -- & Measure-consistent passive Global wind-response package\\
+Fail & Pass & Pass & Pass/Fail & Fixed-reconstruction-family Global--Local response; density claim 철회\\
+Fail & Pass & Fail & -- & Fixed-reconstruction-family passive Global response\\
+Any & Fail & -- & -- & Pivot 중단 또는 explicit scaffold/teacher solver로 복귀\\
 \bottomrule
 \end{longtable}
+
+Gate A\(_L\)가 실패하면 그 실패 판정을 그대로 기록하고 latent-anchor/relation contribution을 삭제한다.
+Capacity-matched direct-set encoder를 R4의 main route로 넘겨 이후 Gate B/C를 판정하며,
+direct-set 결과로 latent 이득 Gate A\(_L\)를 다시 판정하지 않는다.
 
 이전 explicit scaffold는 버리는 코드가 아니라 teacher/oracle, interpretable baseline과 fallback research route다.
 새 방향이 Gate를 통과하지 못하면 archive의 설계를 근거와 함께 복원할 수 있다.
@@ -807,11 +1298,11 @@ sampling invariance, OOD와 learning-theoretic/architectural insight가 논문�
 \begin{itemize}
   \item Latent token 수 \(K\), patch proposal과 global attention depth
   \item Global rank/pole 수, Local slot 수와 slot당 rank
-  \item Area/mass head 공유 여부와 total ownership convention
+  \item Area head architecture; nonuniform mass-fraction extension은 homogeneous V0 실패 evidence 후에만 재검토
   \item Response loss의 time/frequency weight와 rollout horizon
-  \item Local residual decomposition의 exact filter/projection rule
-  \item Selector score의 analytic-only 대 learned residual-risk 비교
-  \item Covariance rotation head 도입 시점과 higher-order appearance policy
+  \item Local ordered support proposal의 크기, overlap과 rank floor
+  \item Analytic selector 실패 시 optional immutable descriptor와 learned residual-risk의 dev architecture
+  \item R7 optional SH convention/degree, \(L_{\mathrm{app}}\), bounded residual capacity와 higher-order appearance policy
 \end{itemize}
 
 하지만 다음은 method identity라서 R0 전에 고정한다.
@@ -819,8 +1310,22 @@ sampling invariance, OOD와 learning-theoretic/architectural insight가 논문�
   \item Target forward에 mesh/connectivity/correspondence가 들어가지 않는다.
   \item Network output은 absolute deformation이 아니라 cached response package다.
   \item Mesh vertex는 dense teacher sample이지 one-to-one inference token이 아니다.
+  \item V0는 SI-only, angular frequency(rad/s), \(M_{\mathrm{ref}}\) sole mass owner와
+  homogeneous \(m_i=(M_{\mathrm{ref}}/A_{\mathrm{ref}})a_i\)를 사용한다.
+  \item Training/evaluation의 \(S_T,S_r\) common-probe map과 weighted adjoint는 mandatory지만
+  target runtime traction은 GS에서 직접 계산한다.
+  \item V0 traction은 domain-wide frozen \(\kappa_{\mathrm{aero}}\)와 two-sided normal-only quadratic law를
+  사용한다. Numerical guard는 area 곱 전에 적용하되 core activation은 0이어야 하며,
+  frame-start sample과 single exact-ZOH evaluator를 사용한다.
+  % [논문 작성 참고 -- 수정 이유]
+  % method identity에는 식별 가능한 effective scale 하나만 남기고, tangential/lift는 core claim 밖에 둔다.
+  \item Physical-valid semantics와 \(B_R\) 또는 local-affine normal/covariance base branch는
+  R0/R1 전에 method identity로 동결하고 R7에서 새로 선택하지 않는다.
   \item Global은 항상 활성이고 Local은 frozen Global residual만 소유한다.
-  \item Attachment zero와 positive/passive modal core는 deterministic construction이다.
+  \item Attachment zero와 Local hard support/Global-null whitening은 deterministic construction이다.
+  Positive/passive modal core도 같은 원칙을 따른다.
+  \item V0 Local selector는 dimensionless analytic-only이고 fade는 transport에만 적용하며
+  Active와 Decay를 같은 budget에 센다.
   \item Source-object group split과 independent multi-resplat pairing을 사용한다.
   \item Local은 Gate C 통과 전 core claim이 아니다.
 \end{itemize}
@@ -834,7 +1339,8 @@ learned aerodynamics, contact solver와 additional runtime stage를 추가하지
 새 Wind3DGS는 training mesh로 explicit scaffold를 target에 복원하는 방법이 아니다.
 Mesh simulation은 response teacher이고, static GS는 target representation이다.
 Patch 기반 encoder는 density가 다른 GS를 fixed/capped latent token으로 정리하고 내부 relation과 global context를 사용한다.
-그 token에서 area/mass measure, always-on passive Global response와 complementary Local response dictionary를 예측한다.
+그 token에서 area와 그로부터 파생한 mass measure, always-on passive Global response와
+complementary Local response dictionary를 구성한다.
 Runtime에는 wind load가 package를 excite하고, 필요한 Local slot만 fixed budget에서 활성화된다.
 
 성공 여부는 다음 네 질문으로 판정한다.
