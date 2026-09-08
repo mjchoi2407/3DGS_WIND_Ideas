@@ -54,16 +54,17 @@ Method equation과 claim의 authority는 current sketch다. Master roadmap은 st
 이전 방향의 legacy/support 또는 비교 baseline이다. 새 R0--R7 contract를 통과하지 않은 기존 결과를
 현재 learned-response 방법의 evidence로 승계하지 않는다.
 
-2026-09-09 기준 구현 진행과 acceptance 판정은 [R1 명세](development/r1_teacher_probe_oracle.tex)가 소유한다.
-이 채팅에서 수행한 Registry부터 GPU 검사, 구조·시간·공간 진단, 샘플 생성과 P3 보완의 전체 과정은
-[Teacher 개발·실험 연구 기록 TeX](development/r1_teacher_implementation_record.tex) /
-[PDF](development/r1_teacher_implementation_record.pdf)에 정리했다.
-수식·단위·경계 조건, 실패 모델과 수정 이유, 결과 분모·수치, raw/hash/재현 명령 및 논문 주장 경계를 포함한다.
+2026-09-09 기준 R1의 실행 명세·구현 상태·논문용 근거는
+[R1 통합 문서 TeX](development/r1_teacher_probe_oracle.tex) /
+[PDF](development/r1_teacher_probe_oracle.pdf) 하나에서 관리한다.
+Registry부터 GPU 검사, 구조·시간·공간 진단, 샘플 생성과 P3 보완의 전체 과정을 각 관련 절에 흡수했다.
+달라진 수식은 해당 절에서 직접 교체하고 단위·경계 조건, 변경 이유와 적용 범위를 인접 설명·TeX 주석으로 남긴다.
+실패 모델, 결과 분모·수치, raw/hash/재현 명령 및 논문 주장 경계도 같은 문서에 보존한다.
 스케치의 Teacher mass/고차 map 계약도 이에 맞춰 갱신했다. 개발 진단 통과를 R0/R1 전체 완료로 승계하지 않는다.
 
 ## Canonical 산출물 정책
 
-- 이 README가 가리키는 sketch, bibliography, master roadmap, `development/`의 R0--R7 및 R1 동반 연구 기록 TeX/PDF와
+- 이 README가 가리키는 sketch, bibliography, master roadmap, `development/`의 R0--R7 TeX/PDF와
   두 전달 bundle만 현행 방법의 canonical 산출물이다.
 - `backup/` 파일과 historical session은 당시 방향의 provenance이며 current authority가 아니다.
 - `ideas/` 최상위에는 정책 파일과 current sketch/master 산출물을 두고, 파트별 개발 문서는

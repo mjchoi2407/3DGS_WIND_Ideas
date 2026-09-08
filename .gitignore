@@ -36,7 +36,6 @@
 # Current R0--R7 standalone development plans.
 !development/r0_contract_and_schema.pdf
 !development/r1_teacher_probe_oracle.pdf
-!development/r1_teacher_implementation_record.pdf
 !development/r2_single_case_global_overfit.pdf
 !development/r3_multi_resplat_measure.pdf
 !development/r4_heldout_global.pdf

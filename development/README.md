@@ -49,13 +49,16 @@ R6 실패는 always-on Local로 축소한다.
 Open Design Decision은 아직 method authority가 아니다. 후보, 허용 경계와 판정 fixture를 기록하고,
 결정이 method identity나 claim을 바꾸면 canonical sketch/checklist에 먼저 반영한다.
 
-## R1 동반 연구 기록
+## R1 문서 안에서 구현 근거를 갱신하는 방법
 
-[Teacher 개발·실험 연구 기록 TeX](r1_teacher_implementation_record.tex) /
-[PDF](r1_teacher_implementation_record.pdf)는 R1의 논문 작성용 근거를 보존한다.
-Registry부터 샘플 생성·검증과 공간 보완까지 수식, 반례, 설계 수정, 재현 경로와 결과 해석을 연결한다.
-새 R-stage가 아니며 acceptance와 Open Design Decision의 소유권은 R1 명세에 유지한다.
-이 TeX/PDF도 master delivery bundle에 포함한다.
+[R1 TeX](r1_teacher_probe_oracle.tex) / [PDF](r1_teacher_probe_oracle.pdf) 하나에 실행 명세와 구현·실험 근거를 둔다.
+별도 구현 기록의 전체 내용을 R1의 기존 8개 절에 통합했다.
+
+- 수식·계약 변경은 해당 본문 식을 직접 교체하고 변경 이유·허용 범위를 인접 설명과 TeX 주석으로 남긴다.
+- 구현 상태는 4절, 현행 개발 후보와 이전 식의 교체 근거는 5절, 산출물·재현 명령·hash는 6절에 둔다.
+- 정량 결과는 7절, 최종 채택 여부와 남은 조건은 8절에서 관리한다.
+- 실패한 식은 실패 원인을 설명하는 위치에 당시 적용 범위를 표시해 보존하고, 현행 채택 식으로 병기하지 않는다.
+- 개발 후보의 식을 문서에 반영한 사실만으로 canonical R1 acceptance를 통과시킨 것으로 해석하지 않는다.
 
 ## 진행 상태 기록 규칙
 
@@ -93,6 +96,6 @@ latexmk -cd -g -xelatex -interaction=nonstopmode -halt-on-error \
 최상위 master checklist는 ideas repository root에서 별도로 빌드한다.
 
 R0--R7 PDF는 각 TeX와 함께 추적하는 current development deliverable이다. Part TeX를 수정하면 해당 PDF를,
-[`shared_preamble.tex`](shared_preamble.tex)을 수정하면 R0–R7과 R1 동반 연구 기록의 PDF 9개를 모두 다시 빌드한다. `.aux`, `.log`, `.toc` 등
+[`shared_preamble.tex`](shared_preamble.tex)을 수정하면 R0–R7 PDF 8개를 모두 다시 빌드한다. `.aux`, `.log`, `.toc` 등
 중간산출물은 추적하지 않으며, master 전달 bundle에는 master TeX/PDF, 이 README, shared preamble와
-R0--R7 및 R1 동반 연구 기록의 TeX/PDF를 상대 경로를 보존해 함께 넣는다.
+R0--R7 TeX/PDF를 상대 경로를 보존해 함께 넣는다.

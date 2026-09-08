@@ -3,9 +3,10 @@
 ## 요청과 인수 범위
 
 Wind3DGS ideas-side. 사용자는 이 채팅의 작업 전체를 인수인계뿐 아니라 아이디어 스케치에도 자세히 반영해
-나중에 논문 작성 시 참고할 수 있도록 요청했다. Registry부터 GPU, 구조·시간·공간 진단, sample과 P3 보완을
-[동반 연구 기록 TeX](../development/r1_teacher_implementation_record.tex) /
-[11쪽 PDF](../development/r1_teacher_implementation_record.pdf)에 통합하고 스케치의 관련 계약을 직접 보정했다.
+나중에 논문 작성 시 참고할 수 있도록 요청했다. Registry부터 GPU, 구조·시간·공간 진단, sample과 P3 보완을 정리하고
+스케치의 관련 계약을 직접 보정했다. 처음 만들었던 별도 구현 기록은 후속 요청에 따라
+[R1 통합 TeX](../development/r1_teacher_probe_oracle.tex) /
+[PDF](../development/r1_teacher_probe_oracle.pdf)의 해당 본문 절에 흡수했다. 현재 전달 문서는 R1 하나다.
 
 작업 시작 시 ideas HEAD는 `a9c11770d2746964d16b6d9454ca57e7c6970297`이었다.
 현재 README가 가리키는 스케치의 선행 리뷰 수정, master/R0–R7 분할 문서와 shared preamble이
@@ -44,7 +45,10 @@ Code의 09-06 01부터 09-08 07까지 전체 기능별 session과 experiment evi
 - [Code checkpoint](../../code/sessions/2026-09-09_01_teacher_checkpoint.md),
   [experiment checkpoint](../../experiments/sessions/2026-09-09_01_teacher_checkpoint.md)를 연결한다.
 
-## 문서·PDF·bundle 검증
+## 최초 분리본의 문서·PDF·bundle 검증
+
+이 절은 ideas commit `00edc1c`의 최초 분리본 제작 당시 기록이다. 아래 별도 기록의 빌드 명령과
+4개 PDF/22개 bundle entry는 그 시점에 한정되며, 현행 통합본의 빌드·검증은 후속 절을 따른다.
 
 이번에 수정한 canonical sketch, master roadmap, R1 명세 및 새 연구 기록 네 문서를 실제 XeLaTeX로 빌드했다.
 각 명령은 ideas root에서 실행하며 `latexmk`의 필요한 bibliography/reference pass까지 성공해야 한다.
@@ -78,3 +82,62 @@ Root 및 무관한 dirty 파일을 보존했고, code/experiments의 session ind
 
 P3 nonlinear wind backend/consistent mass/고차 map의 구체적인 설계와 입력 범위 결정부터 이어간다.
 이 문서 통합으로 학습 적격성을 바꾸지 않는다. 다음 판정도 같은 R1 문서와 evidence 계보에 누적한다.
+
+## 후속 요청: 구현 기록을 R1의 해당 본문에 흡수
+
+사용자는 R1 문서가 둘인 이유를 확인한 뒤, 구현 기록을 기존 R1에 흡수하고 달라진 수식을 해당 위치에서
+직접 교체하며 필요에 따라 코멘트를 붙이도록 요청했다. 단일 실행 문서의 큰 절 8개는 유지했다.
+별도 문서를 통째로 뒤에 붙이는 대신 아래처럼 내용을 소유 절로 옮겼다.
+
+| 이전 구현 기록의 내용 | 통합 R1 위치 |
+| --- | --- |
+| 연구 질문·작업 범위 | 1절 목적과 소유권 |
+| Teacher mass/positive quadrature·signed shape map | 3절 현행 계약과 수식 |
+| Registry·trajectory·sequence·초기 변위 | 4.2 TeacherPhysicsRegistry와 reference 생성 |
+| Common probe·비교기 구현 | 4.3 Canonical probe와 mapping |
+| 개발 sample 15개 생성·검증 | 4.7 개발용 sample과 학습 적격성 |
+| P3/spline 구조식·quadrature·경계 | 5.1 현행 구조 검증 후보 |
+| Acceleration Newmark 갱신식·precision 보정 이유 | 5.2 현행 CPU 시간 적분 |
+| Native/area hinge·quadratic patch·nonlinear shell·interior weak-force 반례 | 5.3 구조 후보의 교체 이유와 이전 식의 적용 범위 |
+| 구현 계보·원본·command·hash·전체 evidence index | 6절 산출물 |
+| GPU·시간·공간·두 입력군/연속 시간 상계 결과 | 7절 필수 fixture와 metric |
+| 채택 경계·입력 범위 미결정·후속 구현 | 8절 종료 조건과 실패 경로 |
+
+- 수식은 한 곳에서 정의해 참조한다. Quadrature mass `m_q`, full consistent mass와 constrained positivity를
+  명시했고, map의 sign 조건은 representation/law별로 분리했다.
+- 현행 P3 C0IP 식과 acceleration-form Newmark 식을 해당 설계 절에 직접 배치했다.
+  같은 KL constitutive 식과 forward/adjoint 식의 중복 정의는 참조로 정리했다.
+- 바뀐 위치에 `[수식 변경 이유]` TeX 주석과 PDF에서 읽는 적용 범위/설명을 붙였다.
+  이전 patch/hinge 식은 실패·교체 근거 절에만 당시 scope로 남긴다.
+- P3가 최종 nonlinear wind Teacher로 채택된 것은 아니다. 기존 시간 통과와 새 공간 통과를 합치지 않고,
+  원래 x² 속도 실패, development eligibility false 및 R1 종료 체크박스를 유지했다.
+- 별도 `r1_teacher_implementation_record.tex`/PDF는 통합 확인 후 제거했다.
+  제거 전 HEAD byte와 일치함을 확인했으며 원본은 `00edc1c`에서 복구 가능하다.
+- Sketch/master/index, PDF allowlist와 두 bundle을 단일 R1로 맞추고 code/experiments의 README·checkpoint 링크를 갱신했다.
+  동일 논리 작업이므로 새 session note를 추가하지 않고 각 기존 note에 후속 내용을 붙였다.
+
+통합 전 기록의 14개 항목을 모두 배치했다. 원래 숫자 토큰 239종, 코드/path literal 48종과 대표 SHA-256 5개가
+통합 source에 남아 있는지 대조했다. 원래 R1의 acceptance 항목과 기존 수학적 계약도 유지한다.
+수치 토큰 검사는 내용 검토의 보조 검사이며 물리 검증을 다시 수행한 것으로 해석하지 않는다.
+
+현행 빌드는 ideas root에서 다음 세 명령을 사용한다.
+
+```bash
+latexmk -cd -g -xelatex -interaction=nonstopmode -halt-on-error \
+  development/r1_teacher_probe_oracle.tex
+latexmk -g -xelatex -interaction=nonstopmode -halt-on-error \
+  3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.tex
+latexmk -g -xelatex -interaction=nonstopmode -halt-on-error \
+  implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22.tex
+```
+
+최종 R1 PDF는 19쪽, sketch는 27쪽, master는 6쪽으로 모두 실제 빌드에 성공했다.
+최종 로그의 undefined reference/citation, missing glyph와 overfull은 없었다.
+현행 P3/시간 갱신식과 채택 조건 페이지의 raster preview도 확인했다.
+Sketch bundle 3개 entry와 master bundle 20개 entry를 source/PDF의 byte와 대조했고,
+두 bundle에 제거한 구현 기록이 남지 않았음을 확인했다.
+R1 TeX/PDF 한 쌍만 남았고, 기존 큰 절 8개 및 acceptance checkbox 38개를 유지했다.
+변경 문서의 로컬 링크 123개, source 내 교차 참조와 whitespace 검사가 통과했다.
+이번 문서 변경에 맞춰 코드 테스트나 물리 실험을 새로 실행하지는 않았다.
+R0/R2–R7, shared preamble, 구현 source/tests와 frozen experiment artifact는 변경하지 않았다.
+무관한 기존 dirty 파일과 root는 보존한다. 이번에도 fetch/push와 새 물리 실험은 수행하지 않는다.

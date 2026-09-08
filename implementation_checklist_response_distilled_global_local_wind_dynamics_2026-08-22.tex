@@ -66,10 +66,8 @@ Master roadmap &
 R0--R7 dependency/status, stable-label routing, Definition of Done\\
 Part contract &
 \code{development/r0_*.tex}--\code{development/r7_*.tex} &
-해당 stage의 구현 계약, 미결정 설계, fixture, artifact와 exit evidence\\
-R1 동반 연구 기록 &
-\code{development/r1_teacher_implementation_record.tex} &
-Teacher 전체 개발 과정의 수식·실패·수치·재현 경로; R1 acceptance를 대체하지 않음\\
+해당 stage의 구현 계약, 미결정 설계, fixture, artifact와 exit evidence.
+R1은 구현 기록을 해당 절에 흡수하고 현행 수식·변경 주석·실험 근거를 함께 관리\\
 Executable truth &
 \code{../code} schema/config/test 및 \code{../experiments} manifest &
 part 문서를 구현한 versioned code, 실제 threshold 값, run과 evidence\\
@@ -226,7 +224,7 @@ Stage & 상태 & 다음 동작\\
 \midrule
 \endhead
 R0 & 계약 재동결 필요 & R0 Open Design Decisions와 executable schema를 먼저 닫는다.\\
-R1 & 개발 진단 진행; acceptance 미완료 & Registry/샘플·시간·공간 진단 근거는 R1 문서와 동반 연구 기록에 보존. R0 잔여 계약, 최종 동일-backend 수렴과 oracle/transport를 닫는다.\\
+R1 & 개발 진단 진행; acceptance 미완료 & Registry/샘플·시간·공간 진단 근거를 R1 본문에 통합. R0 잔여 계약, 최종 동일-backend 수렴과 oracle/transport를 닫는다.\\
 R2 & Blocked by R1 & Network-free oracle와 base transport가 통과한 뒤 시작한다.\\
 R3 & 대기 & Independent reconstruction eligibility와 density registry를 동결한다.\\
 R4 & 대기 & Dataset size와 Best Global selection protocol을 동결한다.\\
