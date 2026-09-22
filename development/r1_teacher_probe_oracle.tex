@@ -19,8 +19,8 @@
 \title{\textbf{R1 --- Teacher, Probe, and Oracle}\\
 Reference·mapping·network-free preflight 명세와 구현·검증 근거}
 \author{Wind3DGS Project}
-\date{2026-08-22; 구현·검증 근거 갱신 2026-09-20}
-\renewcommand{\DevChecklistDate}{2026-09-20}
+\date{2026-08-22; 구현·검증 근거 갱신 2026-09-22}
+\renewcommand{\DevChecklistDate}{2026-09-22}
 
 \begin{document}
 \maketitle
@@ -66,7 +66,8 @@ R1의 실행 명세, 구현 상태와 논문용 근거를 이 문서 하나에�
  \item P3 작은 굽힘의 새 wind/BC 수렴·재실행과 sample 76개 검증 (5장).
  \item P3 유한 회전 수식·GPU CPU 대조·짧은 wind/reset 수렴 (4장).
  \item 약한 바람1.5 s의 자연/세 reset 원식·시간·공간·방향 검증 (4장).
- \item CPU 풀이+HVP/CUDA graph의 전체1.5 s 비교·검산 근거 확보 (4장).
+\item CPU 풀이+HVP/CUDA graph의 전체1.5 s 비교·검산 근거 확보 (4장).
+ \item CPU/GPU 셀프 접촉의 LBVH·미분·CCD 대조, 정밀 기하 인증·실제 퇴화 거절·GPU 프레임 복원과 세 씬 연결 검증 (4장).
 \end{itemize}
 \textbf{남은 판정:} 큰 변형 범위·독립 비선형 공간 기준 및 oracle/transport.
 과거 초기 변위의 실패는 해당 fixture의 반례로 보존한다.
@@ -332,11 +333,173 @@ Newton의 비선형 잔차 보정, 전처리 GMRES, 보조 행렬 갱신/풀이�
 1/100·1/300은 본 계산/검산/재생 완료 근거가 있고1/500은 별도 비교 대상으로
 전체 완료 근거를 아직 채택하지 않았다. 각 run의 접촉 두께를 재료 h로 자동 결정하지 않는다.
 
-셀프컬리전 탐지/접촉 응답/마찰/CCD 및 공간 분할 가속은 미구현이다.
-후속 접촉 모델은 별도 개발 후보로 설계해야 하며 기존 contact-off 연구 계약을 자동 해제하지 않는다.
+기존 contact-off GPU 상주 경로는 유지한다. 2026-09-22의 별도 CPU 기준 및 GPU 접촉 후보는
+아래 \S\ref{sec:r1-cpu-self-contact}, \S\ref{sec:r1-gpu-self-contact}에 기록하며,
+마찰이나 기존 contact-off 연구 계약을 자동 해제하지 않는다.
 GPU 기능 구현과 제한된 개발 검산 완료는 최종 동일-backend 공간/시간 수렴,
 고차 probe/traction map, 독립 GS 공통 영역, network-free oracle 및 transport의 완료를 뜻하지 않는다.
 R0 및 canonical R1 종료 조건은 유지한다.
+
+\subsection{CPU 셀프 접촉 기준 후보 (2026-09-22)}
+\label{sec:r1-cpu-self-contact}
+사용자 선택에 따라 GPU 이식에 앞선 CPU 기준 경로를 구현했다. IPC Toolkit 1.6.0의
+FP64 API를 사용하며 FP32 입력 변환을 FP32 solver 실행으로 해석하지 않는다.
+P3 자유도를 고정 선형 collision proxy로 보간하고 힘과 Hessian을 원래 자유도로 adjoint한다.
+LBVH의 VF/EE 후보를 정밀 검사하며 같은 macro element나 이웃 element 전체를 제외하지 않는다.
+마찰 없는 고정 강성 IPC barrier를 기존 consistent-mass Newmark 잔차에 더하고,
+ACCD로 predictor/Newton 보정 경로를 제한한다. C-IPC 전체 재료 모델이나 strain limiting을
+채택한 것은 아니다. 같은 Newton 상태의 contact Hessian은 HVP 사이에 재사용한다.
+
+시간 단계의 quadratic 위치 보간은 별도의 chord/tube 분할과 CCD로 검사한다.
+유효 시작 간격을 위반한 상태는 CCD 호출 전에 거절하고, 미인증 구간도 실패로 처리한다.
+원래 CPU solver 허용오차·재료식과 접촉 OFF 결과를 유지하며 비국소 Hessian 때문에
+기존 shell-only current coloring은 접촉 경로에서 금지한다. 작은 기준 경로는 rest 보조 풀이를 쓴다.
+
+관련 단위·회귀 검사는47개 통과, CUDA graph 전용1개 미실행이다. 두 저속 국소 접근의
+접촉 ON 경로는 완료·검산됐고 LBVH/전수 탐색이 일치했다. 약한 barrier의 고속1m/s 접근은
+dt/64에서도 시간 중간의 최소 간격 위반으로 거절되어 \textbf{전체 샘플 통과가 아니다}.
+사용자 승인 후 barrier 계수1,000/10,000을 비교하여 세 사례 각각 LBVH/전수 탐색을
+완주하고 각 강도264개 접촉 substep의 힘·시간 CCD를 독립 검산했다. 이는 후속 GPU 경로의
+엄격한 \code{local_metric} 기하 승인까지 포함한 통과가 아니다. 시험한 값 중 최소 통과값1,000의
+고속 사례를 추가 시간 세분화했으며0.25/0.125ms 끝점의 위치·속도 상대 차이는
+각각0.0163\%,0.0303\%로 사전1\% 진단 한도를 통과했다. 전체 시간 궤적의 canonical 수렴은 아니다.
+초기 활성 접촉 에너지와 반발도 강도에 따라 변하고,10,000의 시간 이산화 에너지 잔차는 더 크므로
+큰 계수를 최적 물성이나 production 기본값으로 자동 채택하지 않는다. 약한100의 실패는 보존한다.
+추가로 연결된 말린 천의 한 step과 proxy 세분화의 공간 오차를 확인했다.
+시험 최소 간격1mm를 재료 h나 실제 장면의 최종 접촉 두께로 자동 승계하지 않는다.
+
+보장 대상은 선형 proxy다. Bernstein 공간 오차 예산을 명시하면 최소 간격에2배 여유를
+더하고 초과 상태를 거절하지만, 이것만으로 인접 고차 곡면까지 포함한 전역 단사성을 증명하지 않는다.
+Unweighted IPC의 세분화별 에너지는 표본 수에 의존하므로 접촉 응답의 공간 수렴도 미완료다.
+후속 GPU resident 접촉은 다음 절을 따른다. 마찰·실장면 calibration·장기 풍하중·R1 acceptance와 학습 적격성은 남아 있다.
+후속 기존 bend500 직사각형/손수건/삼각 깃발의 입력을 보존하는 별도 실행기를 준비했다.
+접촉 ON preload부터 다시 계산해 무풍/바람을 분기하며, 원본 GPU hi/lo/current와 다른
+CPU FP64/rest 기준 실행임을 명시한다. 세 실제 메시에서 초기 검사와 중력/최대풍의
+총6개 짧은 단계 검산을 통과했지만 그 구간 접촉 에너지는0이다. 큰 접힘이나 장기 접촉
+완주의 근거로 승계하지 않으며 본 실행은 미시작이다. 이 초기 실행기는 CPU 전용이며
+GPU는 후속 별도 실행기로 제공한다. 동결 입력/명령/검사 근거는
+\code{experiments/R1_teacher_velocity_reset/self_contact/three_scenes.md}가 소유한다.
+구현 계약은 \code{code/docs/p3_self_contact.md}, 설정·전체 수치·source/hash·실패 분모는
+\code{experiments/R1_teacher_velocity_reset/self_contact/README.md} 및 연결 report가 소유한다.
+
+\subsection{GPU 전 단계 셀프 접촉 개발 후보 (2026-09-22)}
+\label{sec:r1-gpu-self-contact}
+CPU 기준과 같은 P3 proxy 및 unweighted IPC barrier를 Warp CUDA로 이식했다.
+초기 LBVH 구축·매 질의 refit, VF/EE 거리와 EE mollifier, 정확한 힘/Hessian,
+P3 adjoint와 HVP, Newton 이동 CCD 및 quadratic 시간 경로 검사를 GPU에서 수행한다.
+고정 topology/초기 구조 준비와 프레임 파일 I/O는 CPU지만 반복 수치 계산·승인·복원에는
+CPU IPC를 호출하지 않는다. 실제 거리·미분·CCD는 FP64, 상태는 FP64 hi/lo이고
+AABB에만 외향 여유를 둔 FP32를 쓴다. 전체 FP32 또는 M1/M2 접촉 이식 완료가 아니다.
+
+GPU 시간 CCD는 quadratic Bézier control의 상대 속도 상한에 따른 보수 진행이다.
+CPU chord/tube Tight Inclusion 구현과 별도로 저장 경로를 대조한다. 후보 버퍼 overflow,
+무효 시작점·공간 예산 초과·CCD 반복 한도는 안전 승인으로 바꾸지 않는다.
+BVH의 연결은 최초 구축 후 고정하고 경계만 refit하며, 큰 변형에서 주기적 재구축에 따른
+속도 개선은 미검증이다. 고정 트리로도 보수 경계를 갱신하므로 후보 누락을 허용하지 않는다.
+
+실제 Newton/Krylov 연산자는 shell+contact다. 비국소 접촉을 shell coloring에 섞지 않고,
+current 보조 행렬만 shell-only 근사로 사용한다. 접촉 OFF Gauss/CPU fallback은 없다.
+모든 substep을 별도 GPU 객체에서 힘·에너지·위치·핀·국소 기하·시간 CCD로 검산하고,
+실패 프레임의 네 raw hi/lo 상태를 GPU에서 시작점으로 복원한다. 조건 분기 본문과
+cuDSS 자식을 포함한 그래프에서 host copy/callback0을 확인했다.
+
+초기 v1의 GTX1080Ti 실제 접촉 여섯 사례에서 GPU/CPU 상태와 실패 판정이 일치했다.
+계수1,000의 저속 면/엣지8단계씩은 엄격 검산까지 통과했다. 고속12단계의 마지막2단계와
+계수10,000의 세 사례 일부는 \code{local_metric} 충분조건 미해결로 거절됐다.
+해당 네 사례12구간의 실패 원본은 보존하며 v1 자체를 완주 통과로 승격하지 않는다.
+강도를 높이면 간격뿐 아니라 반발·변형도 커지므로10,000을 자동 채택하지 않았다.
+GPU 저장 경로의56개 구간은 모두 별도 CPU CCD를 통과했고, 기하 거절 단계도 CPU와 같았다.
+
+사용자 승인 후 v2에 \code{local_metric_refined_v1}을 추가했다. 기존 scalar 충분조건이
+실패하면 \(C=F^{\mathsf T}F\)의 Bernstein 행렬75개에서 최소 고유값 하한을 계산한다.
+Basis의 비음수성과 partition of unity로 영역 전체의 양의 면적 하한을 확인하고,
+미인증 영역만 공간4분할\(\times\)시간2분할한다. GPU 큐와 깊이는 유한하며,
+overflow·깊이 한도·비유한 값은 계속 거절한다. 기존 FP64 변환 여유에 행렬 계산·분할
+반올림 여유를 더하며 형식적 임의 정밀도 증명이나 연속 ODE 해의 인증으로 주장하지 않는다.
+정밀 검사도 같은 수치 표면의 모든 위치·시간에서 비퇴화를 요구한다. 허용 변형률을
+높이거나 물성·barrier·dt를 바꾸지 않는다. hi/lo의 큰 공통 원점은 보정 뺄셈으로 제거한다.
+
+같은 여섯 사례56단계의 재계산은 힘·위치·에너지·핀·기하·시간 CCD를 모두 통과했다.
+이전 미인증12구간은 추가 행렬 인증 또는 깊이1 분할로 해결됐고,
+CPU longdouble 행렬 인증·IPC 시간 CCD와 대조했다. 과거 기하 flags는 별도 저장한다.
+관련106개 검사가 skip 없이 통과했으며 실제 공간/시간 붕괴·거의 퇴화·버퍼 한도 거절과
+GPU rollback을 포함한다. 상세 수치 여유·큐 계약은
+\code{code/docs/refined_metric_certificate.md}가 소유한다.
+
+기존 bend500 직사각형·손수건·삼각 깃발의 GPU 전용 개별 실행 스크립트를 제공한다.
+입력 byte/hash·재료·외력·공식 허용오차를 유지하며 새 접촉 ON preload2초에서
+raw hi/lo 위치·속도를 보존해 calm/wind 각4초를 독립 분기한다. 세 씬 각각 rest 시작의
+중력/최대풍64단계 프레임, 총384단계가 v2의 GPU 검산을 통과했다.
+이 구간에는 활성 접촉이 없으며 장기 전체 궤적 완료의 근거로 승계하지 않는다.
+RTX5070·긴 접촉 궤적·실장면 calibration·proxy 응답 수렴·곡면 전역 인증 및 R1 acceptance는 남아 있다.
+구현 계약은 \code{code/docs/p3_gpu_self_contact.md}, v1 원시 결과·실패 분모는
+\code{experiments/R1_teacher_velocity_reset/self_contact/gpu.md}, v2 결과·hash·명령은
+\code{experiments/R1_teacher_velocity_reset/self_contact/refined_geometry.md}가 소유한다.
+
+후속 성능 후보 v3는 첫 GMRES 보조 RHS와 채택 trial의 평가를 인스턴스별로 재사용하고,
+GMRES 작업 배열의 순차 초기화를 device memset으로 바꾼다. 활성 접촉이 없으면
+GPU 분기에서 미분/HVP를 생략하며, 독립 검산에서는 사용하지 않는 Hessian만 제거한다.
+힘/에너지와 proxy 오차의 유한성, 후보 overflow, 기하/시간 CCD 및 rollback 조건은 유지한다.
+추가 GPU 회귀 검사와 제한 상태 대조는 수치 동작의 검증이며 속도 향상의 확정 근거와 구분한다.
+동시 GPU 작업이 확인된 성능 측정은 참고용으로 보존했고, 당시 GPU 단독 실행의
+정량 증가율과 최종 가속 배수는 보류했다. 구현 조건과 재측정 명령은
+\code{code/docs/p3_gpu_self_contact.md} 및
+\code{experiments/R1_teacher_velocity_reset/self_contact/performance.md}를 따른다.
+장기 실행이나 R1 acceptance를 완료로 승격하지 않는다.
+
+후속 병렬 후보 v4는 AABB 진단 카운터를 질의별로 합산하고, 접촉 쌍의 공통 미분 항을
+GPU 버퍼에 한 번 계산한다. 미분/조립/HVP의 고정 worker는 GPU 후보 수까지만 처리한다.
+CCD는128후보 단위의 GPU 작업 큐와 블록별 최소 보폭 합산을 사용하며,
+후보 완전성·반복 한도·기하/힘 승인 조건은 유지한다. 추가 버퍼와 launch가 필요하므로
+구조 개선만으로 실측 가속을 주장하지 않는다. GPU 회귀와 국소/세 씬 제한 상태 대조를 통과했고,
+작은 공유 GPU 측정에서 항상 빨라진 것은 아니므로 초기 단독 성능 채택은 보류했다.
+검증 조건·추가 메모리·남은 BVH/atomic 병목과 현재 실행 명령은
+\code{experiments/R1_teacher_velocity_reset/self_contact/parallel_v4.md}를 따른다.
+
+이후 사용자가 다른 GPU 작업을 종료했다고 확인한 조건에서 실제 동결v1/v4와 통제된
+ON/OFF/재사용/병렬 경로를 새로 측정했다. 세 씬의 rest 시작 중력/최대풍 각1프레임을
+예열 후3회 반복한 중앙값에서 v1 대비v4의 계산+독립 검산 시간은16.2--28.2\% 단축됐다.
+같은 실행기의 비접촉 첫 프레임에서 접촉 추가 비용은15.7--43.5\%였으며, 과거 공유 부하의
+수배 관측 차이를 순수 접촉 비용으로 채택하지 않는다. 마지막v4 병렬화만의 추가 이득은
+시간 변동과 비슷하고 증가/감소가 섞여 일관된 가속으로 판정하지 않는다.
+기존 승인 기준과 상태 대조를 통과했지만 장기/고밀도 접촉 비용, RTX5070 및 R1 acceptance는
+여전히 미완료다. 정확한 표본 분모·클럭/부하 한계·source/hash와 재현 명령은
+\code{experiments/R1_teacher_velocity_reset/self_contact/idle_performance.md}가 소유한다.
+
+후속 BVH 후보 v5는 primitive별 트리 순회와 후보별 FP64 거리 검사를 분리한다.
+같은 보수 AABB 및 최근접점 수식을 사용하며, 임시 원시 후보 버퍼가 넘치면 GPU 조건 분기에서
+기존 탐색 전체를 재실행한다. 임시 버퍼를 새로운 승인 한도로 사용하거나 후보를 잘라내지 않는다.
+최종 active/swept 후보 한도, 시간 CCD, 독립 검산과 프레임 복원 기준은 유지한다.
+같은 실행기에서 v4 대조와 분리 경로를 예열 후3회씩 순서 교대 측정한 세 씬의 초기 프레임은
+계산+검산 중앙값5.0--14.1\% 단축, 여섯 조건 중앙값 합계9.0\% 단축이었다.
+호출 수는 유지하며 호출당 탐색 비용을 줄인다. 국소139개 회귀, 동결v5의 접촉6사례56단계와
+세 씬384단계 및 기존 상태 대조를 통과했지만 본 시뮬레이션은 실행하지 않았다.
+측정 변동, 고밀도 접힘과 임시 후보 재탐색 비용, RTX5070 및 기존 R1 미완료 범위는 남아 있다.
+상세 측정 조건·원본/hash·스크립트는
+\code{experiments/R1_teacher_velocity_reset/self_contact/broadphase_v5.md}가 소유한다.
+
+사용자가 시작한 v5 직사각형 장기 실행은 preload120프레임과 calm240프레임을 완료했지만,
+wind104프레임 승인 뒤 다음 프레임(index104)에서 code99와 flags[0,14]를 기록하고 GPU에서
+프레임 시작 상태로 복원한 뒤 종료됐다. Contact/path status는0이었으며 이 결과를 세 씬 장기
+완주나 training 적격성 근거로 세지 않는다. 후속 v8 메인 원본은 wind112번째 시도에서 실패했다.
+직전 승인 raw hi/lo로 해당 프레임을 재현해60번째 substep의 GMRES code2를 확인했다.
+앞59단계 검산은 통과했고 참 선형 잔차가 목표에 미달한 상태에서720회 한도에 도달했다.
+미완료 trace의 audit99가 원래 오류를 덮었다. 과거108프레임 외부 종료라는 추정은 정정한다.
+
+v9은 graph 전체 GPU marker를 host의 graph 제출--동기화 wall에 매 프레임 맞춰 내부 solver,
+audit과 collision 시간을 자동 정규화하고 raw timer와 배율을 함께 보존했다.
+그러나 cycles3에서6으로 늘리는 복구는 해당 실제 실패 프레임을 해결하지 못했다.
+후속 v10은 최초 오류와 잔차를 GPU에 보존하고 유한한 code2, contact/path status0,
+정상 시간축과 실패 전 prefix의 독립 검산 통과가 확인된 경우에만 GPU 조건 분기로
+frame-start hi/lo에서 dt를 절반으로 줄여128단계를 한 번 재실행한다.
+같은 held 외력·물성·접촉식·허용오차를 유지하며 선택, 적분, 독립 검산과 채택도 GPU다.
+해당 프레임의128단계 검산과 실제 자동 복구를 통과했고 관련 고유 회귀54개가 통과했다.
+실패 시도 비용도 전체 시간에 포함하며 다음 프레임은 기본64단계로 복귀한다.
+다른 오류나 재실패는 거절하고 Gauss/contact-OFF/CPU fallback은 없다.
+이는 단일 실패 프레임의 국소 복구 근거이며 세 씬 장기 완주, RTX5070 복구,
+시간 수렴과 training 적격성은 미완료다. 원본 실패 분모·계측 의미·실행 명령은
+\code{experiments/R1_teacher_velocity_reset/self_contact/frame_timing_v8.md}와
+\code{experiments/R1_teacher_velocity_reset/self_contact/frame112_recovery.md}가 소유한다.
 
 \subsection{현재 개발 상태와 acceptance 구분 (2026-09-11)}
 
@@ -360,6 +523,7 @@ Quadratic patch shell & 제한된 수치 검증 통과 & Objectivity/미분 및 
 P3/독립 spline & 선형 압력·작은 굽힘 fixture 통과 & 각 조건의 1\% 공간/방향/기준 대조. \(x^2\) 초기 변위의 속도 실패 유지. 비선형 shell의 독립 기준으로 자동 승계하지 않음.\\
 P3 유한 회전 shell & 수식·CPU/GPU 구현 및 개발 검증 & 막·굽힘 응력, 요소 연결, consistent mass, Newmark와 공력 구현. 약한 바람 통과;4배 공간 미달·10초 풀이 실패/시간 한도는 아래 참조.\\
 Teacher 실행 개선 & FP64 hi/lo GPU 상주 개발 경로 & Newton/GMRES·보조 풀이·독립 검산 GPU화 및 후속 최적화. 과거 CPU+HVP 비교는 당시 근거로 보존.\\
+P3 셀프 접촉 & CPU/GPU 제한 개발 검증 & GPU 전 단계·프레임 복원·세 씬384단계 검산. 정밀 기하 인증으로 과거12구간 미인증 해결·실제 퇴화 거절. 마찰/장기 접촉/곡면 전역 인증·공간 수렴 미완료.\\
 Development samples & 생성·검증 완료 & Newton 3개 source/15 window, 원본·replay·loader 검증. Training eligibility false.\\
 Canonical R1/Oracle & 미완료 & 동일 backend의 최종 수렴, 고차 map/traction, spectrum/tip/work, 독립 GS 2개와 oracle/transport 필요.\\
 \bottomrule
