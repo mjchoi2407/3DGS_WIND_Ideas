@@ -57,3 +57,40 @@
 \newenvironment{stopbox}[1]
   {\begin{tcolorbox}[colback=StopLight,colframe=StopRed,title={#1},fonttitle=\bfseries,before upper=\raggedright]}
   {\end{tcolorbox}}
+
+% 표지 다음 진행 페이지. 완료 flag의 단일 소유자는 각 문서의 DevProgressRow 첫 인자다.
+% 0=미완료, 1=완료. 본문 근거와 종료 조건을 확인한 뒤에만 1로 바꾼다.
+\newcounter{devprogressdone}
+\newcounter{devprogresstotal}
+\newcommand{\DevDoneMark}{\textcolor{GateGreen}{\ensuremath{\boxed{\checkmark}}}}
+\newcommand{\DevPendingMark}{\ensuremath{\square}}
+\providecommand{\DevChecklistDate}{2026-09-09}
+\newcommand{\DevProgressRow}[4]{%
+  \stepcounter{devprogresstotal}%
+  \ifnum#1=1\relax\stepcounter{devprogressdone}\DevDoneMark\else\DevPendingMark\fi
+  & #2 & #3 & #4\\[0.5em]
+}
+\newcommand{\DevChecklistPage}[4]{%
+  \clearpage
+  \phantomsection\label{sec:dev-checklist}
+  \pdfbookmark[0]{#1 개발 진행 체크리스트}{dev-checklist}
+  {\Large\bfseries\color{CoreBlue}#1 개발 진행 체크리스트}\par
+  \textbf{기준일: \DevChecklistDate}\hfill\textbf{#2}\par
+  각 행은 해당 장 또는 단계의 개발 종료 여부다. 문서 작성과 일부 기능 구현만으로 완료 체크하지 않는다.
+  본문 링크에서 구현·검증·산출물 근거와 남은 조건을 함께 확인한다.
+  \setcounter{devprogressdone}{0}\setcounter{devprogresstotal}{0}%
+  {\small\setlength{\tabcolsep}{4pt}%
+  \begin{longtable}{L{0.055\linewidth}L{0.25\linewidth}L{0.13\linewidth}L{0.48\linewidth}}
+    \toprule 완료 & 장 / 바로가기 & 상태 & 완료 조건 또는 남은 작업\\\midrule
+    #3
+    \bottomrule
+  \end{longtable}}
+  \textbf{종료 체크: \arabic{devprogressdone}/\arabic{devprogresstotal}}\quad
+  {\small 이 개수는 개발 시간이나 작업량의 비율이 아니다.}\par
+  #4
+  \vfill
+  {\small\DevDoneMark\;해당 범위의 구현·검증·근거 완료\quad
+   \DevPendingMark\;진행 또는 대기.\par
+   완료 처리 시 본문 근거를 갱신하고 해당 행의 flag를 0에서 1로 바꾼 뒤 PDF를 다시 빌드한다.}
+  \clearpage
+}

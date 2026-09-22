@@ -1,36 +1,47 @@
-# Sessions
+# ideas 작업 요약
 
-Concise summaries of idea-side AI-agent conversations and work sessions.
+## 현재 상태
 
-Use these notes to recover context for research framing, novelty decisions, references, checklist changes, and paper-position pivots.
+- **R1 GPU 선택 상태 동기화:** GPU별 Newmark M1/M2·직접 Gauss R64/mixed32와 세 전환 조건을 제한 개발 후보로 반영. R1/Gate·학습 적격성은 미완료. [기록](2026-09-20_01_adaptive_integrator_status.md).
 
-## 최근 연구 기록
+- **half2→Gauss8 고부하 표본 비교 완료:** 기존 검산은 통과했으나 정책 간 속도 차이가 커 기본 적용 보류. [인계](2026-09-18_02_cascade_retry_samples.md).
 
-- [2026-09-09 Teacher 전체 개발 근거의 canonical 통합](2026-09-09_01_teacher_evidence_integration.md):
-  이 채팅의 구현·실험 계보, 스케치의 mass/고차 map 보정과 R1 상태. 후속 요청에 따라 구현 기록을 R1 본문에 흡수하고 수식·변경 주석·결과를 통합.
+- **Newmark 절반 dt 복구 별도 준비:** GPU 자동 선택 유지·half는 R64, 제한 GPU 제어/검산 통과. 본 실행 대기. [인계](2026-09-18_01_gpu_half_retry.md).
 
-읽기 전용 설명, 확인, 감사 또는 진단만 수행한 경우에는 session note를 만들지 않는다. 파일 변경이나 지속적으로 보존할 연구 결정이 생긴 경우에만 기록한다. 같은 logical task의 후속 대화, 보정과 재검증은 기존 note를 계속 갱신하고, 새 `NN`은 독립된 새 작업에만 할당한다. 다른 저장소를 읽기만 한 것은 그 저장소에 session note를 만들 사유가 아니다.
+- **GPU 자동 선택 세 씬 준비:** 기존 M1/M2/R64 연결,1080Ti 세 씬 제한 검산 통과. 본 실행 대기·5070 환경 보류. [인계](2026-09-17_02_gpu_auto_scenes.md).
 
-Suggested filename:
+- **frame225 추가 최적화 분기 종료:** 선형/line search 통과와 전체 Newton 미검증을 분리. 운영 채택 보류·기존 선택 유지. [인계](2026-09-17_01_frozen_line_search.md).
 
-```text
-YYYY-MM-DD_NN_short_topic.md
-```
+- **Teacher 가속 개발 제한 종료:** 사례별 M1/M2/R64 동결, 두 제한 시험 완료. 생산/학습 적격성 유지·5070 Graph 미해결. [인계](2026-09-16_01_teacher_closeout.md).
 
-`NN` is a two-digit sequence for idea-side notes created on the same date, starting at `01`. Keep this sequence local to `ideas/sessions/`; do not coordinate it with code-side or experiment-side notes. Legacy unnumbered notes may remain as-is unless a migration is explicitly requested.
+- **수렴 실패 시 Gauss6차8분할:** 현행 retry 스크립트 교체, 실제 실패2프레임 복구·세 씬 smoke 완료, 본3씬 ready0. [인계](2026-09-15_03_newmark_dt_retry.md).
 
-Suggested format:
+- **Newmark 고정/절반dt 복구 세 씬 준비:** 로컬 스크립트2개·본6개 ready0. 실제 실패 프레임 복구와18개 짧은 phase 검증 통과, 본 실행 미시작. [인계](2026-09-15_03_newmark_dt_retry.md).
 
-```markdown
-# YYYY-MM-DD NN short topic
+- **기하 경고 전용 전환 재시험 완료:** 128분할 감시 제거, 두 국소 상태 모두 Newmark 한 번으로 검산 통과. 프리로드1~2초 범위 재확인, 순간속도 정확도 문제/실제 기하 경고 해결은 미완료. [인계](2026-09-15_02_integrator_switch.md).
 
-## Context
+- **R1 Newmark/Gauss 전환 근거:** 원상 복원·시간 지표와 공식 teacher 기준의 구분 반영. 국소 검산 통과와 가속 미확인을 분리하며 Gate 유지. R1 PDF/bundle 갱신. [인계](2026-09-15_02_integrator_switch.md).
 
-## Decisions
+- **R1 Gauss 스케일링·FP64 보정:** 원래 참 잔차와 FP32 선형 풀이의 분리/국소 검증 경계 반영. 두 국소 프레임 검산 통과, 전 구간 채택과 학습 적격성은 미완료. R1 PDF/bundle 갱신. [인계](2026-09-15_01_gauss_fp32.md).
 
-## Changed Files
+- **Gauss6차8분할·1/500 세 씬 준비:** 개별 실행/서브컴 출력 분리, 모든 단계 GPU 검산·60Hz 상태 기록·재생 연결. 본 실행은 세 씬 완료 report와 재생을 확인했으며, 장기 시간 수렴/teacher 검증은 미완료. [인계](2026-09-14_03_gauss_sequences.md).
 
-## Verification
+- [R1 GPU Gauss 개발 근거 반영](2026-09-14_02_gpu_gauss_status.md): GPU 적분/독립 검산과 두 국소 상태의 비교 범위를 반영했다. 기본 솔버/Gate와 최종 미완료 판정은 유지한다.
 
-## Next
-```
+확인 기준: 2026-09-14 R0·R1 구현 상태 동기화 및1/500 후속 정확도 진단 반영. 제한된 개발 완료와 canonical 미완료를 구분한다.
+
+- [R0·R1 동기화 및 PDF 갱신](2026-09-14_01_r0_r1_status_sync.md): GPU 상주·국소 기하·중력/굽힘 근거를 반영하고 이전 하이브리드 설명을 과거 상태로 분리했다. 최종 수렴·GS/oracle/transport·R0 계약 전체는 미완료.
+- [학습 정확도 후속 진단](2026-09-14_01_r0_r1_status_sync.md#학습-정확도-후속-진단-반영): 시간 세분화와 짧은 구간의 고차 적분 가능성을 R1에 반영했다. 독립 Gauss 검산·전체 궤적 검증·가속화는 미완료이며 기본 솔버와 Gate는 유지한다.
+
+- 현행 방법·claim과 canonical 경로는 [ideas README](../README.md)가 소유한다.
+- [기여와 다밀도 GS 학습 목적 명확화](2026-09-13_01_contribution_clarification.md#현재-상태): teacher 품질 전제와 MC1--MC3의 구분, 공통 teacher 응답에 독립 GS 재구성을 연결하는 목적과 비교군을 스케치에 반영했다. 검증 완료를 선언하지 않는다.
+- [문서 감사와 Teacher 근거 통합](2026-09-09_01_teacher_evidence_integration.md#현재-상태): 2026-09-11 확인한 30fps 목표, 채택 실행 경로,4배 공간 미달·10초 추천 없음과 확인 범위를 본문에 반영했다. R1 전체/학습 적격성은 미완료다.
+- 실행 중 상태는 [실험 요약](../../experiments/sessions/README.md)에서 확인하며, 확정 결과·계약·claim 변경 때 관련 문서만 갱신한다.
+
+## 기록 찾기와 작성
+
+- [과거 목록](history.md)은 필요할 때만 검색한다. 최근 날짜 전체를 일괄 읽지 않는다.
+- 현행 기록 규칙과 간결한 형식은 [공통 지침](../../AGENTS.md#간결한-작업-기록)을 따른다.
+- 중간 보고 원문은 기록하지 않는다. 결과·결정·재발 방지·근거 링크만 남긴다.
+
+- [기록·맥락 최적화](2026-09-10_01_token_context_optimization.md): 운영 문서 정리; 연구·구현 진척과 별개다.

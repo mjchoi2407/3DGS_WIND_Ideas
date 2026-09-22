@@ -16,7 +16,8 @@
 \title{\textbf{R0 --- Contract and Schema}\\
 개발 명세와 동결 체크리스트}
 \author{Wind3DGS Project}
-\date{2026-08-22}
+\date{2026-08-22; 상태 감사 2026-09-14}
+\renewcommand{\DevChecklistDate}{2026-09-14}
 
 \begin{document}
 \maketitle
@@ -32,10 +33,34 @@
 이 문서는 구현하면서 상태와 구체적 선택을 갱신하되, sketch의 계약을 조용히 바꾸지 않는다.
 \end{contractbox}
 
+\DevChecklistPage{R0}{Teacher 하위 계약 진행 · R0 미완료}{
+\DevProgressRow{0}{\hyperref[sec:r0-chapter-1]{1. 목적과 소유권}}{대기}{범위와 owner를 executable contract 및 manifest에 연결}
+\DevProgressRow{0}{\hyperref[sec:r0-chapter-2]{2. 진입 입력}}{대기}{Domain/metric/material/attachment seed와 revision 동결}
+\DevProgressRow{0}{\hyperref[sec:r0-chapter-3]{3. 이미 동결된 계약}}{진행}{Teacher 하위 계약과 target schema의 구분·불변량 검증}
+\DevProgressRow{0}{\hyperref[sec:r0-chapter-4]{4. 구현 체크리스트}}{진행}{Setup/frame schema, validator와 serialization 완성}
+\DevProgressRow{0}{\hyperref[sec:r0-chapter-5]{5. Open Design Decisions}}{대기}{미결정 option과 freeze 시점·근거 확정}
+\DevProgressRow{0}{\hyperref[sec:r0-chapter-6]{6. 산출물}}{대기}{Canonical registry와 stage artifact manifest 생성}
+\DevProgressRow{0}{\hyperref[sec:r0-chapter-7]{7. 필수 fixture와 metric}}{대기}{Roundtrip/permutation/privilege/단위 fixture 통과}
+\DevProgressRow{0}{\hyperref[sec:r0-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{R0 종료 항목과 hand-off report 승인}
+}{
+\begin{contractbox}{현재 확인된 범위}Teacher registry 등 일부 하위 계약 구현은 있다. Target response schema, 선택 동결 및 canonical R0 fixture/report의 완료 근거는 아직 없다. R1의 개발 진단을 R0 전체 완료로 승계하지 않는다.\end{contractbox}
+}
+
+\begin{contractbox}{2026-09-14 하위 구현과 R0 완료의 구분}
+Teacher 실행에서는 SI 물성, FP64 hi/lo 상태, 코드/입력 hash 동결, 단계별 report와
+원시 checkpoint, 중단 prefix 보존 및 재생 검증을 구현했다. 이는 개발 run의 재현 계약이다.
+Target setup/frame/response package의 machine-readable schema, coordinate/permutation,
+physical-valid/rank/privilege 검증과 canonical serialization fixture 전체를 완료했다는 근거는 아니다.
+따라서 R0의 미완료 체크는 유지한다. R1의 GPU/굽힘 결과를 R0 target 계약 완료로 승계하지 않는다.
+구현 계약은 \code{code/docs/gravity_wrinkle_test.md}, 검증 근거는
+\code{experiments/R1_teacher_velocity_reset/timestep_search/cloth_coarse/}의 결과 문서를 따른다.
+\end{contractbox}
+
 \tableofcontents
 \newpage
 
 \section{목적과 소유권}
+\label{sec:r0-chapter-1}
 
 R0의 목적은 이후 R1--R7이 같은 입력, 단위, tensor 의미, artifact와 실패 분모를 사용하도록
 \textbf{실행 경계}를 먼저 고정하는 것이다. 이 단계에서는 teacher data나 network 성능을 만들지 않는다.
@@ -62,6 +87,7 @@ Gaussian 입력 순서가 달라도 stable ID로 되돌린 결과가 같으며, 
 들어갈 수 없고, 모든 물리 scalar와 failure가 registry에 기계적으로 기록되는 상태다.
 
 \section{진입 입력}
+\label{sec:r0-chapter-2}
 
 \subsection{권위 문서와 초기 상태}
 
@@ -115,6 +141,7 @@ R0 시작 시 아직 값이 비어 있어도 다음 registry의 schema와 owner�
 \end{itemize}
 
 \section{이미 동결된 계약}
+\label{sec:r0-chapter-3}
 
 이 절은 설계 선택지가 아니다. 변경하려면 canonical sketch와 모든 downstream 문서를 함께 revision한다.
 
@@ -134,6 +161,12 @@ R0 시작 시 아직 값이 비어 있어도 다음 registry의 schema와 owner�
 
 \subsection{출력 의미와 runtime 경계}
 
+Teacher-only schema는 element/DOF와 positive quadrature, mass-law 및 map-law/version을 구분한다.
+고차 Teacher의 consistent mass와 signed shape map은 R1 및 sketch의
+\code{eq:rd-teacher-consistent-mass}, \code{eq:rd-common-probe-map}을 따른다.
+Student GS의 area-derived diagonal mass 또는 기존 convex map schema로 고차 payload를 해석하지 않는다.
+최종 고차 registry/validator는 아직 미구현이며 native Teacher 하위 계약의 존재로 동결을 대체하지 않는다.
+
 \begin{itemize}
   \item Setup network 출력은 absolute deformation이나 next pose가 아니라
   \textbf{causal force-to-motion operator의 parameter를 담은 response package}다
@@ -147,6 +180,10 @@ R0 시작 시 아직 값이 비어 있어도 다음 registry의 schema와 owner�
 \end{itemize}
 
 \subsection{Typed control과 evaluator identity}
+
+R1의 checkpoint/velocity-reset은 teacher-only 탐색 기록이다. 이를 target frame input이나 기존 typed
+artist control에 추가한 것으로 해석하지 않는다. 비정지/window 시작을 student에 사용할 때는
+\(q,\dot q\) 초기화와 초기 재구성 오차의 명시적 계약이 필요하며 구체적인 알고리즘은 아직 미동결이다.
 
 \begin{itemize}
   \item \(0\le g_W(t)\le g_W^+\), \(W_t^{\mathrm{eff}}=g_W(t)W_t\)이며 wind direction은 \(W_t\)가 소유한다.
@@ -181,6 +218,8 @@ R0 시작 시 아직 값이 비어 있어도 다음 registry의 schema와 owner�
   Patch/attention relation은 같은 network forward 안에서만 사용하는 transient computation이다.
   \item Mesh topology와 correspondence는 teacher simulation, training loss와 evaluation remap에만 허용된다.
   \item 같은 source object의 모든 mesh, independent GS variant, material, wind와 frame은 같은 split에 둔다.
+  원본 trajectory, checkpoint 분기, intervention 시각과 파생 window/patch의 lineage를 보존하고
+  velocity-reset 분기도 원본과 같은 source-object group에 둔다.
   \item Gaussian-to-token aggregation은 set 입력을 읽고 token-to-Gaussian query decoder는 입력 permutation에
   equivariant해야 한다. Serialized 순서가 model 의미를 바꾸어서는 안 된다.
   \item Test normalization, threshold, rank, budget와 loss weight는 test open 뒤 바꾸지 않는다.
@@ -202,6 +241,7 @@ R0 시작 시 아직 값이 비어 있어도 다음 registry의 schema와 owner�
 \end{itemize}
 
 \section{구현 체크리스트}
+\label{sec:r0-chapter-4}
 
 \subsection{Schema와 API}
 
@@ -335,6 +375,7 @@ R7 & \code{RendererEvidenceContract}, \code{ChampionFailureRegistry}, \code{Pape
 dependency hash로만 연결한다.
 
 \section{Open Design Decisions}
+\label{sec:r0-chapter-5}
 
 \begin{decisionbox}{해석 규칙}
 아래 ``권장 기본값''은 구현을 시작하기 위한 제안이며 아직 동결된 방법이 아니다.
@@ -351,14 +392,14 @@ dependency hash로만 연결한다.
 \midrule
 \endhead
 Physical-valid 정책 & Gaussian hard valid set / asset-level reject / 둘의 사전 선언 조합 & hard valid set에서만 area를 normalize하고 invalid \(a,m,F,B\)를 exact zero; confidence가 전체적으로 낮으면 asset reject & R0 package schema 종료 전\\
-Canonical frame & attachment 축+geometry cue / sign-invariant feature+confidence reject & attachment-defined primary cue, symmetry에서는 sign-invariant feature와 reject reason & R1 data 생성 전\\
+Canonical frame & attachment 축+geometry cue / sign-invariant feature+confidence reject & attachment-defined primary cue, symmetry에서는 sign-invariant feature와 reject reason & Accepted R1 data 생성 전\\
 Tensor layout & dense padded / ragged offsets / 혼합 & Global dense, Local은 ordered index+offset ragged, batch mask 명시 & 첫 package serializer 전\\
 Stable ordering & input order 유지+ID gather / canonical stable-ID sort & serialization은 stable-ID sort, network는 임의 permutation을 허용하고 output을 ID로 scatter & R0 permutation fixture 전\\
 Rank 부족 & rank 축소 / fixed-rank package reject & V0는 fixed rank 미달 package reject로 contract를 단순화 & R2a dataset freeze 전\\
 Normal/\allowbreak covariance & shared-coordinate angular field \(B_R\) / versioned local-affine mean update & persistent graph가 필요 없는 \(B_R\); supervision과 package 크기가 과도하면 local-affine & R1 traction/transport fixture 전\\
 Angular composition & \(B_R\) branch에서 Global/Local 합산 후 한 번의 exp-map / 사전 선언한 다른 proper composition & deterministic order와 proper \(\mathrm{SO}(3)\), attachment identity를 동시에 만족하는 가장 단순한 규칙 & R1 traction/transport fixture 전\\
 Covariance encoding & full \(3\times3\) / symmetric packed-6 / eigensystem & packed-6 저장+validator에서 full SPD 복원 & serializer v1 동결 전\\
-Serialization & safe tensor container+JSON manifest / schema binary format & 비실행형 tensor container와 canonical JSON manifest를 분리하고 semantic content hash 사용 & R1 artifact 생성 전\\
+Serialization & safe tensor container+JSON manifest / schema binary format & 비실행형 tensor container와 canonical JSON manifest를 분리하고 semantic content hash 사용 & Canonical R1 artifact 생성 전\\
 Metric normalization & SI absolute / reference-scale dimensionless / 둘 다 보고 & Gate primary는 predeclared dimensionless, SI absolute는 diagnostic으로 병기 & R2 loss/metric freeze 전\\
 Threshold lifecycle & 모든 수치 R0 고정 / stage별 dev freeze & schema는 R0, 숫자는 해당 stage dev에서 test open 전에 freeze하고 immutable version 발행 & 각 stage test open 전\\
 \bottomrule
@@ -369,6 +410,7 @@ Physical-valid 정책과 normal/covariance branch는 area, load, current normal�
 sketch와 master roadmap의 semantics도 먼저 갱신한다. 그 revision/hash가 일치해야 R0를 종료할 수 있다.
 
 \section{산출물}
+\label{sec:r0-chapter-6}
 
 R0 완료 시 최소한 다음 canonical artifact ID가 존재해야 한다. 괄호 안 파일명은 예시이며 registry가 실제 경로를 소유한다.
 
@@ -394,6 +436,7 @@ physical-valid/normal branch ID, response field와 pole 의미, rank/condition, 
 % 논문에서 물리 파라미터와 numerical safeguard를 분리해 보고할 수 있게 한다.
 
 \section{필수 fixture와 metric}
+\label{sec:r0-chapter-7}
 
 \begin{longtable}{L{0.22\linewidth}L{0.50\linewidth}L{0.18\linewidth}}
 \toprule
@@ -421,10 +464,13 @@ Failure denominator & NaN, invalid covariance, rank fail, rollout fail과 OOD가
 수동 screenshot이나 log 문구만으로 합격 처리하지 않는다.
 
 \section{종료 조건과 실패 경로}
+\label{sec:r0-chapter-8}
 
 \subsection{R0 종료 조건}
 
-다음이 모두 참일 때만 R1을 시작한다.
+다음이 모두 참일 때만 canonical R1 acceptance와 학습 label 승격을 진행한다.
+격리된 teacher-only 개발 진단·샘플 생성은 허용하지만 \code{training_eligible=false}로 유지하며,
+그 하위 검사 결과를 R0 전체 완료로 승계하지 않는다.
 \begin{itemize}
   \item[$\square$] setup/frame/package/state/trace type과 tensor semantic axis가 machine-readable schema로 닫혔다.
   \item[$\square$] Coordinate, physical-valid, rank, normal/covariance와 serialization 선택이 decision record로 동결됐다.
@@ -436,7 +482,7 @@ Failure denominator & NaN, invalid covariance, rank fail, rollout fail과 OOD가
 \begin{stopbox}{R0 실패와 routing}
 Setup package와 frame response increment를 혼용하거나, topology/correspondence leak를 닫지 못하거나,
 unit/mass/valid-set owner가 두 개 이상이거나, permutation/serialization 후 의미가 달라지면
-teacher 생성과 network 구현을 시작하지 않는다. Schema와 fixture owner를 고쳐 같은 R0를 다시 실행한다.
+accepted Teacher 생성과 학습 경로 진입을 진행하지 않는다. Schema와 fixture owner를 고쳐 같은 R0를 다시 실행한다.
 Dataset 확대, Local module 또는 renderer는 이 실패를 해결하는 경로가 아니다.
 \end{stopbox}
 

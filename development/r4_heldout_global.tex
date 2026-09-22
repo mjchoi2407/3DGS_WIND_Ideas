@@ -25,9 +25,23 @@ Canonical \code{eq:rd-setup-input}, \code{eq:rd-response-package},
 \code{eq:rd-exact-zoh}를 이름으로 참조한다.
 \end{contractbox}
 
+\DevChecklistPage{R4}{R1–R3 선행 조건 대기}{
+\DevProgressRow{0}{\hyperref[sec:r4-chapter-1]{1. 목적과 소유권}}{대기}{Held-out domain과 Global claim 범위 확인}
+\DevProgressRow{0}{\hyperref[sec:r4-chapter-2]{2. 진입 입력}}{대기}{R1–R3 hand-off 및 source-object split 확보}
+\DevProgressRow{0}{\hyperref[sec:r4-chapter-3]{3. 이미 동결된 계약}}{대기}{Privilege·lineage·selection·evaluator 계약 검증}
+\DevProgressRow{0}{\hyperref[sec:r4-chapter-4]{4. 구현 체크리스트}}{대기}{Global training/held-out 평가와 Best Global hand-off}
+\DevProgressRow{0}{\hyperref[sec:r4-chapter-5]{5. Open Design Decisions}}{대기}{Dataset size와 model selection protocol 동결}
+\DevProgressRow{0}{\hyperref[sec:r4-chapter-6]{6. 산출물}}{대기}{Frozen Best Global과 held-out report 생성}
+\DevProgressRow{0}{\hyperref[sec:r4-chapter-7]{7. 필수 fixture와 metric}}{대기}{Unseen wind·객체·장기 rollout과 비용 검증}
+\DevProgressRow{0}{\hyperref[sec:r4-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{Gate B 및 실패 시 범위 축소 판정}
+}{
+\begin{contractbox}{진입 경계}Source-object-disjoint 학습·held-out 결과와 Best Global은 아직 없다. 같은 원본의 window/patch/velocity-reset 분기는 split을 공유해야 한다.\end{contractbox}
+}
+
 \tableofcontents
 
 \section{목적과 소유권}
+\label{sec:r4-chapter-1}
 
 R4의 목적은 target mesh, target dynamic video와 per-target fine-tuning 없이 static 3DGS와
 typed metric/material/attachment 입력만으로 held-out object의 passive Global response package를
@@ -46,6 +60,7 @@ R4는 Local residual, conditional selector 또는 appearance branch를 학습하
 Gate B가 닫히기 전에는 R5--R7 결과를 보고 Global config를 다시 선택하지 않는다.
 
 \section{진입 입력}
+\label{sec:r4-chapter-2}
 
 \begin{longtable}{L{0.28\linewidth}L{0.60\linewidth}}
 \toprule
@@ -75,12 +90,14 @@ R0--R3의 unit, common-probe, evaluator, measure와 eligibility hash가 바뀌�
 자동 승계하지 않는다. Compatibility manifest가 같지 않으면 새 실험 lineage를 만든다.
 
 \section{이미 동결된 계약}
+\label{sec:r4-chapter-3}
 
 \subsection{Object split와 inference boundary}
 
 \begin{itemize}
   \item 같은 source object의 mesh, 모든 independent GS variant, material과 wind sequence는
   하나의 train/dev/test group에 둔다.
+  원본 trajectory와 checkpoint/velocity-reset 분기의 window·patch도 같은 group에 두고 lineage를 검사한다.
   \item Test object에는 원칙적으로 2--3개의 declared independent GS density/seed variant를 둔다.
   R3에서 density claim을 철회했다면 fixed-family variant만 사용하고 그 범위를 명시한다.
   \item Test target의 mesh, dynamic RGB/video, teacher trajectory와 correspondence는 setup input,
@@ -136,12 +153,13 @@ Gate A\(_L\) evidence를 무효화해 R3부터 새 lineage로 실행한다. R2b 
 Test 결과나 R5 Local 결과를 보고 Best Global을 다시 선택하거나 per-asset pole/force scale을 보정하지 않는다.
 
 \section{구현 체크리스트}
+\label{sec:r4-chapter-4}
 
 \subsection{Split와 dataset audit}
 
 \begin{itemize}
   \item[$\square$] Stable source-object fingerprint와 group ID 생성
-  \item[$\square$] Mesh/GS/material/wind 파일에서 train/dev/test 교차 중복 검사
+  \item[$\square$] Mesh/GS/material/wind와 원본·분기·window·patch lineage에서 train/dev/test 교차 중복 검사
   \item[$\square$] Aspect ratio, silhouette, material preset, metric scale와 attachment-region 분포표 생성
   \item[$\square$] Test에는 unseen phase/two-tone 또는 reversed traveling-gust composition 포함
   \item[$\square$] 학습보다 긴 zero-wind recovery/free-decay sequence를 dev/test에 고정
@@ -190,6 +208,7 @@ Test 결과나 R5 Local 결과를 보고 Best Global을 다시 선택하거나 p
 \end{itemize}
 
 \section{Open Design Decisions}
+\label{sec:r4-chapter-5}
 
 \begin{decisionbox}{Gate B는 아직 수치적으로 미완성}
 Gate B의 자연어 목표는 정해졌지만 primary metric, numeric threshold, aggregation과 Boolean AND/OR 식은
@@ -209,6 +228,7 @@ held-out 결과가 좋아 보여도 Gate B pass를 선언할 수 없다.
 \end{enumerate}
 
 \section{산출물}
+\label{sec:r4-chapter-6}
 
 \begin{longtable}{L{0.30\linewidth}L{0.58\linewidth}}
 \toprule
@@ -231,6 +251,7 @@ held-out 결과가 좋아 보여도 Gate B pass를 선언할 수 없다.
 \end{longtable}
 
 \section{필수 fixture와 metric}
+\label{sec:r4-chapter-7}
 
 \subsection{필수 fixture}
 
@@ -258,6 +279,7 @@ held-out 결과가 좋아 보여도 Gate B pass를 선언할 수 없다.
 Primary 확정과 Gate B 수치식은 Open Design Decision이며 test-open 전에 registry로 동결한다.
 
 \section{종료 조건과 실패 경로}
+\label{sec:r4-chapter-8}
 
 \begin{contractbox}{R4 종료 조건}
 Leakage-free split, dev-only model selection, immutable Best Global export와 sealed-test report가 완성되고,

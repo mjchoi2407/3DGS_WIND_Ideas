@@ -24,9 +24,23 @@ Canonical \code{eq:rd-area-mass}, \code{eq:rd-common-probe-map}과
 \code{eq:rd-common-probe-adjoint}를 이름으로 참조한다.
 \end{contractbox}
 
+\DevChecklistPage{R3}{R2 선행 조건 대기}{
+\DevProgressRow{0}{\hyperref[sec:r3-chapter-1]{1. 목적과 소유권}}{대기}{R2 이후 measure/latent 비교 범위와 owner 확인}
+\DevProgressRow{0}{\hyperref[sec:r3-chapter-2]{2. 진입 입력}}{대기}{Independent GS variant와 동일 Teacher/probe 확보}
+\DevProgressRow{0}{\hyperref[sec:r3-chapter-3]{3. 이미 동결된 계약}}{대기}{Map-law·공통 mask·measure·누설 방지 구현 확인}
+\DevProgressRow{0}{\hyperref[sec:r3-chapter-4]{4. 구현 체크리스트}}{대기}{Pairing/measure/response consistency와 ablation 실행}
+\DevProgressRow{0}{\hyperref[sec:r3-chapter-5]{5. Open Design Decisions}}{대기}{Density family, capacity와 Gate threshold 동결}
+\DevProgressRow{0}{\hyperref[sec:r3-chapter-6]{6. 산출물}}{대기}{Variant registry, paired response와 Gate report 생성}
+\DevProgressRow{0}{\hyperref[sec:r3-chapter-7]{7. 필수 fixture와 metric}}{대기}{Mapping floor·면적/질량·response/latent 비교 검증}
+\DevProgressRow{0}{\hyperref[sec:r3-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{Gate A\(_M\)/A\(_L\)과 direct-set fallback 경로 판정}
+}{
+\begin{contractbox}{진입 경계}Independent reconstruction과 GS별 density 비교는 아직 실행하지 않았다. 기존 개발용 Teacher probe 검사로 Gate A\(_M\)/A\(_L\)을 통과시킬 수 없다.\end{contractbox}
+}
+
 \tableofcontents
 
 \section{목적과 소유권}
+\label{sec:r3-chapter-1}
 
 R3의 목적은 같은 source surface에서 독립적으로 복원한 3DGS들이 Gaussian 수, density,
 seed와 view 조건이 달라도 \textbf{같은 물리적 표면 measure와 force-to-motion response}를
@@ -52,6 +66,7 @@ dispersion이다.
 \end{contractbox}
 
 \section{진입 입력}
+\label{sec:r3-chapter-2}
 
 R3 실행은 아래 입력이 모두 versioned artifact로 존재할 때만 시작한다.
 
@@ -77,9 +92,13 @@ R3 실행은 아래 입력이 모두 versioned artifact로 존재할 때만 시�
 \end{longtable}
 
 같은 source object의 mesh, 모든 GS variant, material, wind sequence는 하나의 split group에 둔다.
+Accepted Teacher의 시간·공간 통과는 동일 structure/element/mass/damping/attachment/load identity를
+공유해야 한다. Consumer는 Teacher/GS 각각의 map-law/version을 확인하며 고차 signed Teacher map을
+GS convex map으로 해석하지 않는다. R1의 개발용 sample은 이 accepted 입력을 대신하지 않는다.
 Source surface 하나에서 한 GS를 단순 split/duplicate한 결과는 independent reconstruction으로 세지 않는다.
 
 \section{이미 동결된 계약}
+\label{sec:r3-chapter-3}
 
 \subsection{Pair와 denominator}
 
@@ -127,6 +146,7 @@ Analytic traction은 area ownership 검사용 payload다. Probe traction \(\tau_
 \end{itemize}
 
 \section{구현 체크리스트}
+\label{sec:r3-chapter-4}
 
 \subsection{Variant registry와 pairing}
 
@@ -190,6 +210,7 @@ Analytic traction은 area ownership 검사용 payload다. Probe traction \(\tau_
 \end{itemize}
 
 \section{Open Design Decisions}
+\label{sec:r3-chapter-5}
 
 \begin{decisionbox}{R3 시작 전에 닫을 결정}
 다음 항목은 canonical 방법 identity가 아니라 R3 개발 계약의 미결정값이다.
@@ -216,6 +237,7 @@ Analytic traction은 area ownership 검사용 payload다. Probe traction \(\tau_
 \end{enumerate}
 
 \section{산출물}
+\label{sec:r3-chapter-6}
 
 \begin{longtable}{L{0.30\linewidth}L{0.58\linewidth}}
 \toprule
@@ -242,6 +264,7 @@ Analytic traction은 area ownership 검사용 payload다. Probe traction \(\tau_
 Dataset split, metric/threshold registry, probe/map/common-valid mask와 evaluator hash도 함께 기록한다.
 
 \section{필수 fixture와 metric}
+\label{sec:r3-chapter-7}
 
 \subsection{필수 fixture}
 
@@ -267,6 +290,7 @@ Total area/mass equality, positivity와 hash 일치는 필수 sanity이지만 pr
 Token coverage/duplicate/collapse, map coverage와 latency는 mandatory diagnostic이다.
 
 \section{종료 조건과 실패 경로}
+\label{sec:r3-chapter-8}
 
 \begin{contractbox}{R3 종료 조건}
 Gate A\(_T\) prerequisite를 통과한 뒤 declared multi-resplat group 전체가 frozen denominator로 평가되고,

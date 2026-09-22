@@ -1,6 +1,7 @@
 \documentclass[10pt]{article}
 
 \input{shared_preamble.tex}
+\renewcommand{\DevChecklistDate}{2026-09-11}
 
 \hypersetup{
   pdftitle={R2 Single-Case Global Overfit --- Wind3DGS Development Specification},
@@ -34,10 +35,24 @@ R2a fixed-seconds feasibility와 R2b curriculum/baseline}
 그 뒤에만 \textbf{R2b curriculum/baseline}을 실행한다.
 \end{contractbox}
 
+\DevChecklistPage{R2}{R1 선행 조건 대기}{
+\DevProgressRow{0}{\hyperref[sec:r2-chapter-1]{1. 목적과 소유권}}{대기}{R1 통과 후 T1/R2a/R2b 실행 범위와 owner 확인}
+\DevProgressRow{0}{\hyperref[sec:r2-chapter-2]{2. 진입 입력}}{대기}{Accepted label/probe/oracle와 초기 상태 계약 확보}
+\DevProgressRow{0}{\hyperref[sec:r2-chapter-3]{3. 이미 동결된 계약}}{대기}{Package·loss·시간·evaluator 계약을 구현에 대조}
+\DevProgressRow{0}{\hyperref[sec:r2-chapter-4]{4. 구현 체크리스트}}{대기}{T1, fixed-seconds overfit, 이후 curriculum/baseline}
+\DevProgressRow{0}{\hyperref[sec:r2-chapter-5]{5. Open Design Decisions}}{대기}{Rank, loss weight, horizon과 capacity budget 동결}
+\DevProgressRow{0}{\hyperref[sec:r2-chapter-6]{6. 산출물}}{대기}{Checkpoint/package/rollout 및 비용 report 생성}
+\DevProgressRow{0}{\hyperref[sec:r2-chapter-7]{7. 필수 fixture와 metric}}{대기}{운동·위상·장기 안정성 및 oracle gap 검증}
+\DevProgressRow{0}{\hyperref[sec:r2-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{R2a 및 R2b 종료·schedule/fallback 판정}
+}{
+\begin{contractbox}{진입 경계}기존15개 development window와 P3 작은 굽힘 sample76개는 개발 근거로 보존한다. 사용자 지시에 따라 물리 수식 구현·검증 전 추가 데이터 발행은 보류한다. R1 oracle/GS·시작 상태 계약까지 확보한 뒤 R2를 실행한다. 학습 성능의 완료 근거는 아직 없다.\end{contractbox}
+}
+
 \tableofcontents
 \newpage
 
 \section{목적과 소유권}
+\label{sec:r2-chapter-1}
 
 R2의 핵심 질문은 ``현재 setup network와 response package가 믿을 수 있는 한 개의 teacher fixture를
 실제로 외울 수 있는가''다. Generalization, multi-resplat consistency와 Local 필요성은 여기서 주장하지 않는다.
@@ -61,6 +76,7 @@ R2a는 학습 가능성을 가장 작은 폐쇄계에서 확인한다. R2b는 �
 single-case baseline 승리는 논문 claim의 증거가 아니다. Learned Global held-out claim은 R4/Gate B가 소유한다.
 
 \section{진입 입력}
+\label{sec:r2-chapter-2}
 
 \subsection{R0/R1 필수 artifact}
 
@@ -75,6 +91,13 @@ single-case baseline 승리는 논문 claim의 증거가 아니다. Learned Glob
 \end{itemize}
 
 R1 종료 조건 중 하나라도 미충족이면 R2 training command를 실행하지 않는다.
+현재 생성된 Newton development window 15개는 \code{training_eligible=false}이며 R2 label이 아니다.
+후속 P3의76개 patch sample은 지정한 작은 굽힘 wind/reset의 수렴·원본·batch 검증을 통과했다.
+\code{sample_scope_eligible=true}이며 큰 변형 또는 R1 전체 채택은 아니다.
+이를 R2에 사용하려면 해당 response package의 oracle/GS 연결과 명시적 시작 상태 계약을 먼저 확인한다.
+실제 accepted R1 artifact/hash와 eligibility를 모두 확인하고, loader의 개발용 opt-in으로 이 경계를 우회하지 않는다.
+사용자가 후속 구조 모델로 선택한 P3 유한 회전 shell의 수식·solver 검사는 R1에서 진행한다.
+선행 작은 굽힘 sample이나 새 수식 검사를 R2 학습 시작 승인으로 해석하지 않는다.
 
 \subsection{R2 최소 데이터 slice}
 
@@ -92,12 +115,22 @@ R1 종료 조건 중 하나라도 미충족이면 R2 training command를 실행�
 
 \subsection{Model 진입 상태}
 
+사용자가 원하는 장면 길이는10--20 s이며, 현재 R1의 첫10 s 시간 간격 탐색은 추천 후보를
+확보하지 못했다. 이를 accepted R2 label이나 확정된 \(H_{\rm long}\) 값으로 사용하지 않는다.
+짧은 smoke와 최종 장기 사용 범위는 구분하고, R1 입력 적격성과 아래 horizon 동결 절차를 먼저 닫는다.
+
+R1의 rest-start 변화 바람/velocity-reset 25개 trace는 개발 검산을 통과했지만 속도 수렴과 굽힘 상태
+coverage에 한계가 있다. 적절성·수렴·입력 범위가 승인된 뒤
+R2 slice 편입 여부를 판단한다. 이를 근거로 기존 impulse/step 및 aero-off displaced decay를 삭제하거나
+현재 학습 적격성이 false인 reset trace를 필수 학습 입력으로 간주하지 않는다.
+
 초기 target model은 patch encoder, fixed/capped latent token, token global context,
 token-to-Gaussian equivariant query readout, positive area head와 area-derived mass,
 Global response field와 positive pole/damping head로 제한한다. Setup에서 package를 한 번 cache하고
 frame 동안 network를 다시 호출하지 않는다.
 
 \section{이미 동결된 계약}
+\label{sec:r2-chapter-3}
 
 \subsection{범위와 exact construction}
 
@@ -140,6 +173,9 @@ Total area/mass, positivity, attachment와 whitening처럼 construction으로 �
   \item Network는 setup에서 한 번 package를 출력한다. Recurrent teacher forcing, scheduled sampling,
   target state injection과 opaque hidden-state correction을 사용하지 않는다.
   \item 각 rollout은 같은 explicit initial physical state에서 시작하고 evaluator의 \(q,\dot q\)만 전개한다.
+  비정지/window 시작에는 명시적 state 초기화 또는 앞선 wind 구간 재생과 초기 재구성 오차 검증이 필요하다.
+  Teacher 형상·속도를 저장한 사실만으로 package 내부 상태가 초기화되었다고 보지 않는다.
+  Reset 경계를 일반 연속 window로 숨기거나 매 frame 정답 상태를 주입하지 않는다.
   \item Horizon 비교는 frame count가 아니라 seconds다. \(\Delta t\)가 달라도 같은 physical time을 비교한다.
   \item R2a fixed-seconds overfit을 먼저 통과하지 못하면 period curriculum을 열지 않는다.
   \item 학습 horizon보다 긴 in-envelope rollout의 NaN/divergence와 declared damping/control decay-order 붕괴는
@@ -171,6 +207,7 @@ R2a가 통과한 뒤 동일 data/probe/horizon/method identity에서 다음을 �
 Capacity/FLOPs/parameter matching rule은 test 결과 전 development config로 동결한다.
 
 \section{구현 체크리스트}
+\label{sec:r2-chapter-4}
 
 \subsection{공통 data/model/evaluator 준비}
 
@@ -243,11 +280,20 @@ R2a에서는 curriculum과 baseline run을 시작하지 않는다.
 \end{itemize}
 
 \section{Open Design Decisions}
+\label{sec:r2-chapter-5}
 
 \begin{decisionbox}{해석 규칙}
 R2는 실제 loss와 optimizer를 시험하는 단계이므로 선택지가 많다. 아래 권장 기본값은 시작점일 뿐이다.
 R2a acceptance run 전에 loss/metric/horizon/package-capacity를 동결하고, R2b 전에 schedule/baseline matching을
 추가 동결한다. Test나 downstream Gate 결과를 본 뒤 R2 version을 소급 변경하지 않는다.
+\end{decisionbox}
+
+\begin{decisionbox}{30fps 목표의 조기 비용 확인 --- 제안, 미채택}
+최종 목표는 바람 조작 시 렌더링·입력·동기화까지 약33.3 ms/frame 이내다. Teacher의 실행 시간과 별도로
+R1 oracle/R2 첫 package의 힘·반응 갱신·Gaussian transport 비용을 일찍 측정하자는 의견을 제시했다.
+조기 측정 범위와 시점은 아직 확정하지 않았으며, 구현 완료나 새 R2 acceptance 조건으로 취급하지 않는다.
+Rank/Gaussian 수/대상 GPU와 출력 해상도를 고정하고 충분한 표현 품질을 함께 확인해야 한다.
+렌더러를 제외한 비용만 측정했으면 전체30fps 달성으로 보고하지 않는다. 최종 측정은 R7 계약을 따른다.
 \end{decisionbox}
 
 \begin{longtable}{L{0.18\linewidth}L{0.26\linewidth}L{0.30\linewidth}L{0.16\linewidth}}
@@ -277,6 +323,7 @@ Acceptance threshold & oracle-relative / absolute dimensionless / 둘의 conjunc
 \end{longtable}
 
 \section{산출물}
+\label{sec:r2-chapter-6}
 
 \subsection{T1 prephase 산출물}
 
@@ -316,6 +363,7 @@ Acceptance threshold & oracle-relative / absolute dimensionless / 둘의 conjunc
 \end{itemize}
 
 \section{필수 fixture와 metric}
+\label{sec:r2-chapter-7}
 
 \begin{longtable}{L{0.25\linewidth}L{0.49\linewidth}L{0.16\linewidth}}
 \toprule
@@ -346,6 +394,7 @@ Primary motion metric은 velocity, displacement/tip, amplitude/phase와 target-b
 Renderer image quality는 이 단계의 pass condition이 아니며 base transport의 finite/rest/SPD fixture만 요구한다.
 
 \section{종료 조건과 실패 경로}
+\label{sec:r2-chapter-8}
 
 \subsection{R2a 종료 조건}
 

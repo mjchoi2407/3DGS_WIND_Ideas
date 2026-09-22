@@ -23,9 +23,23 @@ Canonical \code{eq:rd-local-residual}과
 \code{eq:rd-local-support-projection}을 이름으로 참조한다.
 \end{contractbox}
 
+\DevChecklistPage{R5}{Gate B 대기}{
+\DevProgressRow{0}{\hyperref[sec:r5-chapter-1]{1. 목적과 소유권}}{대기}{Gate B 뒤 localized residual의 필요성 확인}
+\DevProgressRow{0}{\hyperref[sec:r5-chapter-2]{2. 진입 입력}}{대기}{Frozen Best Global과 residual/metric 입력 확보}
+\DevProgressRow{0}{\hyperref[sec:r5-chapter-3]{3. 이미 동결된 계약}}{대기}{Support·Global-null·residual·state 정합 검증}
+\DevProgressRow{0}{\hyperref[sec:r5-chapter-4]{4. 구현 체크리스트}}{대기}{Oracle Local, learned always-on 및 procedural 비교}
+\DevProgressRow{0}{\hyperref[sec:r5-chapter-5]{5. Open Design Decisions}}{대기}{Support proposal·rank·budget·threshold 동결}
+\DevProgressRow{0}{\hyperref[sec:r5-chapter-6]{6. 산출물}}{대기}{Residual atlas와 Local package/report 생성}
+\DevProgressRow{0}{\hyperref[sec:r5-chapter-7]{7. 필수 fixture와 metric}}{대기}{Localization·phase·matched-p95와 Gate C metric 검증}
+\DevProgressRow{0}{\hyperref[sec:r5-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{Gate C 또는 Global-only 경로 판정}
+}{
+\begin{contractbox}{진입 경계}Local 학습이나 Gate C 결과는 아직 없다. 전체 coupled response에서 frozen Global이 설명한 성분을 뺀 residual만 Local label로 사용한다.\end{contractbox}
+}
+
 \tableofcontents
 
 \section{목적과 소유권}
+\label{sec:r5-chapter-1}
 
 R5의 목적은 ``Local을 추가하면 좋아진다''가 아니라 다음 질문을 순서대로 닫는 것이다.
 
@@ -41,6 +55,7 @@ R5는 residual atlas, Local support package, oracle/learned/procedural 비교와
 R4의 Global checkpoint를 다시 학습하거나 rank/config를 바꾸지 않으며, R6 selector의 latency claim을 하지 않는다.
 
 \section{진입 입력}
+\label{sec:r5-chapter-2}
 
 \begin{longtable}{L{0.29\linewidth}L{0.59\linewidth}}
 \toprule
@@ -68,6 +83,7 @@ Gate B를 통과하지 못했거나 Best Global identity가 하나로 고정되�
 Support proposal은 teacher residual이나 test error를 보지 않는 static-GS-only 입력으로 test-open 전에 동결한다.
 
 \section{이미 동결된 계약}
+\label{sec:r5-chapter-3}
 
 \subsection{Frozen Global residual}
 
@@ -78,6 +94,9 @@ Local label은 teacher full motion이 아니라 frozen Global이 설명한 compo
 \(r\)은 canonical common-probe의 time/frequency response이며 개별 eigenmode column이 아니다.
 Global network, field, pole, rank, checkpoint와 evaluator는 Local training 내내 freeze한다.
 Local gradient가 Global parameter로 흐르거나 joint fine-tuning으로 residual definition이 이동하는 경로는 금지한다.
+Patch 관측은 전체 물체의 coupled trajectory에서 추출하고, Teacher와 Global의 시작 상태·이후 바람을
+정합시킨 뒤 residual을 만든다. R1의 velocity-reset 불연속을 자연 응답 residual에 섞지 않는다.
+독립 패치 시뮬레이션을 전체 물체의 Local label로 자동 대체하지 않는다.
 
 \subsection{Serialized support의 단일 정의}
 
@@ -147,6 +166,7 @@ procedural baseline 결과로 Local network architecture를 test별 튜닝하지
 frozen Global, larger Global, oracle Local, learned always-on Local과 procedural baseline을 모두 포함한다.
 
 \section{구현 체크리스트}
+\label{sec:r5-chapter-4}
 
 \subsection{Residual atlas}
 
@@ -205,6 +225,7 @@ frozen Global, larger Global, oracle Local, learned always-on Local과 procedura
 \end{itemize}
 
 \section{Open Design Decisions}
+\label{sec:r5-chapter-5}
 
 \begin{decisionbox}{핵심 미결정: support proposal}
 Local support를 어떤 static-GS-only 규칙 또는 network로 제안할지는 아직 설계가 필요하다.
@@ -231,6 +252,7 @@ procedural baseline이 동일한 ordered support set을 사용해야 한다.
 \end{enumerate}
 
 \section{산출물}
+\label{sec:r5-chapter-6}
 
 \begin{longtable}{L{0.31\linewidth}L{0.57\linewidth}}
 \toprule
@@ -258,6 +280,7 @@ actual all-slot cost와 selector가 사용할 허용 metadata만 포함한다. M
 별도 hash로 유지하며 R5는 selector score/state를 생성하지 않는다.
 
 \section{필수 fixture와 metric}
+\label{sec:r5-chapter-7}
 
 \subsection{필수 fixture}
 
@@ -291,6 +314,7 @@ Primary와 threshold는 test-open 전 \code{ThresholdRegistry}에 동결한다. 
 Gate C를 통과시키지 않으며, setup time/package memory/throughput도 mandatory secondary diagnostic으로 보고한다.
 
 \section{종료 조건과 실패 경로}
+\label{sec:r5-chapter-8}
 
 \begin{contractbox}{R5 종료 조건}
 Residual atlas가 noise floor 위의 localized failure를 입증하고, oracle Local이 larger Global보다

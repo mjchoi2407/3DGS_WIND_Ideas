@@ -36,10 +36,24 @@ Local/package continuity에만 사용할지 또는 0으로 둘지 사전 동결�
 학습하지 않는다. T6가 Local package를 바꾸면 Gate C/D evidence를 무효화하고 R5/R6을 다시 실행한다.
 \end{contractbox}
 
+\DevChecklistPage{R6}{Gate C 대기}{
+\DevProgressRow{0}{\hyperref[sec:r6-chapter-1]{1. 목적과 소유권}}{대기}{Gate C 뒤 conditional 실행의 범위 확인}
+\DevProgressRow{0}{\hyperref[sec:r6-chapter-2]{2. 진입 입력}}{대기}{Always-on Local·selector·budget contract 확보}
+\DevProgressRow{0}{\hyperref[sec:r6-chapter-3]{3. 동결 계약}}{대기}{Frame 순서·state/fade·live budget 불변량 검증}
+\DevProgressRow{0}{\hyperref[sec:r6-chapter-4]{4. 구현 체크리스트}}{대기}{Selector·지속 상태·budget·profiler 구현}
+\DevProgressRow{0}{\hyperref[sec:r6-chapter-5]{5. Open Design Decisions}}{대기}{Transition table, dwell/hold와 budget 동결}
+\DevProgressRow{0}{\hyperref[sec:r6-chapter-6]{6. 산출물}}{대기}{Runtime package·trace·cost report 생성}
+\DevProgressRow{0}{\hyperref[sec:r6-chapter-7]{7. Fixture와 metric}}{대기}{Switching/decay·재선택·안정성·지연 검증}
+\DevProgressRow{0}{\hyperref[sec:r6-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{Gate D 또는 always-on Local 경로 판정}
+}{
+\begin{contractbox}{진입 경계}Conditional Local runtime과 Gate D 결과는 아직 없다. Teacher velocity-reset 탐색은 runtime selector의 release/reset 기능을 추가하는 결정이 아니다.\end{contractbox}
+}
+
 \tableofcontents
 \newpage
 
 \section{목적과 소유권}
+\label{sec:r6-chapter-1}
 
 R6의 목적은 R5에서 필요성이 확인된 always-on Local response를 현재 wind excitation에 따라
 고정 budget 안에서 실행하고, quality retention과 actual p95 latency 이득을 함께 검증하는 것이다.
@@ -58,6 +72,7 @@ R6은 Global/Local response field, pole, support, traction law, exact-ZOH evalua
 per-frame network state도 추가하지 않는다.
 
 \section{진입 입력}
+\label{sec:r6-chapter-2}
 
 R6 구현을 시작하려면 다음 입력이 모두 immutable identity/hash와 함께 존재해야 한다.
 
@@ -85,6 +100,7 @@ ordered support, rank와 material/attachment identity를 수정하지 않는다.
 바꾸면 R5 결과를 승계하지 않고 해당 upstream Gate부터 다시 실행한다.
 
 \section{동결 계약}
+\label{sec:r6-chapter-3}
 
 \subsection{Analytic-only selector}
 
@@ -142,6 +158,9 @@ Energy threshold의 수치와 transition guard 순서는 미결정이지만 이 
 
 \subsection{Live budget invariant}
 
+R1의 teacher-only velocity-reset 탐색은 이 runtime의 release/재선택 규칙이나 새 artist control이 아니다.
+그 탐색 결정을 근거로 기존 Local state/phase 연속성을 바꾸지 않는다.
+
 Live set은 Active뿐 아니라 visible Decay tail도 포함한다.
 \[
   \mathcal U_t=\{k:\sigma_k^t\in\{\mathrm{Active},\mathrm{Decay}\}\},\qquad
@@ -167,6 +186,7 @@ Budget이 찼다는 이유로 Decay state를 즉시 zero하거나 budget 밖에�
 \end{enumerate}
 
 \section{구현 체크리스트}
+\label{sec:r6-chapter-4}
 
 \subsection{Selector와 score}
 
@@ -203,6 +223,7 @@ Budget이 찼다는 이유로 Decay state를 즉시 zero하거나 budget 밖에�
 \end{itemize}
 
 \section{Open Design Decisions}
+\label{sec:r6-chapter-5}
 
 다음 항목은 아직 canonical method decision이 아니다. 구현자가 임의로 선택하지 않고 R6 개발 fixture에서
 후보를 비교한 뒤, test open 전에 하나를 동결한다.
@@ -231,6 +252,7 @@ Continuity fine-tuning & \(\lambda_{\mathrm{switch}}=0\) / analytic selection �
 바꾸면 canonical sketch와 checklist를 먼저 갱신하고 R6만 독자적으로 새 계약을 만들지 않는다.
 
 \section{산출물}
+\label{sec:r6-chapter-6}
 
 \begin{itemize}
   \item \code{ConditionalRuntimeConfig}: selector score/epsilon/precision/tie-break, 상태/transition guard,
@@ -248,6 +270,7 @@ Continuity fine-tuning & \(\lambda_{\mathrm{switch}}=0\) / analytic selection �
 evidence link만 갱신하고 결과 파일을 복제하지 않는다.
 
 \section{Fixture와 metric}
+\label{sec:r6-chapter-7}
 
 \subsection{필수 fixture}
 
@@ -277,6 +300,7 @@ evidence link만 갱신하고 결과 파일을 복제하지 않는다.
 Gate D threshold, Pareto envelope, interpolation과 positive margin은 test 전에 dev-freeze한다.
 
 \section{종료 조건과 실패 경로}
+\label{sec:r6-chapter-8}
 
 \begin{contractbox}{R6 pass}
 State-machine replay와 모든 hard invariant를 통과하고, conditional Local이 always-on Local 대비

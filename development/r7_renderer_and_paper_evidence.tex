@@ -1,6 +1,7 @@
 \documentclass[10pt]{article}
 
 \input{shared_preamble.tex}
+\renewcommand{\DevChecklistDate}{2026-09-11}
 
 \hypersetup{
   pdftitle={R7 Development Plan: Renderer and Paper Evidence},
@@ -27,14 +28,28 @@ Renderer and Paper Evidence}
 본 문서는 구현 진행 상태, fixture와 paper evidence link만 소유한다.
 
 Base Gaussian mean/covariance transport와 attachment/identity/proper-rigid/SPD fixture는
-\textbf{R1/R2에서 이미 통과한 필수 전제}다. R7은 실패한 base motion을 다시 설계하거나 구제하는 단계가 아니다.
+\textbf{R7 진입 전에 R1/R2에서 통과해야 하는 필수 전제}다. R7은 실패한 base motion을 다시 설계하거나 구제하는 단계가 아니다.
 R7은 predeclared optional angular/SH appearance branch와 paper hardening만 소유한다.
 \end{contractbox}
+
+\DevChecklistPage{R7}{Upstream 결과·claim 확정 대기}{
+\DevProgressRow{0}{\hyperref[sec:r7-chapter-1]{1. 목적과 소유권}}{대기}{통과한 Gate에 맞는 renderer/paper claim 확인}
+\DevProgressRow{0}{\hyperref[sec:r7-chapter-2]{2. 진입 입력}}{대기}{Upstream base transport와 frozen 결과 확보}
+\DevProgressRow{0}{\hyperref[sec:r7-chapter-3]{3. 동결 계약}}{대기}{선택 branch·appearance·paper evidence 계약 검증}
+\DevProgressRow{0}{\hyperref[sec:r7-chapter-4]{4. 구현 체크리스트}}{대기}{Base 감사, 선택적 appearance와 paper hardening}
+\DevProgressRow{0}{\hyperref[sec:r7-chapter-5]{5. Open Design Decisions}}{대기}{Optional branch와 최종 figure/report 범위 동결}
+\DevProgressRow{0}{\hyperref[sec:r7-chapter-6]{6. 산출물}}{대기}{Renderer artifact·논문 figure/table·재현 묶음 생성}
+\DevProgressRow{0}{\hyperref[sec:r7-chapter-7]{7. Fixture와 metric}}{대기}{Rendering/physics 경계와 논문 수치 일치 검증}
+\DevProgressRow{0}{\hyperref[sec:r7-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{허용 claim과 최종 evidence package 승인}
+}{
+\begin{contractbox}{진입 경계}기존 기본 GUI와 Teacher CLI 진단은 R7 renderer/paper 완료 근거가 아니다. R1/R2 base transport를 포함한 upstream 결과가 먼저 필요하다.\end{contractbox}
+}
 
 \tableofcontents
 \newpage
 
 \section{목적과 소유권}
+\label{sec:r7-chapter-1}
 
 R7의 목적은 frozen response motion을 renderer-ready evidence로 닫고, 허용된 optional appearance branch를
 motion과 분리해 평가하며, 논문의 claim/baseline/metric/failure package를 재현 가능하게 만드는 것이다.
@@ -51,6 +66,7 @@ R7은 response network, package field/pole, wind load, deterministic evaluator, 
 수정하지 않는다. Appearance gradient나 output이 motion path로 feedback되는 구현은 R7 산출물이 아니다.
 
 \section{진입 입력}
+\label{sec:r7-chapter-2}
 
 \begin{longtable}{L{0.29\linewidth}L{0.61\linewidth}}
 \toprule
@@ -74,6 +90,7 @@ R7의 모든 renderer/appearance 비교는 동일한 frozen generalized trajecto
 camera sequence를 사용한다. Motion checkpoint나 package를 appearance 결과에 맞춰 재선택하지 않는다.
 
 \section{동결 계약}
+\label{sec:r7-chapter-3}
 
 \subsection{Base transport는 upstream 필수 계약이다}
 
@@ -124,7 +141,22 @@ Hero scene은 정성 설득을, object-disjoint table과 multi-resplat robustnes
 Pareto는 claim evidence를 소유한다. Scene, wind, camera, baseline, metric, success/failure rule은 결과를 보기 전에
 registry와 hash로 동결한다. Success-only clip이나 best noise seed만 보고하지 않는다.
 
+\subsection{사용자30fps 목표와 비용 분리}
+
+목표는 지원한 wind domain에서 사용자가 방향·세기를 바꾸며 최소30fps로 반응을 보는 것이다.
+Teacher 데이터 생성과 학습은 offline, network의 response-package 생성은 setup 시1회이며,
+매 frame에는 힘·상태 갱신·Gaussian 변형·렌더링을 수행한다. Setup 지연과 frame 지연을 별도로 보고한다.
+목표 예산은 입력 처리와 CPU/GPU 동기화를 포함해 약33.3 ms/frame이다. 비동기 component 시간의
+단순 합이나 evaluator 단독 속도를 전체 frame 속도로 대체하지 않는다.
+
+실제 frame p50/p95/p99,33.3 ms 초과 비율, throughput과 바람 조작의 입력 반영 지연을 함께 기록한다.
+GPU, 출력 해상도, Gaussian 수, Global rank, Active/Decay Local budget, 실행 길이와 동시 부하를 명시한다.
+현재30fps 달성은 미검증이며 구체적인 성능 fixture·허용 지연 분포는 아래 미결정 항목이다.
+사용자가 원하는 장면 길이10--20 s와 초기 짧은 smoke를 구분하되, 미검증 Teacher 결과를 accepted label로 승계하지 않는다.
+바람 조작이 우선이며 임의 잡기·충돌·고정점 이동을 이 성능 목표에 포함하지 않는다.
+
 \section{구현 체크리스트}
+\label{sec:r7-chapter-4}
 
 \subsection{Upstream base 확인}
 
@@ -159,6 +191,7 @@ registry와 hash로 동결한다. Success-only clip이나 best noise seed만 보
 \end{itemize}
 
 \section{Open Design Decisions}
+\label{sec:r7-chapter-5}
 
 \begin{longtable}{L{0.24\linewidth}L{0.43\linewidth}L{0.23\linewidth}}
 \toprule
@@ -175,6 +208,7 @@ Residual capacity & \(L_{\mathrm{app}}\), low-rank basis, bound \(\delta_c\), cu
 Appearance necessity & Analytic prior 대비 residual의 flicker/quality 이득이 complexity를 정당화하는가? & 이득 없으면 analytic prior 또는 degree-0로 축소\\
 Champion registry & 3--5개 hero와 최소 failure scene, camera/wind를 어떤 rule로 사전 선택할지? & 결과 후 성공 scene만 선택 금지\\
 Primary render metric & Silhouette, flicker와 qualitative preference를 어떤 protocol로 보고할지? & Motion Gate 대체 금지\\
+Interactive fixture & GPU/출력 해상도/GS 수·rank·Local budget과10--20 s 입력 조작을 어떤 조건으로 측정할지? & 30fps는 사용자 목표. Frame 지연 분포·deadline 초과·입력 지연을 실행 전 동결하고 실패도 보고\\
 Venue package & SCA/CGF 중심 evidence와 더 높은 venue 확장 증거를 어떻게 구분할지? & Venue 목표가 method contract를 역으로 바꾸지 않음\\
 \bottomrule
 \end{longtable}
@@ -183,6 +217,7 @@ Optional decision이 upstream motion 또는 package identity를 바꾸면 R7 loc
 Canonical sketch/R0 schema를 갱신하고 영향을 받은 R1 이후 Gate를 다시 실행해야 한다.
 
 \section{산출물}
+\label{sec:r7-chapter-6}
 
 \begin{itemize}
   \item \code{RendererEvidenceContract}: frozen base/optional branch, SH convention와 identity
@@ -199,6 +234,7 @@ Canonical sketch/R0 schema를 갱신하고 영향을 받은 R1 이후 Gate를 �
 generated output을 ideas repository에 복제하지 않는다.
 
 \section{Fixture와 metric}
+\label{sec:r7-chapter-7}
 
 \subsection{Renderer fixture}
 
@@ -218,11 +254,13 @@ generated output을 ideas repository에 복제하지 않는다.
   \item independent multi-resplat response, force/work와 worst-density dispersion
   \item silhouette, temporal flicker/popping과 동일-camera qualitative split-screen
   \item setup time, package memory, network/force/update/transport/render p50/p95/p99와 throughput
+  \item 전체 frame p50/p95/p99,33.3 ms 초과 비율과 바람 조작의 입력 반영 지연
   \item sequence survival, first failure, package/rank/transport failure와 OOD/reject count
   \item object-level paired effect, descriptive interval와 low-object-count limitation
 \end{itemize}
 
 \section{종료 조건과 실패 경로}
+\label{sec:r7-chapter-8}
 
 \begin{contractbox}{R7 pass}
 Upstream base transport identity가 재현되고, 선택한 optional branch의 모든 fixture가 통과하며,
