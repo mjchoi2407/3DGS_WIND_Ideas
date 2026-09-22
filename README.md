@@ -2,6 +2,10 @@
 
 Wind3DGS의 연구 framing, 방법 명세, 참고문헌과 아이디어 작업 기록을 관리한다.
 
+## 작업 시작
+
+맥락이 충분하면 재독하지 않는다. 부족할 때 [주제별 상태](sessions/README.md#현재-상태) → 해당 note의 현재 상태 → 상세 문서·절 순서로 확인한다. 아래 canonical 경로는 방법·계약을 확인해야 할 때 사용하며, 과거 기록의 날짜나 파일명으로 대체하지 않는다.
+
 ## 현재 아이디어 스케치
 
 현재 작업본의 제목은 *Response-Distilled Global--Local Wind Dynamics for Static 3D Gaussian Thin Surfaces*다.
@@ -60,7 +64,7 @@ Method equation과 claim의 authority는 current sketch다. Master roadmap은 st
 2026-09-11 문서 감사에서30fps 사용자 목표, Teacher 실행 경로 선택과 후속 실패/미확정 결과를 반영했다.
 반영 범위와 검증 한계는 [문서 감사 기록](sessions/2026-09-09_01_teacher_evidence_integration.md#현재-상태)을 따른다.
 
-- [연구 결정 요약](sessions/README.md): 확정 계약과 문서 반영 상태.
+- [연구 결정 요약](sessions/README.md#현재-상태): 해당 작업의 확정 계약·검증 범위·문서 반영 위치.
 - [R1 TeX](development/r1_teacher_probe_oracle.tex) / [PDF](development/r1_teacher_probe_oracle.pdf): 수식·구현 계약·대표 검증 결과·채택 경계.
 - [실험 최신 요약](../experiments/sessions/README.md): 약한 바람, 4배 바람, GPU 성능의 결과와 미완료 범위.
 - [구현 최신 요약](../code/sessions/README.md): 구현 상태와 다음 선택.
@@ -87,6 +91,6 @@ Method equation과 claim의 authority는 current sketch다. Master roadmap은 st
 
 ## 기록 위치
 
-- 아이디어 대화와 작업 이력은 `sessions/`에 기록한다.
+- 확정 결정·결과·중단은 [필수 기록 규칙](../AGENTS.md#간결한-작업-기록)에 따라 해당 note의 현재 상태에 갱신하고 상세 문서·절을 연결한다. 대화 원문이나 시간순 진행 메시지는 기록하지 않는다.
 - 구현 작업은 `../code`에 둔다.
 - 실험 기록과 출력은 `../experiments`에 둔다.
