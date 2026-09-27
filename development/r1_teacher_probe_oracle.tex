@@ -338,7 +338,9 @@ Newton의 비선형 잔차 보정, 전처리 GMRES, 보조 행렬 갱신/풀이�
 마찰이나 기존 contact-off 연구 계약을 자동 해제하지 않는다.
 GPU 기능 구현과 제한된 개발 검산 완료는 최종 동일-backend 공간/시간 수렴,
 고차 probe/traction map, 독립 GS 공통 영역, network-free oracle 및 transport의 완료를 뜻하지 않는다.
-R0 및 canonical R1 종료 조건은 유지한다.
+R0 및 canonical R1 종료 조건은 유지한다. 이 접촉 경로는 training-only teacher가 큰 변형에서
+관통을 거절·복구하기 위한 제한 개발 후보다. Canonical sketch가 비주장으로 둔 target runtime의
+self-contact, severe folding과 임의 충돌 지원을 method 범위에 추가하지 않는다.
 
 \subsection{CPU 셀프 접촉 기준 후보 (2026-09-22)}
 \label{sec:r1-cpu-self-contact}
@@ -500,6 +502,29 @@ frame-start hi/lo에서 dt를 절반으로 줄여128단계를 한 번 재실행�
 시간 수렴과 training 적격성은 미완료다. 원본 실패 분모·계측 의미·실행 명령은
 \code{experiments/R1_teacher_velocity_reset/self_contact/frame_timing_v8.md}와
 \code{experiments/R1_teacher_velocity_reset/self_contact/frame112_recovery.md}가 소유한다.
+당시 versioned 구현과 compact evidence는 각각 code commit \code{f6db052},
+experiments commit \code{a2c42c1}에 보존했다. 과거 실행의 실제 source identity는 각 report의
+dirty snapshot content hash이며, 후속 commit ID가 그 run의 source hash를 대신하지 않는다.
+
+\paragraph{후속 v11 결과와 v12 연속 궤적 준비 (2026-09-27).}
+CPU 계수를 동결한 격리 질량 풀이에서 cuDSS 결정성 설정은 동일 GPU의 반복 해를
+비트 단위로 일치시켰지만, GTX1080Ti와 RTX5070 사이에는 최대3 ULP 차이가 남았다.
+이는 전체 프레임 결정성이나 장기 wind 안정성의 증거가 아니다.
+v11은 swept 후보 용량과 결정성 설정을 명시했고, 양쪽 GPU에서 손수건·삼각 깃발의
+세 phase가 완료됐으나 사각형 wind는 Newton 한도 code1로 실패했다.
+두 실패 직전 상태를 GTX1080Ti에서 각각 한 프레임 재생해 code1을 재현하고,
+기존 유한성·접촉·시간축·승인 prefix 조건 아래 GPU dt/2 재시도로 독립 검산을 통과했다.
+RTX5070 직접 복구와 잔여 구간 완주를 확인한 것은 아니다.
+
+사용자 승인으로 v12 실행 묶음은 code1/code2의 조건부 한 번 복구를 사용하고,
+기존 preload 끝에서 calm/wind를 각각 시작하던 분기 대신 preload2초,
+calm4초, wind4초를 raw hi/lo 위치·속도 초기화 없이 연속 전달하도록 준비했다.
+물성·외력 배열·기본 dt·허용오차는 유지하며, 실행기 연결 검사와 동결 입력 검증을
+통과했다. 이 준비만으로 새10초 궤적 완주·시간 수렴·학습 적격성을 승인하지 않는다.
+방법 claim과 R1 Gate는 유지한다. 원본 결과·설정 시험·실행 계약은
+\code{experiments/R1_teacher_velocity_reset/self_contact/} 아래
+\code{cpu_frozen_v10.md}, \code{three_scenes_gpu_v11.md},
+\code{three_scenes_gpu_v12.md}가 소유한다.
 
 \subsection{현재 개발 상태와 acceptance 구분 (2026-09-11)}
 
@@ -2117,7 +2142,9 @@ stage/힘/에너지/기하 검산은 미연결이었다. 후속 GPU 구현과 �
 384 substep을 독립 검산과 함께 통과했다. 원본 dt1/3840이나 실패 처리 정책은 변경하지 않았다.
 다만 dt1/7680 대1/15360의 같은1프레임 위치 성분 차이는 최대0.364mm, 속도는1.605m/s이며,
 더 작은 dt에서도 속도 차이가 남았다. 이는 풀이 실패를 피한 개발 후보이지 teacher 시간 수렴
-또는 장기 안정성 완료가 아니다. 적응 substep/rollback과 접촉 모델은 미구현이다.
+또는 장기 안정성 완료가 아니다. 이 2026-09-14 진단 시점에는 적응 substep/rollback과 접촉 모델이
+미구현이었다. 이후 별도 접촉 경로와 제한 v10 복구가 구현됐지만 이 contact-off 진단의 시간 수렴
+실패를 소급 해결하지 않으며, 범위와 미완료 조건은 \S\ref{sec:r1-gpu-self-contact}를 따른다.
 설정·타이머·원본 근거는 \code{timestep_search/cloth_coarse/bend500_failure_diagnosis.md}를 따른다.
 
 \subsection{후속 GPU와 굽힘 비교의 검증 범위}

@@ -2,10 +2,26 @@
 
 ## 현재 상태
 
+- 2026-09-27 작업본 정리: R1 GPU 접촉 절에 cuDSS 설정의 장치 내부/장치 간 한계,
+  v11 실패·국소 code1 복구와 v12 연속10초 실행 준비를 반영했다. 새 전체 궤적은 미검증이며
+  canonical 체크·Gate·방법 claim은 유지한다. [실행 계약과 검증](../../experiments/R1_teacher_velocity_reset/self_contact/three_scenes_gpu_v12.md#검증과-한계).
+- R1 XeLaTeX/latexmk 빌드 성공(PDF38쪽, 518,681 bytes). 경고·미해결 참조 없음.
+  Master bundle20항목의 무결성과 working file 일치를 확인했고 이번에는 R1 TeX/PDF만 갱신했다.
+- 관련 구현 회귀33개 통과. 본 GPU 시뮬레이션은 실행하지 않았다. 코드·실험·R1 작업본을
+  저장소별 commit/push 대상으로 정리하며, 기존 사용자 TeX 초안3개는 제외·보존한다.
+- 대응 구현은 code `a5e4d8e`, 실행 계약·진단 기록은 experiments `41ac8f3`에 보존했다.
+  동결 run의 실제 소스 식별은 각 manifest의 runtime hash가 우선이다.
+
+## 이전 v10 문서 동기화
+
+
 - 확인일: 2026-09-22. R1 접촉 절에 실제 실패 code2 재현·cycles6 미해결·GPU dt절반 자동 복구 통과와54회귀를 반영했다. 해당 프레임 해결과 세 씬 장기/5070/시간 수렴 미완료를 구분한다.
 - 승인 prefix·유한 통계 확인, GPU 분기/외력 재사용/검산/rollback과 실패 비용 포함을 명시했다. 과거 v8 외부 종료 추정은 정정했고 v9은 당시 구현으로 보존한다.
 - 상세 근거는 [복구 승인·검증 근거](../../experiments/R1_teacher_velocity_reset/self_contact/frame112_recovery.md#복구-승인과-검증). R1 체크·Gate·학습 적격성은 변경하지 않았으며 sketch/master source 변경은 불필요하다.
-- R1 XeLaTeX/latexmk 빌드 성공(PDF38쪽·nonempty·최종 경고 없음), 지정 master bundle20항목의 CRC와 R1 source/PDF byte 일치를 확인했다. 기존 사용자 TeX3개는 수정하지 않았고 푸시 전 원격 동기(HEAD...origin/main `0/0`)를 확인했다.
+- 문서 재감사에서 final code/experiment commit 연결 누락과 2026-09-14 절의 현재형 ‘접촉 모델 미구현’ 문장을 확인했다. R1에 versioned commit f6db052/a2c42c1, dirty run hash 우선 원칙, 당시 상태와 후속 v10의 구분을 반영했다.
+- Canonical sketch의 self-contact 비주장과 target runtime 범위는 유지한다. Master의 R1 진행 상태·Gate·dependency도 바뀌지 않아 두 source는 수정하지 않았다.
+- R1 XeLaTeX/latexmk 재빌드 성공(PDF38쪽·516,220 bytes·관련 경고/미해결 참조 없음). 지정 master bundle20항목 중 R1 TeX/PDF와 이전 구조화에서 바뀐 development README 3개를 working file과 일치시켰고, 나머지17개 byte와 ZIP 무결성을 확인했다.
+- 당시 기존 사용자 untracked TeX3개는 수정하지 않았다. 당시 미커밋 갱신도 이번 정리 범위에 포함한다.
 
 - 상세 위치: [R1 구현·접촉 계약](../development/r1_teacher_probe_oracle.tex)의 `sec:r1-implementation`, `sec:r1-gpu-self-contact`; [파트별 본문 갱신 위치](../development/README.md#r1-문서-안에서-구현-근거를-갱신하는-방법).
 
