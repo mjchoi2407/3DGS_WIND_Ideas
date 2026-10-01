@@ -95,7 +95,7 @@ Global 및 Local \textbf{response package}이며, 작은 deterministic response 
 
 \begin{tcolorbox}[colback=SafeLight,colframe=SafeGreen,title=Training,fonttitle=\bfseries]
 연결정보가 있는 mesh로 여러 재료, 부착과 바람 조건의 reference simulation을 만든다.
-물체별로 공간·시간 수렴을 확인해 선택한 teacher 해상도를 사용하고, 같은 물리 조건의 응답을
+정식 평가에는 물체별 공간·시간 수렴을 확인한 teacher 해상도를 사용하고, 같은 물리 조건의 응답을
 여러 GS 표현이 공유한다. 같은 rest surface를 GS 생성 시 Gaussian 예산 또는 densification 제한을
 달리하여 독립적으로 reconstruction한다. Seed와 view 변화는 별도의 재구성 일반화 축으로 다룬다.
 Mesh vertex와 topology는 teacher quadrature, same-surface relation과 response label을 만드는 데만 사용한다.
@@ -185,6 +185,20 @@ material, metric scale 및 attachment만으로, target mesh나 target motion vid
   하나의 측정 가능한 setup/runtime system으로 닫는다. 이는 MC1--MC3의 실행과 검증을 완성하는
   시스템 항목이며, 각 구성 요소의 최초성을 별도 주요 기여로 세지 않는다.
 \end{enumerate}
+
+\paragraph{CG 개발용 진입 경계 (2026-09-28 사용자 채택).}
+\label{sec:rd-cg-development-entry}
+초기 목표는 시각적으로 설득력 있고 안정적인 바람 애니메이션과 일관된 학습 정답이다.
+공학 수준의 정확도나 수렴 차수 증명을 첫 학습의 선행 조건으로 일괄 요구하지 않는다.
+대표 한 씬에서 시간 간격과 메시를 각각 한 단계 정밀화해 움직임의 민감도를 확인하고,
+시각 품질·기존 수치 검산·단위/고정 조건·GS 매핑과 작은 network-free 응답 확인을 통과하면
+한 물체·한 입력 궤적·한 GS의 제한된 개발 학습을 허용한다.
+수치 기준과 진입 판정의 소유자는 \href{development/r1_teacher_probe_oracle.pdf}{R1의 CG 개발용 진입 절}이다.
+이는 ``두 해상도 민감도 통과''이며 canonical R1 수렴 완료나 held-out/다물체 성능의 증거가 아니다.
+정식 R2 및 후속 Gate에는 기존 종료 조건을 적용하며, 개발 학습의 입력 범위 확대는 별도 검증한다.
+이 결정은 아래 과거 기록의 추가 데이터/학습 전면 보류를 이 제한 범위에서만 대체한다.
+기존 solver 허용오차·접촉 검사·rollback과 수식, target-mesh-free claim은 유지한다.
+Self-contact를 teacher 안정성에 사용하는 것만으로 학생의 강한 자기접촉/심한 접힘 지원을 주장하지 않는다.
 
 \paragraph{Teacher의 역할과 기여의 경계.}
 해상도에 따른 수치적 차이가 학습 신호를 지배하지 않도록 teacher의 공간·시간 수렴을 확인하는 것은
@@ -498,7 +512,8 @@ R1 전체 완료를 뜻하지 않는다. 기존 P3 pressure, native 실패와 �
 
 \textbf{후속 진행 원칙 (2026-09-09):} 사용자는 물리 수식을 제대로 구현·검증한 다음에
 학습데이터를 생성하도록 지시했다. 기존 76개 sample은 역사적 개발 근거로 보존하고 추가 발행은
-보류한다. P3의 3D 요소 내부 기하, 질량, 상대풍 및 응력 가상 일의 기하 미분을 보완했다.
+당시 보류했다. 이 보류의 제한된 개발 학습 예외는 \S\ref{sec:rd-cg-development-entry}의
+2026-09-28 결정이 소유한다. P3의 3D 요소 내부 기하, 질량, 상대풍 및 응력 가상 일의 기하 미분을 보완했다.
 후속 사용자 결정은 \textbf{1번 유한 회전 shell}이다. 기존 P3에 현재 metric의 Green strain,
 현재 법선 곡률과 Koiter/StVK 막·굽힘 저장 에너지를 연결했다. 이는 작은 재료 strain을 전제하며
 큰 회전을 허용하는 고정 두께 thin-shell 범위다. 요소 연결은 normal jump와 current moment flux의

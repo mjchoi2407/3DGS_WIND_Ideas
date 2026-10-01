@@ -28,7 +28,11 @@
 | R6 | [`TeX`](r6_conditional_local_runtime.tex) / [`PDF`](r6_conditional_local_runtime.pdf) | Analytic selector, persistent state, translation/angular fade와 fixed-budget runtime | Gate D 판정; 실패 시 always-on Local |
 | R7 | [`TeX`](r7_renderer_and_paper_evidence.tex) / [`PDF`](r7_renderer_and_paper_evidence.pdf) | Frozen transport-chain 재현, optional SH appearance와 paper evidence hardening | 통과한 Gate에 맞는 최종 claim/evidence package |
 
-실행 순서는 기본적으로 R0에서 R7까지다. 실패 routing은 module을 늘리는 신호가 아니라 claim과 다음 작업 범위를
+2026-09-28 채택한 제한 CG 개발 경로는 R1 `sec:r1-cg-development-entry`의 검사 후
+R2 `sec:r2-cg-development-entry`의 한 물체/입력/GS 초기화·맞춤 학습만 허용한다.
+이 경로는 정식 R1/R2 완료 체크나 R3 이후 진입을 대신하지 않는다.
+
+정식 실행 순서는 기본적으로 R0에서 R7까지다. 실패 routing은 module을 늘리는 신호가 아니라 claim과 다음 작업 범위를
 줄이는 신호다. R1/R2가 실패하면 dataset이나 Local을 늘리지 않고, R3의 measure/latent 실패는 각각 fixed-family 또는
 direct-set fallback으로 분리한다. R4 실패는 amortized learned-response pivot을 막고, R5 실패는 Global-only,
 R6 실패는 always-on Local로 축소한다.

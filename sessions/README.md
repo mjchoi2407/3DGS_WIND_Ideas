@@ -2,11 +2,11 @@
 
 ## 현재 상태
 
-2026-09-27 기록 기준이다. 현행 방법은 [canonical sketch 진입점](../README.md#현재-아이디어-스케치), 파트 계약·Gate는 [R0–R7 경로](../development/README.md#master-roadmap)가 소유한다. Session의 최근 날짜로 방법이나 완료 판정을 바꾸지 않는다.
+2026-10-01 기록 기준이다. 현행 방법은 [canonical sketch 진입점](../README.md#현재-아이디어-스케치), 파트 계약·Gate는 [R0–R7 경로](../development/README.md#master-roadmap)가 소유한다. Session의 최근 날짜로 방법이나 완료 판정을 바꾸지 않는다.
 
 | 주제 | 최근 기록과 한계 | 현재 상태·상세 위치 |
 | --- | --- | --- |
-| GPU 셀프 접촉 R1 반영 | v11 국소 복구·v12 연속10초 준비 반영, 장기·Gate 미완료 | [문서 반영과 검증 범위](2026-09-22_01_self_contact.md#현재-상태) |
+| GPU 셀프 접촉 R1 반영 | 내부 감쇠·평활 바람 선택 반영; 감쇠24 시간 통과는 새 조합에 승계하지 않으며 공간/학습 미완료 | [문서 반영과 검증 범위](2026-09-22_01_self_contact.md#현재-상태) |
 | 접촉 OFF GPU 선택 | 장치별 Newmark/Gauss 개발 후보, 학습 적격성 미완료 | [선택 계약·R1 반영](2026-09-20_01_adaptive_integrator_status.md#현재-상태) |
 | Teacher 채택 경계 | 제한 개발 종료와 공식 완료 조건 구분 | [종료 범위·남은 검증](2026-09-16_01_teacher_closeout.md#현재-상태) |
 | R0·R1 근거 위치 | 계약·개발 결과 동기화의 기준 기록 | [수렴·oracle·transport 등 미완료](2026-09-14_01_r0_r1_status_sync.md#현재-상태) |

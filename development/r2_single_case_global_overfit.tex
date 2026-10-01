@@ -17,7 +17,8 @@
 \title{\textbf{R2 --- Single-Case Global Overfit}\\
 R2a fixed-seconds feasibility와 R2b curriculum/baseline}
 \author{Wind3DGS Project}
-\date{2026-08-22}
+\date{2026-08-22; CG 개발 진입 갱신 2026-09-28}
+\renewcommand{\DevChecklistDate}{2026-09-28}
 
 \begin{document}
 \maketitle
@@ -35,7 +36,7 @@ R2a fixed-seconds feasibility와 R2b curriculum/baseline}
 그 뒤에만 \textbf{R2b curriculum/baseline}을 실행한다.
 \end{contractbox}
 
-\DevChecklistPage{R2}{R1 선행 조건 대기}{
+\DevChecklistPage{R2}{정식 R1 대기 · 제한 CG 개발 경로 채택}{
 \DevProgressRow{0}{\hyperref[sec:r2-chapter-1]{1. 목적과 소유권}}{대기}{R1 통과 후 T1/R2a/R2b 실행 범위와 owner 확인}
 \DevProgressRow{0}{\hyperref[sec:r2-chapter-2]{2. 진입 입력}}{대기}{Accepted label/probe/oracle와 초기 상태 계약 확보}
 \DevProgressRow{0}{\hyperref[sec:r2-chapter-3]{3. 이미 동결된 계약}}{대기}{Package·loss·시간·evaluator 계약을 구현에 대조}
@@ -45,7 +46,7 @@ R2a fixed-seconds feasibility와 R2b curriculum/baseline}
 \DevProgressRow{0}{\hyperref[sec:r2-chapter-7]{7. 필수 fixture와 metric}}{대기}{운동·위상·장기 안정성 및 oracle gap 검증}
 \DevProgressRow{0}{\hyperref[sec:r2-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{R2a 및 R2b 종료·schedule/fallback 판정}
 }{
-\begin{contractbox}{진입 경계}기존15개 development window와 P3 작은 굽힘 sample76개는 개발 근거로 보존한다. 사용자 지시에 따라 물리 수식 구현·검증 전 추가 데이터 발행은 보류한다. R1 oracle/GS·시작 상태 계약까지 확보한 뒤 R2를 실행한다. 학습 성능의 완료 근거는 아직 없다.\end{contractbox}
+\begin{contractbox}{진입 경계}정식 R2는 R1 전체 조건을 요구한다. 2026-09-28 채택한 제한 개발 경로는 R1 CG 조건을 통과한 한 물체/입력/GS의 초기화·맞춤 학습만 허용한다. 기존 sample과 v12는 자동 승인되지 않으며, 개발 검사와 학습 성능의 완료 근거는 아직 없다.\end{contractbox}
 }
 
 \tableofcontents
@@ -90,7 +91,8 @@ single-case baseline 승리는 논문 claim의 증거가 아니다. Learned Glob
   \item \code{TeacherSpectrumStatus}: converged, 그리고 stable peak available/unavailable reason.
 \end{itemize}
 
-R1 종료 조건 중 하나라도 미충족이면 R2 training command를 실행하지 않는다.
+위 목록은 정식 R2의 진입 계약이며 R1 종료 조건 중 하나라도 미충족이면 정식 training command를 실행하지 않는다.
+제한 개발 경로의 예외는 아래 절을 따른다.
 현재 생성된 Newton development window 15개는 \code{training_eligible=false}이며 R2 label이 아니다.
 후속 P3의76개 patch sample은 지정한 작은 굽힘 wind/reset의 수렴·원본·batch 검증을 통과했다.
 \code{sample_scope_eligible=true}이며 큰 변형 또는 R1 전체 채택은 아니다.
@@ -98,6 +100,19 @@ R1 종료 조건 중 하나라도 미충족이면 R2 training command를 실행�
 실제 accepted R1 artifact/hash와 eligibility를 모두 확인하고, loader의 개발용 opt-in으로 이 경계를 우회하지 않는다.
 사용자가 후속 구조 모델로 선택한 P3 유한 회전 shell의 수식·solver 검사는 R1에서 진행한다.
 선행 작은 굽힘 sample이나 새 수식 검사를 R2 학습 시작 승인으로 해석하지 않는다.
+
+\subsection{제한된 CG 개발 학습 경로}
+\label{sec:r2-cg-development-entry}
+R1의 \code{sec:r1-cg-development-entry}와 \code{cg_teacher_dev_v1} 진입 보고서를 요구한다.
+두 해상도 민감도·시각·단위/GS 매핑·작은 network-free 응답 검사를 통과한
+한 물체·한 입력 궤적·한 GS만 T1 초기화와 fixed-seconds 맞춤 학습/replay에 사용한다.
+기존 T1의 필수 tensor/단위/고정점/evaluator 의미는 재사용하되 formal R2a/R2b의 완료로 집계하지 않는다.
+개발 artifact와 loader는 대상/입력/GS, development eligibility와 근거 hash를 명시하고
+canonical eligibility가 없는 파일을 일반 학습 경로에 섞지 않는다.
+기존 sample이나 v12의 완주만으로 이 보고서를 생성할 수 없다.
+같은 궤적 재현은 데이터 누출 없는 held-out 평가나 물체 일반화의 증거가 아니다.
+다물체·다입력·두 GS 비교·R3와 이후 Gate는 별도 검증과 정식 진입 계약을 따른다.
+현재는 경로를 문서에 채택했으며 개발 loader·학습 실행은 미완료다.
 
 \subsection{R2 최소 데이터 slice}
 

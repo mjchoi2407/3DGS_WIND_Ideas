@@ -19,8 +19,8 @@
 \title{\textbf{R1 --- Teacher, Probe, and Oracle}\\
 Reference·mapping·network-free preflight 명세와 구현·검증 근거}
 \author{Wind3DGS Project}
-\date{2026-08-22; 구현·검증 근거 갱신 2026-09-22}
-\renewcommand{\DevChecklistDate}{2026-09-22}
+\date{2026-08-22; 구현·검증 근거 갱신 2026-10-01}
+\renewcommand{\DevChecklistDate}{2026-10-01}
 
 \begin{document}
 \maketitle
@@ -53,7 +53,7 @@ R1의 실행 명세, 구현 상태와 논문용 근거를 이 문서 하나에�
 \DevProgressRow{0}{\hyperref[sec:r1-chapter-4]{4. 구현 체크리스트}}{진행}{개발 경로에서 accepted Teacher·oracle·transport로 연결}
 \DevProgressRow{0}{\hyperref[sec:r1-chapter-5]{5. Open Design Decisions}}{진행}{FP64 hi/lo GPU 개발 경로 유지; 접촉·최종 입력 범위는 미결정}
 \DevProgressRow{0}{\hyperref[sec:r1-chapter-6]{6. 산출물}}{진행}{개발 evidence는 보존; accepted artifact 생성 필요}
-\DevProgressRow{0}{\hyperref[sec:r1-chapter-7]{7. 필수 fixture와 metric}}{진행}{4배 공간 미달·10초 탐색 추천 없음; 독립 기준·oracle 검증}
+\DevProgressRow{0}{\hyperref[sec:r1-chapter-7]{7. 필수 fixture와 metric}}{진행}{감쇠24 시간 민감도 통과; 새 감쇠·바람 후보의 수렴·oracle 미완료}
 \DevProgressRow{0}{\hyperref[sec:r1-chapter-8]{8. 종료 조건과 실패 경로}}{대기}{R1 전체 종료 조건과 R2 hand-off 통과}
 }{
 \begin{contractbox}{별도로 확인된 개발 성과}
@@ -73,7 +73,7 @@ R1의 실행 명세, 구현 상태와 논문용 근거를 이 문서 하나에�
 과거 초기 변위의 실패는 해당 fixture의 반례로 보존한다.
 개발 sample은 \code{training_eligible=false}다.
 \end{contractbox}
-\textbf{다음 조건:} 유한 회전 shell의 수식·수렴 검증 우선; 추가 학습데이터는 보류 (4--5장).
+\textbf{다음 조건:} \S\ref{sec:r1-cg-development-entry}의 CG 민감도·매핑 확인 후 제한 개발 학습; canonical R1은 미완료.
 }
 
 \tableofcontents
@@ -525,6 +525,85 @@ calm4초, wind4초를 raw hi/lo 위치·속도 초기화 없이 연속 전달하
 \code{experiments/R1_teacher_velocity_reset/self_contact/} 아래
 \code{cpu_frozen_v10.md}, \code{three_scenes_gpu_v11.md},
 \code{three_scenes_gpu_v12.md}가 소유한다.
+
+\paragraph{v12 GTX1080Ti 연속 완주와 저장 결과 분석 (2026-09-28).}
+\label{sec:r1-v12-completion}
+사용자 실행의 사각형·손수건·삼각 깃발이 각각 연속10초600프레임을 완료했다.
+사각형 wind의 기본 dt 실패113개(code2 111개, code1 2개)는 프레임 시작에서
+GPU dt/2 한 번 복구해 승인됐다. 손수건·삼각 깃발은 복구 없이 완료했다.
+원본 manifest·모든 frame/폐기 증거 hash와 여섯 raw hi/lo 구간 경계를 대조했으며,
+채택122,432 substep의 저장 검산 flags는 모두0이다. 이번 사후 분석은 저장 검산의
+무결성 확인이며 물리 잔차나 CCD를 새로 계산한 것이 아니다.
+사각형 wind 후반74프레임 모두 복구했으므로 기본 dt만의 안정성으로 승격하지 않는다.
+GTX1080Ti에서 code1/code2 복구·연속 완주 근거는 추가됐지만 RTX5070 v12,
+시각 확인·시간/공간 수렴·접촉 calibration·GS/oracle와 학습 적격성은 미완료다.
+방법 claim과 R1 완료 체크는 유지한다. 실패 분모·실제 비용·사후 검사 범위는
+\code{experiments/R1_teacher_velocity_reset/self_contact/three_scenes_gpu_v12.md}의
+``v12 사용자 실행 결과''와 같은 폴더의 \code{three_scenes_gpu_v12_audit.json}이 소유한다.
+
+\paragraph{공통 표면512점과 처짐 분석의 부분 구현 (2026-09-28).}
+\label{sec:r1-common-motion-analysis}
+완료된 serial GPU raw hi/lo 기록을 읽어 사각형·손수건·삼각 깃발의 위치와 저장 속도를
+동일한512개 기준 표면점으로 옮기는 CPU 도구를 구현했다. Signed P3 10-shape 보간을
+사용하며 사각형의32$\times$16 cell 중심과 양의 면적 가중치는 메시 해상도와 독립적이다.
+Constant/affine/삼차장 재현, 경계점, 시간·raw 상태 연결, 실패/미완료 기록 거절의13개 검사를
+통과했다. 실제 v12 세 씬의 각600프레임에서 처짐·비평면성·속도와 대표 시각을 추출했다.
+이는 저장 결과의 분석이며 새 힘/접촉 검산이나 시각적 자연스러움의 자동 판정이 아니다.
+사각형16/32의 정적 매핑에서도 같은 평가점과 삼차장 재현을 확인했다.
+계획된24 해상도는 현재 생성기가 지원하지 않아 비교 실행기 구현 때 확장이 필요하다.
+16/32 정적 검사는 예정된16/24 동적 민감도 비교를 대체하지 않는다.
+당시에는 비교기가 미구현이었다. 후속 비교기 준비는 아래 문단을 따르며,
+GS 회전/covariance/힘 전달·network-free fit과 학습 적격 판정은 여전히 미완료다.
+소유 근거는 \code{experiments/R1_teacher_velocity_reset/self_contact/}의
+\code{motion_analysis.md} ``구현과 검증''이며, R1 완료 체크는 유지한다.
+
+\paragraph{공통512점 비교기 준비 (2026-09-28).}
+\label{sec:r1-cg-comparator-ready}
+완료된 두 serial GPU 궤적의 위치/속도를 공통512점에서 비교하는 CPU 스크립트를 구현했다.
+같은 물성·외력·초기 상태·시간축·GPU 모델·접촉/검산 정책을 검사하며 time은 같은 메시의
+기본 단계 수2배, space는 같은 단계 수의 더 높은 사각형 해상도를 기준으로 삼는다.
+Wind 전체와 마지막2초의 면적/시간 가중 RMS를 각각 평가한다. 임계값 경계에만
+상대 $10^{-12}$의 FP64 반올림 여유를 두며 개발 허용량1\%/10\%는 유지한다.
+CPU 회귀29개(비교기16개와 분석기13개), 서로 다른 노드 수의 합성 공간 비교와
+실제 v12 자기 비교 출력을 확인했다. 자기 비교는 민감도 통과로 집계하지 않는다.
+정면·측면·사선의 표면점 겹쳐보기 HTML과 시각 검토 양식을 생성하지만 브라우저 재생은
+이번 환경에서 직접 검증하지 못했다. 수치 통과는 시각 대기로 기록하며 최종 pass와 학습 적격성은
+항상 미승인이다. 이 비교기 준비 시점에는 새로운 두 정밀도의 실제 GPU 결과 비교를 수행하지 않았다.
+후속 감쇠24의 시간 비교와 현재 후보의 경계는 \S\ref{sec:r1-cg-wind-damping-status}를 따른다.
+T/S 준비·실행 래퍼와24 해상도 지원은 이번 구현 범위가 아니다.
+소유 명령·검증·한계는 \code{experiments/R1_teacher_velocity_reset/self_contact/}의
+\code{cg_comparator.md}를 따른다. R1 완료 체크와 Gate는 유지한다.
+
+\paragraph{v13 연속 실행·감쇠와 바람의 개발 선택 (2026-10-01).}
+\label{sec:r1-cg-wind-damping-status}
+V13은 약간 굽힌 초기 상태와 preload1초, calm4초, wind5초의 연속10초 궤적이다.
+RTX5070 세 씬의 각600프레임 완주를 확인했으며, 구간 사이 raw hi/lo 위치·속도를 유지한다.
+저장 검산 확인과 새 독립 물리/CCD 재계산을 구분한다. 원본·복구 분모는
+\code{experiments/R1_teacher_velocity_reset/self_contact/three_scenes_gpu_v13.md}가 소유한다.
+별도의 전역 감쇠24\,s$^{-1}$ 사각형64/128 쌍은 같은 RTX5070에서 각각600프레임을 완료하고
+wind 전체/마지막2초의 위치·속도 개발 기준을 통과했다. 이는 해당 감쇠의 시간 민감도 근거다.
+사용자는 wind 움직임이 둔하다고 판단해 시각 채택을 보류했다.
+\code{damping24_time.md}의 ``서브 완료 결과 분석''과 \code{damping24_pair_results.json}을 따른다.
+무감쇠 v13의 이전 기준 초과는 보존하며, 통과를 다른 감쇠/바람/공간 해상도로 승계하지 않는다.
+
+현재 P3 사각형의 개발 추천은 굽힘 강성1/500, 막 감쇠5ms·굽힘 감쇠20ms,
+전역 감쇠0과 같은 평가 상태의 굽힘 기하 재사용이다. 여기서 ms는 재료 감쇠 시간계수이며 dt가 아니다.
+공통5초 raw에서 기존 바람의 wind5초300프레임을 복구 없이 완료했고,
+빠른 진동 감소와 큰 움직임 유지, 동일 시작점의 별도2초 비용 대조를 확인했다.
+기하 재사용 전후 물리 결과 차이는 반올림 수준이었다. 상세 수치·실패 분모·장치 조건은
+같은 실험 폴더의 \code{vibration_search.md} ``최종 추천과 비교''와 ``전체wind5초 검증''이 소유한다.
+이는 별도 진단 context의 추천이며 공용 감쇠 registry나 학습 기본값의 확정이 아니다.
+
+사용자는 같은 솔버의 세 바람 비교에서 가운데 \code{smooth}를 후속 외력 기준으로 선택했다.
+공간 균일 풍속을 시간 Gaussian $\sigma=0.1$초로 평활하고 비교 입력의 벡터RMS를 보존한다.
+중간 궤적 전환에는0.4초 quintic blend를 적용한다. 공간 국소화는 채택하지 않았다.
+세 조건은 공통 wind2초 상태에서2--4초 각120프레임을 완료했으며,
+관찰점2.8초 주변은 개선됐지만3--4초의 빠른 진동 성분은 증가했다.
+따라서 시각 선호는 기록하되 솔버 원인 배제나 잔진동 해결로 해석하지 않는다.
+설정·원본·수치와 실제 비용은 \code{wind_field.md}의 ``사용자 시각 선택과 후속 외력 기준'',
+``완료 결과'', ``동결 원본과 실패 분모''를 따른다.
+새 감쇠와 평활 바람을 함께 적용한 전체wind/연속10초, 시간·공간 민감도,
+다른 씬/장치, GS 매핑·network-free fit과 학습 적격성은 미판정이다. R1 완료 체크와 Gate는 유지한다.
 
 \subsection{현재 개발 상태와 acceptance 구분 (2026-09-11)}
 
@@ -2351,10 +2430,84 @@ Spline32 초기 에너지의 16.8013\%가 100 rad/s 위, 8.4490\%가 500 rad/s �
 \label{sec:r1-chapter-8}
 \label{sec:r1-exit}
 
-\subsection{R1 종료 조건}
+\subsection{CG 개발용 진입: 두 해상도 민감도와 제한 학습}
+\label{sec:r1-cg-development-entry}
+2026-09-28 사용자가 CG 목적에 맞춘 기준 완화를 채택했다. 문서 계약 식별자는
+\code{cg_teacher_dev_v1}이다. 승인된 것은 이 진입 기준과 후속 실행 계획이며,
+스크립트 구현·새 GPU 실행·학습 실행이 완료됐거나 자동 승인된 것은 아니다.
+초기 검증은 대표 사각형 한 씬, 동일한60Hz 연속10초 궤적에 한정한다.
+세 해상도 수렴 차수·독립 역학 reference·모든 장치 반복 검증을 초기 개발 학습에 일괄 선행시키지 않는다.
 
-다음이 모두 참일 때만 R2가 소유하는 T1 measure/token initialization prephase를 시작한다.
-T1 산출물이 동결된 뒤에만 R2a fixed-seconds overfit으로 진행한다.
+\paragraph{고정 조건과 비교 쌍.}
+물성·형상 크기·부착의 물리 영역·중력/바람 프로그램·frame-start 공력 평가/hold 규칙을 유지한다.
+초기 v12 비교안은 동일 rest와 초기 속도에서 preload2초, calm4초, wind4초를 연속 계산한다.
+후속 v13은 preload1초, calm4초, wind5초다. 비교 쌍마다 동일한 초기 상태·감쇠·바람 입력을
+고정하며, 후속 결과와 현재 선택 범위는 \S\ref{sec:r1-cg-wind-damping-status}를 따른다.
+공력 값은 각 궤적의 상태에서 계산하며 다른 run의 공력 배열로 덮어쓰지 않는다.
+시간 비교는 현재 resolution16의 v12 기본64단계(조건부128단계 복구)와 기본128단계
+(같은 정책의256단계 복구)를 비교한다. 공간 비교는 resolution16과24를 모두 기본128단계로
+계산해 비교한다. 실제 dt/복구 이력을 보존하며 두 비교에서 한꺼번에 두 축을 바꾸지 않는다.
+메시와 함께 접촉 proxy의 표본 수도 달라질 수 있으므로 공간 결과는 전체 접촉 포함 경로의
+해상도 민감도이며, unweighted IPC의 독립 공간 수렴이나 연속체 해 인증으로 주장하지 않는다.
+
+\paragraph{사전 동결한 개발 허용량.}
+정규화 길이 \(L\)은 rest 형상의 bounding-box 대각선 길이다.
+같은 rest 표면에 놓은512개 평가점과 양의 면적 가중치를 비교 전에 고정한다.
+P3의10-shape 보간으로 평가하며 공통 유효점의 분모를 결과를 본 뒤 줄이지 않는다.
+고정점·끝점은 별도 보조 지표로 기록한다. 다음 기준은 CG 분야의 보편 표준이 아니라
+이 프로젝트의 제한 개발용 허용량이다.
+\begin{itemize}
+ \item 위치: 평가점과 시간에 대한 가중 RMS 변위 차이를 \(L\)로 나눈 값이1\% 이하.
+ \item 속도: 같은 RMS 속도 차이를 기준 실행의 RMS 속력으로 나눈 값이10\% 이하.
+ 정지 근처 분모는 \(0.01L/\mathrm{s}\)를 하한으로 사용하며 두 값을 함께 보고한다.
+ \item 주 판정 구간은 wind 전체와 마지막2초다(v12:6--10초/8--10초, v13:5--10초/8--10초).
+ 두 구간 모두 두 지표를 통과해야 한다.
+ Preload/calm과 전체10초 지표도 보고하되 조용한 구간으로 wind 오차를 희석하지 않는다.
+ \item 정면·측면·사선의 같은 카메라/축척으로 정상 및 느린 재생을 비교한다.
+ 새 관통·폭주·고정점 이탈·갑작스러운 튐·눈에 띄는 비정상 떨림이 없어야 한다.
+ 잔주름의 미세한 차이나 bitwise 궤적 일치는 요구하지 않는다. 시각 판정은 명시적으로 기록한다.
+ \item 모든 비교 run이 완주하고 기존 힘·기하·접촉·시간축 검산을 통과해야 한다.
+ 실패/예산 종료 run은 분모에 남기며 pass로 처리하지 않는다. 기존 solver 허용오차는 완화하지 않는다.
+\end{itemize}
+
+두 해상도 차이가 기준 안이면 초기 민감도 검사를 종료한다. 기준 초과·상충·시각적 불확실성이
+있을 때만 세 번째 해상도나 원인 분리 검증을 검토하며 자동으로 계산 규모를 늘리지 않는다.
+각 비교의 기준 실행은 더 정밀한 실행이다. 기준점의 매핑 유효성·입력/출력 시간·hash를 확인하고,
+512점 매핑의 부분 구현·정적 검증은 \S\ref{sec:r1-common-motion-analysis}에 기록했다.
+비교기 준비는 \S\ref{sec:r1-cg-comparator-ready}, 후속 시간 비교와 아직 미판정인 새 후보의
+민감도는 \S\ref{sec:r1-cg-wind-damping-status}를 따른다.
+기존 v12 노드 단순 RMS를 공간 비교로 대체하지 않는다.
+
+\paragraph{제한 개발 학습의 진입 조건.}
+위 시간/공간 민감도와 시각 확인 후, 하나의 GS로 변위·속도를 옮기는 과정에서
+rest identity, 고정점, proper rigid rotation, covariance SPD, 시간/단위와 속도 일관성을 확인한다.
+Teacher와 학생의 공력 law/단위/hold 의미와 force/work 전달을 대조하고 실패를 숨기지 않는다.
+학생과 같은 응답 표현의 작은 network-free fit/replay를 수행해 오차와 시각 결과를 기록한다.
+명백한 표현 불가·폭주·매핑 오류가 있으면 학습으로 우회하지 않는다.
+모든 장치, 두 independent GS, 전체 spectrum/FRF와 엄밀한 oracle acceptance를 이 단계에서
+전부 닫을 필요는 없지만, formal R1 및 해당 논문 claim의 종료 조건으로는 남는다.
+
+통과 후 허용 범위는 한 물체·한 material/attachment·한 입력 궤적·한 GS의
+T1 초기화와 단일 사례 맞춤 학습/replay 진단뿐이다. Generalization, 정식 R2 완료,
+R3 이후 Gate나 대규모 dataset 발행으로 승계하지 않는다.
+미래 진입 보고서는 \code{development_training_eligible}, 대상 object/input/GS와
+증거 hash를 별도 기록한다. 기존 원본의 \code{training_eligible=false} 및
+\code{r1_complete=false}를 소급 수정하지 않는다. 개발 loader도 이 명시적 진입 보고서를 요구하며
+일반 opt-in만으로 승인 경계를 우회하지 않는다. 현재 v12는 이 조건의 통과 전이다.
+
+\paragraph{계산 예산과 범위.}
+첫 묶음은 신규 전체 궤적2개, 합계6시간의 단일 GPU 순차 실행 예산이다.
+Setup·검산·실패 시도·저장을 포함하는 실행 wall을 예산으로 센다. 비교·시각화의 CPU 비용은 별도다.
+새 실행의 예산 소진은 프레임 경계에서 미완료로 기록하며 초과한 마지막 프레임 비용도 남긴다.
+세 번째 실행·시간 연장·다른 씬 확대는 자동 수행하지 않는다. 시뮬레이션은 사용자가 직접 실행한다.
+명령·경로·스크립트 구현 상태는
+\code{experiments/R1_teacher_velocity_reset/self_contact/cg_development_checks.md}가 소유한다.
+
+\subsection{Canonical R1 종료 조건}
+
+정식 R2의 T1 measure/token initialization prephase는 다음이 모두 참일 때 시작한다.
+T1 산출물이 동결된 뒤 R2a fixed-seconds overfit으로 진행한다.
+\S\ref{sec:r1-cg-development-entry}의 제한 개발 학습은 별도 진입 경로이며 이 완료 체크를 올리지 않는다.
 \begin{itemize}
   \item[$\square$] Teacher physics/material/solver/traction registry와 replay가 닫혔고
   teacher quadrature의 total area/mass가 \(A_{\mathrm{ref}},M_{\mathrm{ref}}\)와 일치한다.
@@ -2385,16 +2538,18 @@ curriculum 비주장 경로를 사용한다.
 \toprule 항목 & 반영한 판단 & 아직 완료하지 않은 것\\\midrule
 Teacher sample/DOF & 고차 DOF와 positive quadrature를 구분. Consistent mass는 식~\eqref{eq:r1-consistent-mass} 적용 & 최종 registry의 고차 law 및 actual model validator\\
 Map sign & GS/기존 P1은 nonnegative 유지. 고차 Teacher에만 signed shape와 별도 version 허용 & P3 10-shape public map, coverage/noise/adjoint와 trajectory 연결\\
-Convergence identity & 같은 backend/mass/BC/load에서 spatial/time acceptance 요구. 약한 바람 개발 비교 통과 & 4배 마지막 reset 공간 미달,10초 후보 미확정, 독립 기준·FRF/tip/work 검증\\
-학습 적격성 & 물리 수식 구현·검증 전 추가 발행 보류. 기존 sample은 개발 근거로 보존 & Accepted Teacher와 source split, independent GS 및 oracle\\
+Convergence identity & 같은 backend/mass/BC/load에서 spatial/time acceptance 요구. 약한 바람 개발 비교 통과 & 4배 마지막 reset 공간 미달、새 감쇠/바람 후보의 수렴 미판정, 독립 기준·FRF/tip/work 검증\\
+학습 적격성 & CG 개발 진입 조건을 통과하면 한 물체/입력/GS의 제한 학습 허용. 기존 sample은 자동 승격하지 않음 & Canonical 채택에는 Accepted Teacher와 source split, independent GS 및 oracle\\
 첫 input family & P3 작은 굽힘 wind/reset의 수렴·독립 재실행과76개 sample 검증 & 큰 변형/새 입력 범위·oracle/GS 연결; native 실패와 기존 decay 요구 유지\\
 Claim & P3는 training-only reference 후보, target method 변경 없음 & Learned held-out 개선이나 full Teacher 적격성 주장 불가\\
 \bottomrule\end{longtable}
 
 개발 full shell에는 objective membrane+bending, finite rotation, consistent mass,
 attachment/reaction, nonlinear tangent/solve와 two-sided relative wind,
-frame-start hold 및 work quadrature를 구현했다. 현재 구조 감쇠는0이며 상대 공기저항에 의한 감쇠를
-구조/modal damping 채택과 혼동하지 않는다. 최종 damping/guard/고차 public registry 계약과의 일치는 별도로 닫아야 한다.
+frame-start hold 및 work quadrature를 구현했다. 기존 기본 경로의 구조 감쇠는0이다.
+후속 진단 경로의 내부 감쇠 구현·추천은 \S\ref{sec:r1-cg-wind-damping-status}에 기록했다.
+상대 공기저항·진단용 내부 감쇠와 최종 구조/modal damping 채택을 구분한다.
+최종 damping/guard/고차 public registry 계약과의 일치는 별도로 닫아야 한다.
 선형 P3 pressure 모듈을 기존 3-node/lumped-mass nonlinear solver에 이름만 바꿔 넣지 않는다.
 개발 backend의 일부 시간·공간 진단 통과만으로 canonical producer를 채택하지 않는다.
 Independent GS 두 개, common mask, spectrum convergence와 network-free oracle/base transport는 그 후에도

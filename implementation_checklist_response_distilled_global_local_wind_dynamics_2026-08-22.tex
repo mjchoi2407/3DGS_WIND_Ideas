@@ -16,7 +16,7 @@
 Response-Distilled Global--Local Wind Dynamics}
 \author{Wind3DGS Project}
 \date{2026-08-22}
-\renewcommand{\DevChecklistDate}{2026-09-11}
+\renewcommand{\DevChecklistDate}{2026-09-28}
 
 \begin{document}
 \maketitle
@@ -32,8 +32,8 @@ Response-Distilled Global--Local Wind Dynamics}
 
 \DevChecklistPage{전체 단계}{R0/R1 진행 · R2–R7 대기}{
 \DevProgressRow{0}{\href{development/r0_contract_and_schema.pdf}{R0 개발 문서}}{진행}{R0 option 동결, executable schema와 canonical fixture 완성}
-\DevProgressRow{0}{\href{development/r1_teacher_probe_oracle.pdf}{R1 개발 문서}}{진행}{4배 공간 미달·10초 추천 없음; reference·데이터 보류}
-\DevProgressRow{0}{\href{development/r2_single_case_global_overfit.pdf}{R2 개발 문서}}{대기}{Accepted R1 이후 T1/R2a, 이후 R2b baseline·schedule/fallback 판정}
+\DevProgressRow{0}{\href{development/r1_teacher_probe_oracle.pdf}{R1 개발 문서}}{진행}{CG 민감도 기반 개발 진입 채택; canonical R1 미완료}
+\DevProgressRow{0}{\href{development/r2_single_case_global_overfit.pdf}{R2 개발 문서}}{대기}{제한 개발 경로는 R1 CG 조건; 정식 T1/R2a는 R1 pass 이후}
 \DevProgressRow{0}{\href{development/r3_multi_resplat_measure.pdf}{R3 개발 문서}}{대기}{Independent GS·density registry와 Gate A\(_M\)/A\(_L\) 판정}
 \DevProgressRow{0}{\href{development/r4_heldout_global.pdf}{R4 개발 문서}}{대기}{Object-disjoint Global 학습·평가와 Best Global 동결}
 \DevProgressRow{0}{\href{development/r5_local_residual.pdf}{R5 개발 문서}}{대기}{Frozen Global residual과 Local 필요성·Gate C 판정}
@@ -110,8 +110,8 @@ R1 & \code{development/r1_teacher_probe_oracle.tex} &
 R0 artifacts &
 Converged teacher, common-probe, traction/ZOH, oracle와 base transport smoke\\
 R2 & \code{development/r2_single_case_global_overfit.tex} &
-R1 pass &
-Single-case Global overfit와 long-horizon finite rollout\\
+정식: R1 pass; 개발: R1 CG 진입 조건 &
+Single-case Global overfit와 long-horizon finite rollout; 개발 진단은 완료 아님\\
 R3 & \code{development/r3_multi_resplat_measure.tex} &
 R2 pass, independent GS variants &
 Gate A\(_T\)/A\(_M\)/A\(_L\) routing evidence\\
@@ -235,7 +235,13 @@ R0--R7의 종료 체크와 다음 동작은 \hyperref[sec:dev-checklist]{표지 
 최종 사용자 목표는 지원 domain의 바람 조작과 최소30fps다. Teacher/학습/setup 비용과 최종 frame 비용을
 구분하며 렌더링·입력·동기화까지의 측정 계약은 R7이 소유한다. 현재 실시간 달성 근거는 없다.
 R1 oracle/R2 첫 실행에서 비용을 일찍 확인하자는 의견은 R2의 미결정 항목으로 남긴다.
-이는 R1 통과 전 학습을 시작하거나 단계 순서·완료 체크를 변경한 결정이 아니다.
+이는 당시 R1 통과 전 학습을 허용한 결정이 아니었다.
+2026-09-28 사용자 결정으로 초기 CG 개발 학습의 별도 진입 경로를 채택했다.
+R1의 ``CG 개발용 진입'' 절이 소유하는 두 해상도 민감도·시각·단위/매핑·작은 응답 검사를
+통과하면 한 물체·한 입력·한 GS의 T1 초기화/맞춤 학습만 허용한다.
+세 해상도 수렴 차수와 모든 canonical fixture를 초기 개발의 일괄 선행 조건에서 제외하지만,
+정식 R1/R2 및 Gate A--D의 완료 체크와 claim은 유지한다. 개발 결과로 R3에 진입하지 않는다.
+현재는 문서 계약 채택이며 새 검사·학습의 통과나 실행 승인은 아니다.
 
 \section{Gate routing과 허용 claim}
 

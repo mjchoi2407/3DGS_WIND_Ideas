@@ -58,8 +58,14 @@ Method equation과 claim의 authority는 current sketch다. Master roadmap은 st
 
 ## 구현·실험 상태
 
-현행 연구 경계는 **물리 수식 구현·검증 후 학습데이터 생성**이다. 유한 회전 shell 경로를 사용하며,
-개발 진단 통과를 R1 전체 채택이나 학습 적격성으로 승계하지 않는다.
+2026-09-28 **CG 개발용 두 해상도 민감도·시각·매핑 확인 후 제한 학습** 경로를 채택했다.
+한 물체/입력/GS의 개발 진입 조건은 [R1](development/r1_teacher_probe_oracle.tex)의
+`sec:r1-cg-development-entry`, 학습 범위는 [R2](development/r2_single_case_global_overfit.tex)의
+`sec:r2-cg-development-entry`가 소유한다. 2026-10-01 현재 전역 감쇠24의 시간 민감도는
+통과했지만, 새 내부 감쇠·평활 바람 조합의 전체 궤적·시간/공간 검사와 학습은 미판정이다.
+선택 근거와 승계 제한은 R1 `sec:r1-cg-wind-damping-status` 및
+[최신 반영 기록](sessions/2026-09-22_01_self_contact.md#현재-상태)을 따른다.
+정식 R1 채택·R2 완료·Gate와 일반 학습 적격성은 개발 경로와 구분한다.
 
 2026-09-11 문서 감사에서30fps 사용자 목표, Teacher 실행 경로 선택과 후속 실패/미확정 결과를 반영했다.
 반영 범위와 검증 한계는 [문서 감사 기록](sessions/2026-09-09_01_teacher_evidence_integration.md#현재-상태)을 따른다.

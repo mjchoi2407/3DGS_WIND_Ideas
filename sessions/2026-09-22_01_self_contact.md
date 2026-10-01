@@ -2,6 +2,71 @@
 
 ## 현재 상태
 
+- 2026-10-01 사용자 정리·push 요청에 따라 [R1](../development/r1_teacher_probe_oracle.tex)의 `sec:r1-cg-wind-damping-status`에 v13 완주, 감쇠24 시간 비교와 새 내부 감쇠·바람 선택의 적용 범위를 반영했다. R1 완료 체크·Gate는 유지한다.
+- 현재 선택은 P3 강성1/500·막5ms/굽힘20ms·전역0·기하 재사용과 시간 평활 균일 바람이다. [감쇠 추천·비용 근거](../../experiments/R1_teacher_velocity_reset/self_contact/vibration_search.md#최종-추천과-비교), [사용자 외력 선택·한계](../../experiments/R1_teacher_velocity_reset/self_contact/wind_field.md#사용자-시각-선택과-후속-외력-기준)를 따른다. 국소 바람은 미채택이며 솔버 원인을 배제하지 않는다.
+- [감쇠24의 같은 장치64/128 수치 통과](../../experiments/R1_teacher_velocity_reset/self_contact/damping24_time.md#서브-완료-결과-분석)는 새 조합에 승계하지 않는다. 새 조합의 전체 궤적·시간/공간 민감도·GS/작은 응답·학습은 미판정이다.
+- Sketch/master/R1/R2 PDF 빌드와 두 전달 묶음 동기화를 완료했다. [정리 검증](#2026-10-01-정리-검증)의 범위를 따르며, 기존 사용자 TeX 초안3개와 ignored 실행 원본은 제외·보존한다.
+
+## 2026-10-01 정리 검증
+
+- 사용자 요청의 누적 변경을 독립 저장소별 commit/push 대상으로 정리했다. 기존 CG 개발 진입 계약과 이번 R1 결과 동기화를 함께 포함하며, 최종 revision은 각 저장소 Git 이력을 따른다.
+- Sketch/master/R1/R2를 XeLaTeX/latexmk로 실제 재빌드했다. PDF는 각각31/7/40/11쪽이고 최종 로그 경고·미해결 참조0개다. R1 완료 체크8개와 미완료 항목38개의 상태를 보존했다.
+- Sketch/master 전달 ZIP의3/20항목 무결성 및 현재 파일과의 byte 일치를 확인했다. 이번 빌드 전 산출물은 로컬 임시 복구본으로 보존했다.
+- 관련 구현 회귀256개와 명시적 GPU 검사10개(그중2개 중복)가 통과했다. Python64개·JSON24개·셸36개의 구문 검사, 변경 Markdown의 로컬 링크666개를 확인했다. 이는 구현 회귀 검증이며 새 전체 시뮬레이션·학습 완료 근거가 아니다.
+- 서브컴은 유휴였으나 pytest/latexmk가 없어 기존 메인 환경에서 검증·빌드했다. 네 원격의 fetch 후 기존 HEAD 일치를 확인했고 외부 패키지 다운로드·설치는 하지 않았다.
+
+## 2026-09-28 비교기·CG 진입 반영 당시 상태
+
+- 2026-09-28 공통512점 비교기 준비를 R1 `sec:r1-cg-comparator-ready`에 반영했다.
+  [소유 명령·검증·한계](../../experiments/R1_teacher_velocity_reset/self_contact/cg_comparator.md#현재-상태).
+  CPU29개 검사·v12 자기 비교는 도구 검증이며 실제 두 정밀도의 민감도 통과가 아니다.
+  수치 pass는 시각 대기, 브라우저 재생은 미검증이고 T/S runner·24 지원·GS/학습·정식 Gate는 미완료다.
+  R1 PDF40쪽 최종 로그 경고 없음. master bundle20개 중 R1 source/PDF2개만 교체하고18개와 완료 체크를 보존했다.
+  변경 전 복구본은 `.latex-build/cg_comparator_before_20260928/manifest.json`에 있다.
+
+- 2026-09-28 CPU 처짐 분석·공통512점 P3 위치/속도 매핑을 구현하고13개 검사·v12 세 씬 실결과로 검증했다.
+  [소유 결과·정적16/32 map·24 미지원 한계](../../experiments/R1_teacher_velocity_reset/self_contact/motion_analysis.md#구현과-검증).
+  R1 `sec:r1-common-motion-analysis`와 개발 진입 절의 구현 상태만 갱신했다. 비교기·GS/작은 응답·학습 적격성은 미완료다.
+  R1 PDF40쪽 빌드·최종 로그 경고 없음, master bundle의 R1 source/PDF2개 동기화·나머지18개 보존을 확인했다.
+  변경 전 복구본은 `.latex-build/motion_mapping_before_20260928/manifest.json`이며 완료 체크는 유지했다.
+  서브 컴 v13 계산은 사용자 보고다. 이번 작업은 CPU 분석이며 실행 중 작업·동결 runtime을 수정/중단하지 않았다.
+
+- 2026-09-28 사용자 요청으로 CG 개발용 두 해상도 민감도·시각/매핑 검사 후 제한 학습을 채택했다.
+  기존 전면 학습 보류는 이 제한 범위에서 대체하며 정식 R1/R2와 Gate 완료 조건은 유지한다.
+- 기준 소유: [R1](../development/r1_teacher_probe_oracle.tex) `sec:r1-cg-development-entry`의
+  `cg_teacher_dev_v1`(위치1%L·속도10%·시각·기존 검산). 제한 학습 소유:
+  [R2](../development/r2_single_case_global_overfit.tex) `sec:r2-cg-development-entry`.
+- [sketch](../3dgs_response_distilled_global_local_wind_dynamics_2026-08-22.tex)의
+  `sec:rd-cg-development-entry`와 [master](../implementation_checklist_response_distilled_global_local_wind_dynamics_2026-08-22.tex)의
+  현재 상태·R2 진입을 동기화했다. 공식 claim·수식·solver 허용오차는 유지한다.
+- 대표 사각형의 신규 실행2개·합계6시간, v12 뷰어→시간→공간→GS/작은 응답 확인 순서다.
+  [정확한 설정·명령·미구현 범위](../../experiments/R1_teacher_velocity_reset/self_contact/cg_development_checks.md#현재-상태).
+- 후속 v12 뷰어 연결·표시 검증을 완료했다. [명령·검증 범위](../../experiments/R1_teacher_velocity_reset/self_contact/three_scenes_gpu_v12.md#연속10초-뷰어).
+  비교/실행 래퍼·사용자 시각 판정·새 CG 검사·개발 학습은 미완료이고 기존 v12 eligibility는 유지한다.
+  R1의 개발 진입 조건을 확인했으며 표시 연결은 연구 판정 변경이 아니므로 이번 뷰어 작업에서 TeX/PDF를 추가 수정하지 않았다.
+- 변경 전 source/PDF/bundle과 당시 작업본을 [로컬 복구 manifest](../.latex-build/cg_dev_entry_before_20260928/manifest.json)의
+  `before_change` hash로 보존했다. 기존 사용자 TeX 초안3개는 수정하지 않는다.
+- Sketch/master/R1/R2 XeLaTeX 빌드 성공(PDF 각각31/7/40/11쪽), 경고·미해결 참조 없음.
+  두 bundle의3/20항목 무결성·변경 대상 일치와 나머지 항목 보존, 문서 링크148개 및 완료 체크 보존을 확인했다.
+  GPU 실행·학습·commit/push·외부 fetch/다운로드는 하지 않았다.
+
+## 이전 v12 완료 분석 동기화
+
+
+- 2026-09-28: v12 GTX1080Ti 세 씬의 연속 완주와 사각형 조건부 복구를 R1의
+  [접촉 개발 근거](../development/r1_teacher_probe_oracle.tex) `sec:r1-v12-completion`에 반영했다.
+  [결과·원본·실패 분모와 사후 검사 범위](../../experiments/R1_teacher_velocity_reset/self_contact/three_scenes_gpu_v12.md#v12-사용자-실행-결과).
+- 저장 원본의 무결성·검산 기록·연속 경계를 확인했으며 새 물리 잔차/CCD 재계산은 하지 않았다.
+  GTX1080Ti 완주는 준비 상태를 대체하지만 기본 dt 안정성, RTX5070, 수렴·GS/oracle·학습 적격성은
+  미완료다. 기존 R1 완료 체크와 방법 claim은 유지한다.
+- 다음은 v12 시각 확인과 수렴 검증 조건 검토다. 추가 GPU 실행 승인은 아니다.
+- R1 XeLaTeX/latexmk 빌드 성공(PDF39쪽·521,597 bytes), 경고·미해결 참조 없음.
+  Master bundle20항목 중 R1 TeX/PDF2개를 동기화하고 나머지18개의 byte·ZIP 무결성을 확인했다.
+  기존 사용자 TeX 초안3개를 보존했다. 구현·실험 원본 수정과 commit/push는 하지 않았다.
+
+## 이전 v12 준비 문서 동기화
+
+
 - 2026-09-27 작업본 정리: R1 GPU 접촉 절에 cuDSS 설정의 장치 내부/장치 간 한계,
   v11 실패·국소 code1 복구와 v12 연속10초 실행 준비를 반영했다. 새 전체 궤적은 미검증이며
   canonical 체크·Gate·방법 claim은 유지한다. [실행 계약과 검증](../../experiments/R1_teacher_velocity_reset/self_contact/three_scenes_gpu_v12.md#검증과-한계).
